@@ -5,6 +5,7 @@
   "project": {
     "id": "CHANGEME-project-id",
     "dri": "@CHANGEME",
+    "integrationBranch": "origin/main",
     "issuePrefixes": ["ABC"],
     "platforms": ["core", "web", "ios", "android", "desktop", "api"]
   },
@@ -28,9 +29,15 @@
     "generated": [
       "**/*.gen.*",
       "**/generated/**",
-      "**/migrations/**",
       "**/dist/**",
       "**/build/**"
+    ],
+    "$comment_migrations": "Migration KHÔNG phải file generated — hầu hết stack sinh KHUNG rồi bạn viết THÂN. Cái nguy hiểm là sửa migration ĐÃ MERGE: DB lệch im lặng, hỏng checksum của migration runner. protect-migrations.mjs chỉ chặn đúng ca đó. Để [] nếu project không có migration.",
+    "migrations": [
+      "**/migrations/**",
+      "**/migrate/**",
+      "**/db/migrate/**",
+      "**/alembic/versions/**"
     ],
     "secrets": [
       "**/.env",

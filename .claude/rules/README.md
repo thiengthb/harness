@@ -10,7 +10,8 @@ LUẬT 1 — MỘT CHỦ ĐỀ, MỘT FILE.
 LUẬT 2 — MỌI RULE PHẢI CÓ `paths` FRONTMATTER (trừ 3–5 rule an toàn toàn cục).
          Rule không có paths = thuế context cho mọi người ở mọi request.
 
-LUẬT 3 — CẤM NEGATIVE CONSTRAINT trừ 3 nhóm: production, secret, migration đã merge.
+LUẬT 3 — CẤM NEGATIVE CONSTRAINT trừ 3 nhóm: production, secret, lịch sử chung.
+         (Migration đã merge là một ca của lịch sử chung — xem danger-zones.md §3.)
          Muốn thêm nhóm thứ 4 → PR có 2 approve và ghi lý do.
 
 LUẬT 4 — MỌI RULE PHẢI CÓ CHỦ + NGÀY + ĐIỀU KIỆN THOÁT.

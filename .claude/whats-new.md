@@ -1,4 +1,4 @@
-<!-- version: 2026-08-03-c -->
+<!-- version: 2026-08-03-d -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,15 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-03 — Sửa migration KHÔNG còn bị chặn oan (v1.3.0)
+
+1. **Bạn sửa được file trong `migrations/` rồi.** Guard cũ coi mọi migration là
+   file generated và chặn hết — sai, vì Rails/Alembic/Django/Flyway đều để bạn viết
+   thân file bằng tay.
+2. **Chỉ còn chặn migration ĐÃ MERGE** (có trong `origin/main`). Sửa nó làm DB của
+   mọi người lệch nhau im lặng. Muốn đổi → viết migration MỚI.
+3. Chắc chắn migration đó chưa apply ở đâu? `HARNESS_ALLOW_MIGRATION_EDIT=1` (ghi log).
 
 ## 2026-08-03 — Nâng cấp harness giờ AN TOÀN, và một lệnh kiểm tất cả
 

@@ -9,9 +9,37 @@
  * Chạy trong CI trên cả 3 OS (.github/workflows/harness-parity.yml).
  */
 import { spawnSync } from 'node:child_process';
-import { repoPath, report, exists } from './lib/harness.mjs';
+import { repoPath, report, exists, git } from './lib/harness.mjs';
 
 const BLOCK = 2, OK = 0;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dựng một commit "đã merge" TẤT ĐỊNH để test protect-migrations.
+//
+// Không dùng origin/main: CI clone nông thường không có nó, và test phụ thuộc
+// trạng thái remote là test lúc xanh lúc đỏ. Ở đây ta tạo một commit lơ lửng
+// (không ref, git gc sẽ dọn) chứa đúng một file db/migrations/0001_init.sql,
+// rồi trỏ HARNESS_INTEGRATION_BRANCH vào nó. Không đụng index, không tạo ref.
+// ─────────────────────────────────────────────────────────────────────────────
+// Identity đặt qua -c: máy CI thường KHÔNG có user.email, và commit-tree sẽ fail.
+const ID = ['-c', 'user.name=harness-test', '-c', 'user.email=harness@test.local'];
+
+function mktree(entries) {
+  const r = git(['mktree'], { input: entries.map(e => `${e.mode} ${e.type} ${e.sha}\t${e.name}`).join('\n') + '\n' });
+  if (r.status !== 0) throw new Error(`git mktree: ${r.stderr}`);
+  return r.stdout;
+}
+
+let MERGED_REF = null, setupErr = '';
+try {
+  const blob = git(['hash-object', '-w', '--stdin'], { input: '-- migration đã merge, dùng cho test\n' }).stdout;
+  const tMig = mktree([{ mode: '100644', type: 'blob', sha: blob, name: '0001_init.sql' }]);
+  const tDb = mktree([{ mode: '040000', type: 'tree', sha: tMig, name: 'migrations' }]);
+  const tRoot = mktree([{ mode: '040000', type: 'tree', sha: tDb, name: 'db' }]);
+  const c = git([...ID, 'commit-tree', tRoot, '-m', 'fixture: migration da merge']);
+  if (c.status !== 0) throw new Error(`git commit-tree: ${c.stderr}`);
+  MERGED_REF = c.stdout;
+} catch (e) { setupErr = String(e.message || e); }
 
 const cases = [
   // ── DCG ────────────────────────────────────────────────────────────────────
@@ -36,8 +64,19 @@ const cases = [
 
   // ── Generated ──────────────────────────────────────────────────────────────
   ['block-generated-edit.mjs', { tool_input: { file_path: 'packages/api-client/x.gen.ts' } }, BLOCK, 'sửa .gen.* bị chặn'],
-  ['block-generated-edit.mjs', { tool_input: { file_path: 'db/migrations/001_init.sql' } }, BLOCK, 'sửa migration bị chặn'],
   ['block-generated-edit.mjs', { tool_input: { file_path: 'packages/core/src/a.ts' } }, OK, 'file nguồn được phép'],
+  // Case này TRƯỚC ĐÂY khẳng định "sửa migration bị chặn" — SAI, và test đã đóng
+  // đinh cái sai đó. Migration hầu hết là viết tay; chặn hết là bắn nhầm hằng ngày.
+  // Nay do protect-migrations.mjs lo, và chỉ khi migration ĐÃ MERGE.
+  ['block-generated-edit.mjs', { tool_input: { file_path: 'db/migrations/001_init.sql' } }, OK, 'migration KHÔNG phải generated — được sửa'],
+
+  // ── Migration đã merge ─────────────────────────────────────────────────────
+  ['protect-migrations.mjs', { tool_input: { file_path: 'packages/core/src/a.ts' } }, OK, 'file thường không liên quan'],
+  ['protect-migrations.mjs', { tool_input: { file_path: 'db/migrations/999_moi_toanh.sql' } }, OK, 'migration MỚI luôn được phép'],
+  ['protect-migrations.mjs', { tool_input: { file_path: 'db/migrations/0001_init.sql' } }, BLOCK, 'migration ĐÃ MERGE bị chặn', { HARNESS_INTEGRATION_BRANCH: () => MERGED_REF }],
+  ['protect-migrations.mjs', { tool_input: { file_path: 'db/migrations/0001_init.sql' } }, OK, 'cửa thoát HARNESS_ALLOW_MIGRATION_EDIT mở được', { HARNESS_INTEGRATION_BRANCH: () => MERGED_REF, HARNESS_ALLOW_MIGRATION_EDIT: '1' }],
+  ['protect-migrations.mjs', { tool_input: { file_path: 'db/migrations/0001_init.sql' } }, OK, 'nhánh tích hợp không resolve được → FAIL OPEN, không chặn', { HARNESS_INTEGRATION_BRANCH: 'nhanh-khong-ton-tai-2f9a' }],
+  ['protect-migrations.mjs', { tool_input: null }, OK, 'input rác không làm crash'],
 
   // ── Harness ────────────────────────────────────────────────────────────────
   ['protect-harness.mjs', { tool_input: { file_path: '.claude/settings.json' } }, BLOCK, 'agent không tự sửa settings.json'],
@@ -90,12 +129,22 @@ const cases = [
 
 const ok = [], fail = [];
 
-for (const [hook, input, expect, label] of cases) {
+// Setup hỏng = KHÔNG chạy được case "đã merge". Báo ĐỎ, không im lặng bỏ qua —
+// một test bị skip âm thầm đọc y hệt một test đang xanh.
+if (!MERGED_REF) fail.push(`SETUP: không dựng được commit fixture cho protect-migrations — ${setupErr || 'không rõ lý do'}`);
+
+for (const [hook, input, expect, label, env] of cases) {
   const path = repoPath('.claude', 'hooks', hook);
   if (!exists(path)) { fail.push(`${hook}: KHÔNG TỒN TẠI`); continue; }
 
+  // Giá trị env có thể là hàm — lười tính, vì fixture chỉ có sau bước setup.
+  const extra = Object.fromEntries(
+    Object.entries(env || {}).map(([k, v]) => [k, String(typeof v === 'function' ? v() : v)]),
+  );
+
   const r = spawnSync(process.execPath, [path], {
     input: JSON.stringify(input), encoding: 'utf8', cwd: repoPath(''),
+    env: { ...process.env, ...extra },
   });
   const status = r.status ?? -1;
   if (status === expect) ok.push(`${hook.padEnd(28)} ${label}`);

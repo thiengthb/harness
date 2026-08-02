@@ -11,6 +11,40 @@
 
 ---
 
+## 1.3.0 — 2026-08-03
+
+### BREAKING (hành vi guard đổi — đọc kỹ)
+
+- **Migration KHÔNG còn bị coi là file generated.** `**/migrations/**` bị bỏ khỏi
+  `paths.generated`. Trước đây mọi sửa đổi trong `migrations/` đều bị chặn kèm lời
+  khuyên **sai** ("sửa nguồn rồi chạy gen") — trong khi Rails, Alembic, Django data
+  migration, Prisma, Flyway, Liquibase và golang-migrate đều để bạn viết thân file
+  bằng tay. Guard bắn nhầm hằng ngày dạy cả team rằng guard là thứ để lách.
+- **Thay bằng `.claude/hooks/protect-migrations.mjs`** — chỉ chặn đúng ca nguy hiểm:
+  sửa migration **đã có trong nhánh tích hợp** (= đã merge, có thể đã chạy trên DB
+  của người khác). Migration mới luôn được phép.
+- Migration `001-migration-khong-phai-generated.mjs` tự vá config của bạn.
+  **Nếu project bạn thật sự SINH migration** và không muốn ai sửa tay: chuyển glob
+  đó ngược lại vào `paths.generated`.
+
+### Thêm
+
+- `paths.migrations` và `project.integrationBranch` trong `harness.config.json`.
+- Biến môi trường `HARNESS_INTEGRATION_BRANCH` — đè config; dùng cho team dùng
+  `develop`, CI clone nông, và test cần ref tất định.
+- Cửa thoát `HARNESS_ALLOW_MIGRATION_EDIT=1`, có ghi log vào
+  `.claude/telemetry/migration-edits.log`.
+- Test runner nhận `env` theo từng case, và **báo đỏ khi setup hỏng** thay vì
+  im lặng bỏ qua case. 46 → 52 case.
+
+### Sửa
+
+- `.claude/rules/README.md` và `danger-zones.md` gọi tên **ba nhóm nguy hiểm khác
+  nhau** ("migration đã merge" vs "lịch sử chung"). Nay thống nhất: ba nhóm là
+  production · secret · lịch sử chung, và migration đã merge là một ca của nhóm ba.
+- Khai báo nhánh tích hợp tường minh mà không resolve được thì **không fallback ngầm**
+  sang `main` nữa — trả lời sai về "đã merge chưa" theo hướng chặn nhầm.
+
 ## 1.2.0 — 2026-08-03
 
 ### Thêm

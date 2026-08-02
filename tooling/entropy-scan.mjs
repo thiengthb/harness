@@ -113,9 +113,26 @@ const settings = existsSync(repoPath('.claude', 'settings.json'))
   ? readFileSync(repoPath('.claude', 'settings.json'), 'utf8') : '';
 const testsSrc = existsSync(repoPath('tooling', 'test-hooks.mjs'))
   ? readFileSync(repoPath('tooling', 'test-hooks.mjs'), 'utf8') : '';
+const registered = new Set();
 for (const m of settings.matchAll(/hooks\/([\w-]+\.mjs)/g)) {
+  registered.add(m[1]);
   if (!testsSrc.includes(m[1])) {
     fail.push(`hook ${m[1]} đã đăng ký nhưng KHÔNG CÓ TEST — code có quyền chặn công việc cả team mà không ai kiểm`);
+  }
+  if (!existsSync(repoPath('.claude', 'hooks', m[1]))) {
+    fail.push(`settings.json gọi hook ${m[1]} nhưng FILE KHÔNG TỒN TẠI — hook fail mỗi tool call`);
+  }
+}
+
+// ── 7b. Chiều ngược lại: file hook có mà KHÔNG đăng ký ───────────────────────
+// Lớp bug im lặng nhất trong hệ nâng cấp: upgrade.mjs copy hook mới sang project,
+// nhưng settings.json thuộc lớp NỘI DUNG nên không bị ghi đè. Hook nằm đó chết,
+// không ai biết, và guard mà bạn tưởng đang chạy thì không chạy.
+// (Gặp thật khi thêm protect-migrations.mjs ở v1.3.0 — xem harness-migrations/001.)
+if (existsSync(repoPath('.claude', 'hooks'))) {
+  for (const f of readdirSync(repoPath('.claude', 'hooks'))) {
+    if (!f.endsWith('.mjs') || f.startsWith('_') || registered.has(f)) continue;
+    fail.push(`hook ${f} TỒN TẠI nhưng không được đăng ký trong settings.json — guard bạn tưởng đang chạy thì không chạy`);
   }
 }
 

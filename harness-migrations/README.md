@@ -7,15 +7,20 @@ Script xử lý những thứ mà **copy file không làm được**: đổi tê
 `(version hiện tại của project, version của template]`, theo thứ tự tăng dần.
 
 > **Vì sao không đặt tên `migrations/`:** project thật gần như chắc chắn đã có
-> `migrations/` cho database. Trùng tên gây nhầm lẫn, và `paths.generated` mặc định
-> chặn `**/migrations/**` (hook `block-generated-edit` bắt được đúng collision này
-> khi thư mục còn tên cũ).
+> `migrations/` cho database. Trùng tên gây nhầm lẫn cho cả người và agent, và
+> `paths.migrations` mặc định khớp `**/migrations/**` — thư mục này sẽ dính guard
+> `protect-migrations` một cách vô nghĩa.
+>
+> Collision đó là chuyện có thật, không phải giả định: bản v1.2.0 đặt tên thư mục
+> này là `migrations/` và bị chính hook của mình chặn. Xem
+> `knowledge/lessons/0002-guard-ban-nham.md`.
 
 ## Khi nào cần viết migration
 
 | Thay đổi | Cần migration? |
 |---|---|
-| Thêm hook / skill / doc mới | **Không** — copy file là đủ |
+| Thêm **hook** mới | **CÓ** — xem cạm bẫy ngay dưới |
+| Thêm skill / doc / agent mới | **Không** — copy file là đủ |
 | Sửa logic một hook | **Không** |
 | Đổi tên field trong `harness.config.json` | **CÓ** — nếu không, hook đọc `undefined` và **fail âm thầm** |
 | Đổi cấu trúc thư mục | **CÓ** |
@@ -23,6 +28,28 @@ Script xử lý những thứ mà **copy file không làm được**: đổi tê
 | Thêm field bắt buộc vào config | **CÓ** — điền giá trị mặc định |
 
 > Luật: **nếu project không sửa gì mà vẫn hỏng sau khi nâng cấp → cần migration.**
+
+### Cạm bẫy: thêm hook mới thì phải TỰ ĐĂNG KÝ
+
+`.claude/settings.json` thuộc lớp **NỘI DUNG** — `upgrade.mjs` không bao giờ ghi đè
+nó (project sửa được `permissions`, `worktree`, hook riêng…). Nên copy file hook
+sang project là **chưa đủ**: hook nằm đó chết, và bạn tưởng guard đang chạy.
+
+Migration thêm hook phải chèn vào `settings.json`, idempotent:
+
+```js
+const raw = ctx.readFileSync(ctx.repoPath('.claude', 'settings.json'), 'utf8');
+if (raw.includes('ten-hook')) { ctx.log('đã đăng ký sẵn'); return; }
+const s = JSON.parse(raw);
+const g = s.hooks?.PreToolUse?.find(g => /Write/.test(g.matcher || ''));
+if (!g) { ctx.log('⚠ không tìm thấy nhóm — đăng ký tay: ...'); return; }
+g.hooks.push({ type: 'command', command: 'node .claude/hooks/ten-hook.mjs' });
+ctx.writeFileSync(..., JSON.stringify(s, null, 2) + '\n', 'utf8');
+```
+
+Xem bản đầy đủ ở `001-migration-khong-phai-generated.mjs`.
+`tooling/entropy-scan.mjs` bắt được cả hai chiều — hook đăng ký mà thiếu file,
+và file hook mà không đăng ký.
 
 ## Khuôn
 

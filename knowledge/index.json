@@ -1,8 +1,8 @@
 {
   "generatedBy": "tooling/knowledge/lint.mjs",
-  "count": 1,
+  "count": 2,
   "byScope": {
-    "universal": 1
+    "universal": 2
   },
   "lessons": [
     {
@@ -18,6 +18,22 @@
       "artifacts": [
         "AGENTS.md §Git & PR",
         ".github/workflows/ci.yml (job lockfile-integrity)"
+      ]
+    },
+    {
+      "id": "L0002",
+      "file": "knowledge/lessons/0002-guard-ban-nham.md",
+      "title": "Guard bắn nhầm còn tệ hơn không có guard — nó dạy cả team cách lách",
+      "scope": "universal",
+      "class": "tools",
+      "representation": "computational-control",
+      "status": "active",
+      "added": "2026-08-03",
+      "occurrences": 2,
+      "artifacts": [
+        ".claude/hooks/protect-migrations.mjs",
+        ".claude/rules/danger-zones.md §3",
+        "harness-migrations/001-migration-khong-phai-generated.mjs"
       ]
     }
   ]

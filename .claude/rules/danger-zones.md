@@ -28,11 +28,17 @@ Rule này **không có `paths`** — cố ý. Đây là 3 nhóm duy nhất đán
 - Không force push (`--force-with-lease` trên nhánh của chính mình thì được).
 - Không `reset --hard`, không `clean -fd`, không rebase nhánh người khác đã checkout.
 - Không sửa lịch sử `main`.
+- **Không sửa migration ĐÃ MERGE.** Migration đã merge là lịch sử chung của _database_:
+  đồng đội đã apply nó, staging đã apply nó. Sửa nó không báo lỗi — nó làm DB lệch
+  nhau im lặng, và làm hỏng checksum của Flyway/Liquibase/Alembic với thông báo khó
+  hiểu. Muốn đổi thì viết migration MỚI.
+  Migration **chưa merge** thì sửa thoải mái — đó là 95% việc bạn làm với migration,
+  và một guard chặn cả nhóm đó là guard bắn nhầm.
 
 ---
 
 Ba nhóm này được **cưỡng chế bằng máy** ở `.claude/hooks/dcg.mjs`,
-`block-secrets.mjs`, và `permissions.deny` trong `settings.json`.
+`block-secrets.mjs`, `protect-migrations.mjs`, và `permissions.deny` trong `settings.json`.
 
 Rule này tồn tại để **giải thích tại sao**, không phải để cưỡng chế —
 mọi thứ chỉ tồn tại dưới dạng lời nhắc sẽ bị bỏ qua bởi người đang gấp,
