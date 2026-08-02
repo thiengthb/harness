@@ -15,6 +15,8 @@ Mỗi bước có một **GATE**. Chưa qua gate thì chưa được đi tiếp.
 
 `/research-first`. Bỏ qua nếu chỉ là wiring.
 
+Vừa thêm >150 dòng ở bước 5 hoặc 6? → `/dedupe-scan` trước khi mở PR.
+
 ## Bước 1 — CONTRACT (tầng 1)
 
 Viết/sửa schema ở tầng nguồn sự thật (contracts/schema/proto/openapi), rồi chạy `gen`.

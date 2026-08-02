@@ -16,16 +16,38 @@ AGENT = MODEL + HARNESS
 
 ```bash
 # 1. Copy lớp harness vào project của bạn
-node /đường/dẫn/harness/tooling/apply-to.mjs /đường/dẫn/project-cua-ban
+node /đường/dẫn/harness/tooling/apply-to.mjs /đường/dẫn/project-cua-ban --apply
 
 # 2. Trong project đó, điền MỘT file
 $EDITOR harness.config.json      # project.id, dri, và commands.*
 
-# 3. Bootstrap
+# 3. Bootstrap + kiểm
 node tooling/init.mjs
+node tooling/doctor.mjs          # ← lệnh DUY NHẤT bạn cần nhớ
 
 # 4. Điền AGENTS.md — chỉ 3 mục: Project · Lệnh · Gotchas
 ```
+
+## Nâng cấp về sau
+
+```bash
+node tooling/upgrade.mjs /đường/dẫn/harness            # XEM TRƯỚC
+node tooling/upgrade.mjs /đường/dẫn/harness --apply
+```
+
+**Không có ghi đè im lặng.** `.claude/harness-manifest.json` lưu hash mọi file cơ chế,
+nên `upgrade` phân biệt được *"bạn đã sửa"* với *"template đã đổi"*:
+
+```
+bạn CHƯA sửa  →  cập nhật an toàn
+bạn ĐÃ sửa    →  GIỮ NGUYÊN của bạn, bản template ghi ra <file>.new
+file mới      →  thêm
+đổi cấu trúc  →  harness-migrations/ chạy script (đổi tên field, chuyển thư mục…)
+```
+
+Nội dung của project (`harness.config.json`, `AGENTS.md`, `features/`,
+`knowledge/lessons/`, `docs/progress/`) **không bao giờ bị đụng**.
+Chi tiết + cách giữ migration luôn dễ: [docs/MIGRATION.md](docs/MIGRATION.md)
 
 **Việc số 1, làm trước mọi thứ khác:** điền `harness.config.json → commands`.
 Không có lệnh verify thì gate không tồn tại, và toàn bộ harness này chỉ là trang trí.
@@ -127,7 +149,30 @@ reservations/                advisory lock có TTL
 /handoff       kết thúc sạch — evidence, nhật ký, dọn reservation
 
 node tooling/fixlog.mjs "..."     mỗi lần phải sửa tay việc agent làm (3 giây)
+node tooling/doctor.mjs           kiểm sức khoẻ toàn bộ — một lệnh
 ```
+
+## Vòng học — cái làm harness TỰ TỐT LÊN
+
+```
+1 CAPTURE   fixlog.mjs (3 giây/lần)  +  hook tự ghi gate-fails
+     ↓
+2 DISTILL   /harness-retro thứ Sáu — 2 người: một đề xuất, một phản biện
+     ↓
+3 GATE      evals/run.mjs — regression tụt thì KHÔNG promote
+     ↓
+4 PROMOTE   /knowledge-promote → knowledge/lessons/ (có scope + exit-condition)
+     ↓
+5 PRUNE     /entropy-sweep + entropy-scan.mjs — mỗi lần thêm phải xét một lần bỏ
+     ↑
+     └──────────────────────────────────────────────────────────────┘
+```
+
+Bước 3 không được bỏ. **Không có gate thì "cải thiện harness" chỉ là phình harness.**
+
+Máy kiểm được phần nào: `entropy-scan.mjs` bắt rule thiếu `paths`/`owner`, tài liệu
+quá hạn `last-verified`, bài học đã đạt điều kiện thoát, hook đăng ký mà **không có
+test**, và harness đổi mà `whats-new.md` không đổi.
 
 | Nhịp | Ai | Việc |
 |---|---|---|

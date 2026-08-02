@@ -1,4 +1,4 @@
-<!-- version: 2026-08-03-b -->
+<!-- version: 2026-08-03-c -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,18 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-03 — Nâng cấp harness giờ AN TOÀN, và một lệnh kiểm tất cả
+
+1. **`node tooling/doctor.mjs`** — lệnh DUY NHẤT bạn cần nhớ. Nó gọi mọi kiểm tra
+   khác và tổng hợp thành một bảng có hành động.
+2. **Nâng cấp harness không còn ghi đè mù**: `node tooling/upgrade.mjs <template>`.
+   File bạn đã sửa được GIỮ NGUYÊN, bản template ghi ra `.new`. Xem `docs/MIGRATION.md`.
+3. **`entropy-scan.mjs`** — máy tìm dấu hiệu harness hết hạn: rule thiếu `paths`,
+   tài liệu quá hạn, hook đăng ký mà không có test.
+
+Đừng gitignore `.claude/harness-manifest.json` — không có nó, nâng cấp sau này
+không phân biệt được "bạn đã sửa" với "template đã đổi".
 
 ## 2026-08-03 — Lớp kinh tế, bảo vệ test, và cửa thoát DRI
 

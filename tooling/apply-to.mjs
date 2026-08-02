@@ -11,6 +11,7 @@
  * (AGENTS.md, harness.config.json, features/, docs/, knowledge/lessons/).
  */
 import { readdirSync, statSync, mkdirSync, cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, resolve, relative, sep } from 'node:path';
 import { REPO_ROOT, report } from './lib/harness.mjs';
 
@@ -42,10 +43,12 @@ const HARNESS = [
   'tooling/lib', 'tooling/knowledge', 'tooling/fixtures',
   'tooling/init.mjs', 'tooling/test-hooks.mjs', 'tooling/apply-to.mjs',
   'tooling/fixlog.mjs', 'tooling/coactivity.mjs', 'tooling/harness-size.mjs',
-  'tooling/capo-report.mjs',
+  'tooling/capo-report.mjs', 'tooling/doctor.mjs', 'tooling/entropy-scan.mjs',
+  'tooling/upgrade.mjs',
   'tooling/check-reservations.mjs', 'tooling/check-feature-integrity.mjs',
   'tooling/wt-clean.mjs', 'tooling/statusline.mjs', 'tooling/precommit-scan.mjs',
   '.githooks', 'evals/run.mjs',
+  'harness.version', 'HARNESS-CHANGELOG.md', 'harness-migrations',
 ];
 const SEED = [
   'AGENTS.md', 'CLAUDE.md', 'harness.config.json',
@@ -64,6 +67,9 @@ const SEED = [
   'docs/rubrics/_TEMPLATE.md', 'docs/specs/_TEMPLATE.md', 'docs/runbooks/README.md',
   'tooling/generators/README.md',
   'evals/README.md', 'evals/tasks/_TEMPLATE.md',
+  'evals/tasks/0001-harness-tu-kiem.md', 'evals/tasks/0002-ton-trong-guardrail.md',
+  'evals/tasks/0003-khong-tu-khen.md',
+  'docs/MIGRATION.md',
   'reservations/README.md',
   '.github/CODEOWNERS', '.github/pull_request_template.md',
   '.github/workflows/harness-parity.yml', '.github/workflows/ci.yml',
@@ -151,6 +157,27 @@ for (const p of [...created, ...updated]) {
 for (const d of ['.claude/learnings', 'knowledge/lessons', 'reservations', 'docs/progress', 'evals/tasks']) {
   mkdirSync(join(DEST, d), { recursive: true });
 }
+
+// ── Ghi manifest — điều kiện để nâng cấp sau này KHÔNG ghi đè mù ─────────────
+// Không có nó, upgrade.mjs không phân biệt được "project đã sửa file này" với
+// "template đã đổi file này", và phải chọn một trong hai cách tệ: ghi đè mù,
+// hoặc không nâng cấp gì cả.
+const version = existsSync(join(REPO_ROOT, 'harness.version'))
+  ? readFileSync(join(REPO_ROOT, 'harness.version'), 'utf8').trim() : '0.0.0';
+const hashes = {};
+for (const rel of HARNESS) {
+  for (const f of filesUnder(rel)) {
+    try { hashes[f] = createHash('sha256').update(readFileSync(join(DEST, f))).digest('hex').slice(0, 16); } catch {}
+  }
+}
+const manifestPath = join(DEST, '.claude', 'harness-manifest.json');
+mkdirSync(join(manifestPath, '..'), { recursive: true });
+writeFileSync(manifestPath, JSON.stringify({
+  templateVersion: version,
+  appliedAt: new Date().toISOString(),
+  source: REPO_ROOT,
+  files: hashes,
+}, null, 2) + '\n', 'utf8');
 
 // Nhắc chỉnh những chỗ CHANGEME
 const todos = [];

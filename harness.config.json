@@ -105,6 +105,11 @@
     "maxTools": 20
   },
 
+  "$comment_evals": "Nối eval với agent. Để rỗng = chỉ chạy assertion tất định, KHÔNG gọi agent (gọi agent tốn tiền, phải là hành động chủ động). Placeholder: {prompt} {maxTurns} {maxMinutes} {id}. Ví dụ: \"claude -p {prompt} --max-turns {maxTurns} --permission-mode auto\"",
+  "evals": {
+    "command": ""
+  },
+
   "$comment_knowledge": "Cơ chế mang trí tuệ qua project khác. Xem knowledge/README.md.",
   "knowledge": {
     "packName": "CHANGEME-org-harness-pack",

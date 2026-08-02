@@ -17,7 +17,7 @@ import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { parseFrontmatter } from '../tooling/lib/frontmatter.mjs';
-import { repoPath, readJson, writeJson, report, git, IS_WIN } from '../tooling/lib/harness.mjs';
+import { repoPath, readJson, writeJson, report, git, config } from '../tooling/lib/harness.mjs';
 
 const argv = process.argv.slice(2);
 const has = f => argv.includes(f);
@@ -80,15 +80,54 @@ function runAssertions(body) {
 }
 
 /**
- * NỐI AGENT Ở ĐÂY.
- * Trả về { ok, turns, minutes, interventions, retries } hoặc null nếu chưa nối.
+ * Chạy agent trên một task.
  *
- * Gợi ý (headless): spawn CLI của agent với prompt trong task, cộng
- *   --max-turns <t.maxTurns>   ← guardrail BẮT BUỘC. Không có nó, một job lỗi
- *                                 có thể chạy tới hết quota.
+ * Khai lệnh ở `harness.config.json → evals.command`, ví dụ:
+ *   "claude -p {prompt} --max-turns {maxTurns} --permission-mode auto --output-format json"
+ *
+ * Placeholder: {prompt} {maxTurns} {maxMinutes} {id}
+ * {prompt} được JSON-quote nên an toàn với dấu nháy và xuống dòng.
+ *
+ * Chưa khai `evals.command` → trả null, runner chỉ chạy assertion trên trạng thái
+ * hiện tại. Cố ý: gọi agent TỐN TIỀN, phải là hành động chủ động.
  */
-function runAgent(/* task */) {
-  return null;
+function runAgent(task) {
+  const tpl = config().evals?.command;
+  if (!tpl || !String(tpl).trim()) return null;
+
+  const prompt = (task.body.match(/## Prompt giao cho agent\s*```([\s\S]*?)```/) || [])[1]?.trim();
+  if (!prompt) return { ok: false, error: 'task không có block "## Prompt giao cho agent"' };
+
+  const maxTurns = task.maxTurns ?? config().budget?.maxTurnsPerRun ?? 25;
+  const maxMinutes = task.maxMinutes ?? config().budget?.maxWallClockMinutes ?? 30;
+
+  const cmd = String(tpl)
+    .replaceAll('{prompt}', JSON.stringify(prompt))
+    .replaceAll('{maxTurns}', String(maxTurns))
+    .replaceAll('{maxMinutes}', String(maxMinutes))
+    .replaceAll('{id}', String(task.id));
+
+  const t0 = Date.now();
+  const r = spawnSync(cmd, {
+    shell: true, encoding: 'utf8', cwd: repoPath(''),
+    timeout: maxMinutes * 60_000,          // wall-clock cap — guardrail BẮT BUỘC
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  const minutes = (Date.now() - t0) / 60_000;
+
+  // Đếm retry giống hệt nhau từ output — dấu hiệu vòng lặp mù
+  const lines = (r.stdout || '').split('\n');
+  const seen = new Map();
+  for (const l of lines) { const k = l.trim(); if (k.length > 30) seen.set(k, (seen.get(k) || 0) + 1); }
+  const retries = Math.max(0, ...[...seen.values()], 0) - 1;
+
+  return {
+    ok: (r.status ?? 1) === 0,
+    timedOut: r.signal === 'SIGTERM',
+    minutes: Number(minutes.toFixed(1)),
+    retries,
+    error: r.error?.message,
+  };
 }
 
 const ok = [], warn = [], fail = [];
@@ -102,12 +141,15 @@ for (const t of tasks) {
   const asserts = runAssertions(t.body);
 
   if (!agent) {
-    warn.push(`${label}: runAgent() chưa nối — chỉ chạy ${asserts.ran} assertion trên trạng thái HIỆN TẠI`);
+    warn.push(`${label}: evals.command chưa khai — chỉ chạy ${asserts.ran} assertion trên trạng thái HIỆN TẠI`);
+  } else {
+    if (agent.timedOut) warn.push(`${label}: CHẠM WALL-CLOCK CAP (${t.maxMinutes || '?'} phút) — bị cắt`);
+    if (agent.retries >= 3) warn.push(`${label}: ${agent.retries} lần retry giống hệt nhau — dấu hiệu VÒNG LẶP MÙ`);
   }
 
   const passed = asserts.failed.length === 0 && (!agent || agent.ok);
   results.push({ id: t.id, kind: t.kind, type: t.type, passed, failedAssertions: asserts.failed, agent });
-  (passed ? ok : fail).push(`${label}${asserts.failed.length ? ` → fail: ${asserts.failed[0]}` : ''}`);
+  (passed ? ok : fail).push(`${label}${agent ? ` (${agent.minutes}p)` : ''}${asserts.failed.length ? ` → fail: ${asserts.failed[0]}` : ''}`);
 }
 
 if (DRY) { report('EVAL (dry)', { ok, warn }); process.exit(0); }
@@ -117,7 +159,7 @@ const cap = results.filter(r => r.type === 'capability');
 const reg = results.filter(r => r.type === 'regression');
 const rate = rs => rs.length ? Math.round(rs.filter(r => r.passed).length / rs.length * 100) : null;
 
-console.log('\n=== EVAL ===');
+console.log('\n=== TỈ LỆ PASS ===');
 if (cap.length) console.log(`  CAPABILITY  ${rate(cap)}%  (${cap.filter(r => r.passed).length}/${cap.length})  — mục tiêu: ĐẨY LÊN`);
 if (reg.length) console.log(`  REGRESSION  ${rate(reg)}%  (${reg.filter(r => r.passed).length}/${reg.length})  — mục tiêu: BẢO VỆ, phải gần 100%`);
 

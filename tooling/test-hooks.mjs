@@ -68,6 +68,24 @@ const cases = [
   ['protect-tests.mjs',
     { tool_input: { file_path: 'tooling/fixtures/khong-ton-tai.test.js', content: 'it("a",()=>{});' } },
     OK, 'file test MỚI luôn được phép'],
+
+  // ── Hook KHÔNG chặn: phải chạy sạch, không bao giờ crash ───────────────────
+  // Một hook crash sẽ chặn MỌI THỨ. Đây là test rẻ nhất và quan trọng nhất cho chúng.
+  ['session-start.mjs', {}, OK, 'chạy được với input rỗng'],
+  ['session-start.mjs', { source: 'startup' }, OK, 'chạy được với input thật'],
+  ['stop-gate.mjs', {}, OK, 'gate chưa cấu hình lệnh → bỏ qua, KHÔNG fail'],
+  ['post-edit-lint.mjs', { tool_input: { file_path: 'src/a.ts' } }, OK, 'lintFix chưa khai → bỏ qua'],
+  ['post-edit-lint.mjs', { tool_input: { file_path: 'assets/logo.png' } }, OK, 'file không lint được → bỏ qua'],
+  ['post-edit-lint.mjs', { tool_input: { file_path: 'packages/x/y.gen.ts' } }, OK, 'file generated → bỏ qua'],
+  ['post-edit-lint.mjs', {}, OK, 'không có file_path → bỏ qua'],
+
+  // Mọi hook phải sống sót với input rác — agent/harness có thể gửi bất cứ thứ gì
+  ['dcg.mjs', { tool_input: null }, OK, 'input rác không làm crash'],
+  ['block-secrets.mjs', { tool_input: { file_path: null } }, OK, 'input rác không làm crash'],
+  ['block-generated-edit.mjs', {}, OK, 'input rỗng không làm crash'],
+  ['protect-harness.mjs', { tool_input: {} }, OK, 'input rỗng không làm crash'],
+  ['protect-feature-files.mjs', { tool_input: { file_path: '' } }, OK, 'path rỗng không làm crash'],
+  ['protect-tests.mjs', { tool_input: null }, OK, 'input rác không làm crash'],
 ];
 
 const ok = [], fail = [];

@@ -52,8 +52,11 @@ jobs:
       - name: Eval — liệt kê (không tốn token)
         run: node evals/run.mjs --dry
 
-      - name: Kích thước harness
-        run: node tooling/harness-size.mjs
+      - name: Entropy scan
+        run: node tooling/entropy-scan.mjs
+
+      - name: Doctor (tổng hợp)
+        run: node tooling/doctor.mjs
 
       # init.mjs phải chạy được cả 3 OS. Nó là chỗ duy nhất biết về khác biệt OS.
       - name: Bootstrap
