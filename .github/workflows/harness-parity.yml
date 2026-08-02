@@ -40,6 +40,11 @@ jobs:
       - name: Knowledge lint
         run: node tooling/knowledge/lint.mjs
 
+      # Bắt lớp bug im lặng: thêm file, quên cập nhật danh sách trong apply-to.mjs,
+      # và project mới thiếu mất một hook mà không ai biết.
+      - name: Template coverage audit
+        run: node tooling/apply-to.mjs --audit
+
       - name: Feature integrity
         if: github.event_name == 'pull_request'
         run: node tooling/check-feature-integrity.mjs origin/${{ github.base_ref }}

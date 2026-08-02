@@ -18,26 +18,31 @@ const args = process.argv.slice(2);
 const target = args.find(a => !a.startsWith('--'));
 const APPLY = args.includes('--apply');
 const UPDATE = args.includes('--update');
+const AUDIT = args.includes('--audit');
 
-if (!target) {
+if (!target && !AUDIT) {
   console.error(`Cách dùng:
   node tooling/apply-to.mjs <thư-mục-project>            xem trước
   node tooling/apply-to.mjs <thư-mục-project> --apply
-  node tooling/apply-to.mjs <thư-mục-project> --apply --update   cập nhật lớp harness`);
+  node tooling/apply-to.mjs <thư-mục-project> --apply --update   cập nhật lớp harness
+  node tooling/apply-to.mjs --audit                     kiểm danh sách có bỏ sót file nào không`);
   process.exit(1);
 }
 
-const DEST = resolve(target);
-if (!existsSync(DEST)) { console.error(`Không tồn tại: ${DEST}`); process.exit(1); }
-if (DEST === REPO_ROOT) { console.error('Đích trùng nguồn.'); process.exit(1); }
+const DEST = target ? resolve(target) : null;
+if (!AUDIT) {
+  if (!existsSync(DEST)) { console.error(`Không tồn tại: ${DEST}`); process.exit(1); }
+  if (DEST === REPO_ROOT) { console.error('Đích trùng nguồn.'); process.exit(1); }
+}
 
 // ── Phân loại ────────────────────────────────────────────────────────────────
 // HARNESS = cơ chế thuần, cập nhật được  ·  SEED = nội dung project, chỉ tạo một lần
 const HARNESS = [
   '.claude/hooks', '.claude/skills', '.claude/agents',
-  'tooling/lib', 'tooling/knowledge',
+  'tooling/lib', 'tooling/knowledge', 'tooling/fixtures',
   'tooling/init.mjs', 'tooling/test-hooks.mjs', 'tooling/apply-to.mjs',
   'tooling/fixlog.mjs', 'tooling/coactivity.mjs', 'tooling/harness-size.mjs',
+  'tooling/capo-report.mjs',
   'tooling/check-reservations.mjs', 'tooling/check-feature-integrity.mjs',
   'tooling/wt-clean.mjs', 'tooling/statusline.mjs', 'tooling/precommit-scan.mjs',
   '.githooks', 'evals/run.mjs',
@@ -47,12 +52,17 @@ const SEED = [
   '.gitattributes', '.gitignore', '.gitmessage',
   '.claude/settings.json', '.claude/settings.local.example.json', '.claude/whats-new.md',
   '.claude/rules', '.claude/learnings/_TEMPLATE.md',
+  '.mcp.json.example',
   'knowledge/README.md', 'knowledge/lessons/_TEMPLATE.md', 'knowledge/lessons/0001-lockfile-merge-tay.md',
   'features/_index.json', 'features/_TEMPLATE.json',
   'docs/CONFLICTS.md', 'docs/WIP.md', 'docs/BRANCH-PROTECTION.md',
-  'docs/DOR-DOD.md', 'docs/onboarding.md',
+  'docs/DOR-DOD.md', 'docs/onboarding.md', 'docs/ROADMAP-30D.md',
+  'docs/ANTI-PATTERNS.md', 'docs/ARCHITECTURE.md', 'docs/ECONOMICS.md',
+  'docs/MULTI-PROJECT.md', 'docs/RECOVERY.md', 'docs/TEAM.md', 'docs/DESIGN.md',
   'docs/adr/_TEMPLATE.md', 'docs/adr/0001-harness-baseline.md',
   'docs/progress/_TEMPLATE.md', 'docs/progress/_TEAM.md',
+  'docs/rubrics/_TEMPLATE.md', 'docs/specs/_TEMPLATE.md', 'docs/runbooks/README.md',
+  'tooling/generators/README.md',
   'evals/README.md', 'evals/tasks/_TEMPLATE.md',
   'reservations/README.md',
   '.github/CODEOWNERS', '.github/pull_request_template.md',
@@ -68,6 +78,37 @@ function filesUnder(rel) {
     out.push(...filesUnder(join(rel, e.name).split(sep).join('/')));
   }
   return out;
+}
+
+// ── --audit: bắt file bị bỏ sót khỏi hai danh sách trên ─────────────────────
+// Lớp bug này im lặng: thêm một file, quên cập nhật danh sách, và template ship
+// thiếu mà không ai biết cho tới khi một project mới thiếu mất một hook.
+// Chạy trong CI (harness-parity.yml).
+if (AUDIT) {
+  const covered = new Set([...HARNESS, ...SEED].flatMap(filesUnder));
+  // Cố ý không mang đi: nội dung riêng của repo này, artifact sinh ra, hoặc file gốc
+  const IGNORE = [
+    /^\.git\//, /^node_modules\//, /^\.harness-pack\//, /^knowledge\/incoming\//,
+    /^\.claude\/(telemetry|state)\//, /^\.vscode\//,
+    /^README\.md$/,                                   // README của chính template
+    /^knowledge\/index\.json$/,                       // sinh tự động
+    /^features\/example-feature\.json$/,              // ví dụ, không seed
+    /^docs\/progress\/[A-Z]/,                         // nhật ký issue thật
+    /^\.claude\/learnings\/(?!_TEMPLATE)/,            // learnings thật
+    /^evals\/tasks\/(?!_TEMPLATE)/,                   // eval task thật
+    /^reservations\/.*\.json$/,
+    /^\.claude\/settings\.local\.json$/, /^\.env/,
+  ];
+  const all = filesUnder('.').filter(f => !IGNORE.some(re => re.test(f)));
+  const missing = all.filter(f => !covered.has(f));
+  if (missing.length) {
+    console.error(`\n⛔ ${missing.length} file KHÔNG nằm trong HARNESS hoặc SEED — sẽ không được copy sang project mới:\n`);
+    for (const m of missing) console.error('   ' + m);
+    console.error('\nThêm vào danh sách trong tooling/apply-to.mjs, hoặc vào IGNORE nếu cố ý không mang đi.\n');
+    process.exit(1);
+  }
+  console.log(`\n✓ AUDIT: ${covered.size} file được phủ, không bỏ sót.\n`);
+  process.exit(0);
 }
 
 const plan = [];

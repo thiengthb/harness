@@ -51,6 +51,23 @@ const cases = [
   // ── Feature files ──────────────────────────────────────────────────────────
   ['protect-feature-files.mjs', { tool_input: { file_path: 'features/_index.json' } }, BLOCK, '_index.json do DRI quản'],
   ['protect-feature-files.mjs', { tool_input: { file_path: 'src/index.ts' } }, OK, 'ngoài features/ không đụng tới'],
+
+  // ── Bảo vệ test (fixture: tooling/fixtures/example.test.js — 2 block, 3 assert) ──
+  ['protect-tests.mjs',
+    { tool_input: { file_path: 'tooling/fixtures/example.test.js', content: 'it("một", () => { expect(1).toBe(1); });' } },
+    BLOCK, 'thu nhỏ test bị chặn (sửa test cho pass thay vì sửa code)'],
+  ['protect-tests.mjs',
+    { tool_input: { file_path: 'tooling/fixtures/example.test.js', content: 'describe("x",()=>{it("a",()=>{expect(1).toBe(1);expect(2).toBe(2);});it("b",()=>{expect(3).toBe(3);});it("c",()=>{expect(4).toBe(4);});});' } },
+    OK, 'THÊM test luôn được phép'],
+  ['protect-tests.mjs',
+    { tool_input: { file_path: 'tooling/fixtures/example.test.js', content: '// harness-allow-test-shrink — test đã lỗi thời\nit("một", () => { expect(1).toBe(1); });' } },
+    OK, 'thu nhỏ CÓ CHỦ Ý được phép qua marker'],
+  ['protect-tests.mjs',
+    { tool_input: { file_path: 'src/a.ts', content: 'export const x = 1' } },
+    OK, 'file không phải test thì bỏ qua'],
+  ['protect-tests.mjs',
+    { tool_input: { file_path: 'tooling/fixtures/khong-ton-tai.test.js', content: 'it("a",()=>{});' } },
+    OK, 'file test MỚI luôn được phép'],
 ];
 
 const ok = [], fail = [];

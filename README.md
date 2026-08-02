@@ -44,7 +44,11 @@ Bạn vẫn là verification loop.
 | 5 người cùng sửa harness | CODEOWNERS · `protect-harness` hook · canary · `/whats-new` | `.github/CODEOWNERS`, `.claude/hooks/` |
 | "Chạy trên máy tôi thì được" | Parity Contract: mọi script là Node `.mjs` · CI matrix 3 OS · `.gitattributes` | `harness-parity.yml`, `tooling/init.mjs` |
 | Agent tự khen, mark done sớm | default-FAIL + evidence bắt buộc + CI cưỡng chế | `features/`, `check-feature-integrity.mjs` |
-| Agent tự sửa harness của chính nó | hook chặn · agent ĐỀ XUẤT, người PROMOTE | `protect-harness.mjs`, `/harness-propose` |
+| Agent sửa test cho pass thay vì sửa code | đếm assertion/test block, chặn khi thu nhỏ | `protect-tests.mjs` |
+| Agent tự sửa harness của chính nó | hook chặn · agent ĐỀ XUẤT, người PROMOTE · cửa thoát DRI có log | `protect-harness.mjs`, `/harness-propose` |
+| Hoá đơn nhảy vọt sau một đêm | 5 guardrail ngân sách + CAPO + model tiering | `docs/ECONOMICS.md`, `capo-report.mjs` |
+| Agent hỏng ở bước 40/50, mất hết | mọi thứ cần để tiếp tục nằm TRÊN ĐĨA, không trong context | `docs/RECOVERY.md` |
+| Boilerplate và code trùng lặp | generator ở nguồn > detector ở cuối | `docs/ARCHITECTURE.md`, `/dedupe-scan` |
 | **Trí tuệ không mang đi được sang project khác** | **vòng học có gate + lesson có scope + export/import** | **`knowledge/`** |
 
 ---
@@ -56,14 +60,17 @@ harness.config.json          ★ NGUỒN SỰ THẬT — chỗ DUY NHẤT biết
 AGENTS.md                    ★ hợp đồng của team (~150 dòng, giữ ngắn)
 CLAUDE.md                    → @AGENTS.md
 
+.mcp.json.example            3–5 server. CLI luôn rẻ hơn MCP về token.
+
 .claude/
 ├── settings.json            harness của TEAM (commit, chỉ DRI sửa)
 ├── settings.local.example.json  van xả áp cá nhân (sparsePaths, statusline)
 ├── whats-new.md             thông báo đổi harness, hiện MỘT LẦN mỗi version
-├── hooks/*.mjs              7 hook, Node thuần, chạy 3 OS
+├── hooks/*.mjs              9 hook, Node thuần, chạy 3 OS
 ├── rules/                   rule theo `paths`, có owner + expires-review
-├── skills/                  10 skill (giữ ≤12)
-├── agents/                  evaluator · security-reviewer · researcher
+├── skills/                  12 skill (ngưỡng ≤12 — thêm nữa thì phải bỏ bớt)
+├── agents/                  evaluator · design-evaluator · security-reviewer
+│                            architect · researcher
 └── learnings/               ĐỀ XUẤT của agent — một file/người/tuần
 
 knowledge/                   ★ TRÍ TUỆ TÍCH LUỸ, MANG ĐI ĐƯỢC
@@ -78,24 +85,36 @@ tooling/
 ├── fixlog.mjs               ★ bước 1 vòng học, 3 giây/lần
 ├── coactivity.mjs           bậc 0 của ladder: ĐO, đừng đoán
 ├── harness-size.mjs         harness đang phình hay đang co?
+├── capo-report.mjs          chi phí / kết quả được chấp nhận
 ├── check-reservations.mjs   pre-commit guard cho vùng nóng
 ├── check-feature-integrity.mjs  chỉ được đổi passes/evidence
 ├── wt-clean.mjs · statusline.mjs · precommit-scan.mjs
+├── generators/              ★ chống boilerplate ở NGUỒN
 ├── knowledge/{lint,export,import}.mjs
 └── lib/{harness,frontmatter}.mjs
 
 features/                    default-FAIL, CHẺ THEO FEATURE (không một file chung)
 docs/
+├── ROADMAP-30D.md           ★ bảng đòn bẩy + làm gì tuần nào
 ├── CONFLICTS.md             ★ 5 loại conflict + Coordination Ladder
-├── WIP.md                   ★ công thức song song
 ├── BRANCH-PROTECTION.md     ★ merge queue — việc ROI cao nhất
-├── DOR-DOD.md · onboarding.md
-├── adr/ · progress/<issue>.md
+├── ANTI-PATTERNS.md         ★ tra cứu khi có gì đó sai mà chưa gọi tên được
+├── ARCHITECTURE.md          6 tầng · ports/adapters · chống boilerplate
+├── ECONOMICS.md             5 guardrail ngân sách · CAPO · model tiering
+├── WIP.md                   công thức song song
+├── RECOVERY.md              checkpoint · context reset vs compaction
+├── TEAM.md                  DRI · nhịp ngày · khối review chung
+├── MULTI-PROJECT.md         4 tầng cấu hình · phân phối · portfolio
+├── DOR-DOD.md · onboarding.md · DESIGN.md
+└── adr/ · progress/<issue>.md · specs/ · rubrics/ · runbooks/
 evals/                       gate cho chính harness
 reservations/                advisory lock có TTL
 .github/                     CODEOWNERS · PR template · CI + parity matrix
 .githooks/pre-commit         shim sh duy nhất — logic ở .mjs
 ```
+
+`node tooling/apply-to.mjs --audit` kiểm mọi file đều được template mang đi
+(chạy trong CI — chống lớp bug "thêm file, quên cập nhật danh sách").
 
 ---
 

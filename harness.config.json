@@ -84,6 +84,27 @@
     "preMerge": ["gen-clean", "typecheck", "lint", "test", "build", "depcruise", "e2e"]
   },
 
+  "$comment_budget": "LỚP KINH TẾ — lớp DUY NHẤT có thể gây thiệt hại tài chính trực tiếp. Một agent chạy sai 4 giờ lúc 3h sáng phải bị CÁI GÌ ĐÓ dừng lại; nếu câu trả lời là 'tôi thức dậy và thấy' thì bạn chưa có lớp này. Xem docs/ECONOMICS.md.",
+  "budget": {
+    "maxTurnsPerRun": 25,
+    "maxWallClockMinutes": 90,
+    "maxToolCallsPerRun": 200,
+    "monthlyUsdCap": 0,
+    "alertAtPercent": 80,
+    "$comment_modelTiering": "Model mạnh đi vào chỗ QUYẾT ĐỊNH (kế hoạch, luật, chấm điểm); model rẻ đi vào chỗ THỰC THI mechanical. Đây là quyết định harness, không phải quyết định tiết kiệm — một quyết định sai nhân lên 1000 file.",
+    "modelTiering": {
+      "decide": "",
+      "execute": "",
+      "classify": ""
+    }
+  },
+
+  "$comment_mcp": "3–5 server/project. Tool definition ăn context ở MỌI request. Tổng tool phơi ra: mục tiêu ≤ 15–20. CLI luôn rẻ hơn MCP về token — có CLI thì dùng CLI. Chỉ dùng MCP khi cần session bền (browser) hoặc schema có cấu trúc mà CLI không cho.",
+  "mcp": {
+    "maxServers": 5,
+    "maxTools": 20
+  },
+
   "$comment_knowledge": "Cơ chế mang trí tuệ qua project khác. Xem knowledge/README.md.",
   "knowledge": {
     "packName": "CHANGEME-org-harness-pack",

@@ -1,0 +1,26 @@
+{
+  "$comment": "Copy thành .mcp.json. PER-PROJECT, không bao giờ global — tool definition ăn context ở MỌI request, nên một MCP 'cho tiện' ở mọi repo là thuế token ở mọi repo.",
+
+  "$comment_budget": "3–5 server. Tổng tool phơi ra: mục tiêu ≤ 15–20 (harness.config.json → mcp). Có bằng chứng thực nghiệm: thu nhỏ không gian tool làm model NHỎ hơn đi từ 2/10 lên 10/10 trên một subset benchmark — nghĩa là CẤU TRÚC TOOL, không phải kích cỡ model, là ràng buộc.",
+
+  "$comment_rule1": "CLI luôn rẻ hơn MCP về token. Có `gh`, `aws`, `docker`, `psql` CLI thì DÙNG CLI. Chỉ dùng MCP khi cần session bền (browser) hoặc schema có cấu trúc mà CLI không cho.",
+  "$comment_rule2": "Bỏ qua filesystem MCP — agent đã có file tool native.",
+  "$comment_rule3": "Mỗi MCP mới phải trả lời: nó THAY THẾ cái gì? Không thay thế gì → không cài.",
+  "$comment_rule4": "Mỗi MCP không được gọi trong 2 tuần → GỠ. Không tranh luận, cài lại mất 30 giây.",
+
+  "$comment_security": "MCP server chạy code với đầy quyền của bạn và KHÔNG có binary signing. Chỉ cài first-party hoặc đã audit. Bắt đầu ở READ-ONLY scope rồi mở dần. Kiểm tổ hợp 'lethal trifecta' trong mỗi session: truy cập dữ liệu riêng tư + đọc nội dung không tin cậy + giao tiếp ra ngoài — một tool riêng lẻ có thể vô hại, TỔ HỢP mới là lỗ hổng.",
+
+  "mcpServers": {
+    "$comment_slot1": "Gợi ý slot 1 — docs cập nhật của thư viện/framework. Chống agent bịa API và dùng version cũ.",
+    "$comment_slot2": "Gợi ý slot 2 — browser automation cho verification loop (agent không sửa được cái nó không nhìn thấy).",
+    "$comment_slot3": "Gợi ý slot 3 — error tracking, kéo issue + stack trace vào context thay vì copy tay.",
+    "$comment_slot4": "Gợi ý slot 4 — thứ đặc thù stack của bạn (DB schema, design tool…). DB thì trỏ STAGING, read-only.",
+
+    "$comment_example": "Xoá dòng $comment_* và điền server thật. Ví dụ hình dạng:",
+    "$example-server": {
+      "command": "npx",
+      "args": ["-y", "@scope/some-mcp-server"],
+      "env": {}
+    }
+  }
+}

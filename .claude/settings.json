@@ -1,42 +1,76 @@
 {
   "$comment": "TẦNG 3 — HARNESS CỦA TEAM. Commit. Chỉ DRI sửa (xem .github/CODEOWNERS). Mọi thứ được phép khác nhau giữa các thành viên thuộc settings.local.json.",
-
   "hooks": {
     "SessionStart": [
       {
         "matcher": "*",
-        "hooks": [{ "type": "command", "command": "node .claude/hooks/session-start.mjs" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/session-start.mjs"
+          }
+        ]
       }
     ],
     "PreToolUse": [
       {
         "matcher": "Bash|PowerShell",
-        "hooks": [{ "type": "command", "command": "node .claude/hooks/dcg.mjs" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/dcg.mjs"
+          }
+        ]
       },
       {
         "matcher": "Write|Edit|NotebookEdit",
         "hooks": [
-          { "type": "command", "command": "node .claude/hooks/block-secrets.mjs" },
-          { "type": "command", "command": "node .claude/hooks/block-generated-edit.mjs" },
-          { "type": "command", "command": "node .claude/hooks/protect-harness.mjs" },
-          { "type": "command", "command": "node .claude/hooks/protect-feature-files.mjs" }
+          {
+            "type": "command",
+            "command": "node .claude/hooks/block-secrets.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/block-generated-edit.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/protect-harness.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/protect-feature-files.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/protect-tests.mjs"
+          }
         ]
       }
     ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit",
-        "hooks": [{ "type": "command", "command": "node .claude/hooks/post-edit-lint.mjs" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/post-edit-lint.mjs"
+          }
+        ]
       }
     ],
     "Stop": [
       {
         "matcher": "*",
-        "hooks": [{ "type": "command", "command": "node .claude/hooks/stop-gate.mjs" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/stop-gate.mjs"
+          }
+        ]
       }
     ]
   },
-
   "permissions": {
     "$comment": "Deny cứng cho 3 nhóm THẬT SỰ nguy hiểm: production, secret, lịch sử chung. Đừng thêm nhóm thứ 4 mà không có 2 approve — mỗi negative constraint là một khoản thuế context.",
     "deny": [
@@ -57,9 +91,13 @@
       "Bash(pnpm publish:*)"
     ]
   },
-
   "$comment_worktree": "Cách ly file ở tầng filesystem. sparsePaths ĐẶT Ở settings.local.json (mỗi người một cone theo domain), KHÔNG đặt ở đây — trừ khi mọi task trong repo thuộc cùng một domain. symlinkDirectories ở đây vì nó đúng cho mọi người: không có nó, 5 worktree = 5 lần node_modules.",
   "worktree": {
-    "symlinkDirectories": ["node_modules", ".cache", ".turbo", ".venv"]
+    "symlinkDirectories": [
+      "node_modules",
+      ".cache",
+      ".turbo",
+      ".venv"
+    ]
   }
 }

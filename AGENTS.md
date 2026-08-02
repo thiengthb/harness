@@ -93,6 +93,21 @@ Mọi thứ trong harness của team **phải** chạy trên Ubuntu 22+, macOS 1
 - **KHÔNG tự viết**: crypto, auth/session/OAuth, payment, date-time math, parser, rate limiter phân tán, i18n plural.
 - Trước khi tin một tài liệu cũ hơn `limits.docStaleDays` ngày: **verify với code hiện tại**.
 
+## Đọc thêm (chỉ khi cần, đừng đọc hôm nay)
+
+| Bạn cần | Đọc |
+|---|---|
+| Áp harness lên project mới | `README.md` · `docs/ROADMAP-30D.md` |
+| Hiểu vì sao có conflict lạ | `docs/CONFLICTS.md` |
+| Quyết số session song song | `docs/WIP.md` |
+| Cấu trúc code / ranh giới module | `docs/ARCHITECTURE.md` |
+| Ngân sách, cap, CAPO | `docs/ECONOMICS.md` |
+| Agent hỏng giữa chừng | `docs/RECOVERY.md` |
+| Vai trò DRI, nhịp team | `docs/TEAM.md` |
+| Nhiều repo cùng lúc | `docs/MULTI-PROJECT.md` |
+| Có gì đó sai mà chưa gọi tên được | `docs/ANTI-PATTERNS.md` |
+| Mang trí tuệ sang project khác | `knowledge/README.md` |
+
 ## Khi bạn học được điều gì
 
 Agent lỗi cùng một kiểu **≥2 lần** → `/harness-propose`, không sửa tay lần nữa.

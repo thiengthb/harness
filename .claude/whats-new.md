@@ -1,4 +1,4 @@
-<!-- version: 2026-08-03-a -->
+<!-- version: 2026-08-03-b -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -9,9 +9,22 @@
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
 
+## 2026-08-03 — Lớp kinh tế, bảo vệ test, và cửa thoát DRI
+
+1. **Hook mới `protect-tests`** — chặn khi bạn ghi một file test có ÍT assertion/test
+   block hơn bản trên đĩa. Sửa CODE cho test pass, đừng sửa test cho code pass.
+   Xoá test đã lỗi thời thật thì thêm comment `harness-allow-test-shrink`.
+2. **Cửa thoát DRI**: `HARNESS_DRI=1` cho phép sửa file harness và **ghi log** vào
+   `.claude/telemetry/harness-edits.log`. Dùng khi bạn CHỦ Ý bảo trì harness.
+3. **Lớp kinh tế**: `harness.config.json → budget` (cap turn/wall-clock/tool-call)
+   và `node tooling/capo-report.mjs`. Đọc `docs/ECONOMICS.md`.
+
+Tài liệu mới: `ROADMAP-30D` (làm gì tuần nào) · `ANTI-PATTERNS` (tra cứu khi có gì
+đó sai) · `ARCHITECTURE` · `RECOVERY` · `TEAM` · `MULTI-PROJECT`.
+
 ## 2026-08-03 — Harness baseline v1
 
-Repo này giờ có harness đầy đủ. Ba thứ bạn cần biết ngay:
+Ba thứ bạn cần biết ngay:
 
 1. **Hook sẽ chặn bạn** khi sửa file generated, file secret, hoặc `.claude/settings.json`.
    Đó là cố ý. Đọc thông báo, làm theo. Nếu bạn nghĩ hook sai → `/harness-propose`, **đừng tự tắt hook**.
