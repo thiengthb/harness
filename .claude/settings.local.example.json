@@ -1,0 +1,27 @@
+{
+  "$comment": "TẦNG 4 — VAN XẢ ÁP. Copy thành .claude/settings.local.json (đã gitignore). tooling/init.mjs tự làm việc này. File này PHẢI tồn tại: không có van xả áp, người ta sẽ sửa settings.json của team để có thứ mình cần.",
+
+  "$comment_sparsePaths": "Cone của RIÊNG BẠN. Khi `claude --worktree` tạo worktree, file ngoài cone KHÔNG được ghi ra đĩa — agent không thể tự mở rộng tầm nhìn. Khai theo domain bạn đang làm. LUẬT KÈM THEO: task xuyên biên giới (đổi contract, refactor cross-service) thì tạm bỏ cone hẹp — ma sát này là cố ý, nó buộc bạn nhận ra đây là task xuyên biên giới.",
+  "worktree": {
+    "sparsePaths": [
+      "packages/contracts",
+      "packages/ports",
+      "packages/core"
+    ]
+  },
+
+  "env": {
+    "DEV_ID": "CHANGEME-ten-cua-ban"
+  },
+
+  "$comment_statusline": "Hiện repo + branch + worktree + % context. Chống nhầm session khi chạy song song.",
+  "statusLine": {
+    "type": "command",
+    "command": "node tooling/statusline.mjs"
+  },
+
+  "permissions": {
+    "$comment": "Allow cá nhân — thứ BẠN tin, không áp cho cả team.",
+    "allow": []
+  }
+}

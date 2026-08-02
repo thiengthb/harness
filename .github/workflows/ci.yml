@@ -1,0 +1,94 @@
+name: ci
+
+# Sườn CI. Bỏ comment và điền lệnh của project khi áp template.
+#
+# QUAN TRỌNG HƠN FILE NÀY: bật MERGE QUEUE + branch protection trên `main`.
+# Merge queue là cơ chế DUY NHẤT bắt được conflict ngữ nghĩa một cách hệ thống —
+# nó rebuild PR trên main mới nhất TRƯỚC khi merge.
+# Xem docs/BRANCH-PROTECTION.md.
+
+on:
+  pull_request:
+  merge_group:          # ← merge queue chạy job ở đây
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+
+      - name: Hook tests
+        run: node tooling/test-hooks.mjs
+
+      - name: Feature integrity (chỉ được đổi passes/evidence)
+        run: node tooling/check-feature-integrity.mjs origin/${{ github.base_ref || 'main' }}
+
+      - name: Knowledge lint
+        run: node tooling/knowledge/lint.mjs
+
+      - name: Kích thước PR
+        if: github.event_name == 'pull_request'
+        run: |
+          WARN=$(node -e "console.log(require('./harness.config.json').limits.prWarnLines)")
+          FAIL=$(node -e "console.log(require('./harness.config.json').limits.prFailLines)")
+          LINES=$(git diff origin/${{ github.base_ref }}...HEAD --numstat \
+            -- . ':(exclude)**/*.gen.*' ':(exclude)**/*lock*' ':(exclude)**/generated/**' \
+            | awk '{a+=$1; d+=$2} END {print a+d+0}')
+          echo "Thay đổi $LINES dòng (cảnh báo $WARN, fail $FAIL)"
+          if [ "$LINES" -gt "$FAIL" ]; then
+            echo "::error::PR quá lớn ($LINES dòng). Chẻ nhỏ. Một PR = một mục đích."
+            exit 1
+          elif [ "$LINES" -gt "$WARN" ]; then
+            echo "::warning::PR lớn ($LINES dòng) — nêu lý do trong mô tả PR."
+          fi
+
+      - name: Lockfile toàn vẹn
+        run: |
+          # Lockfile là OUTPUT của một solver. Merge văn bản hai output không cho
+          # ra output hợp lệ. Cài frozen sẽ bắt lockfile đã bị merge tay.
+          echo "CHANGEME: <install> --frozen-lockfile"
+
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      # - run: CHANGEME install
+      # - run: CHANGEME gen && git diff --exit-code   # ← quên chạy gen là fail
+      # - run: CHANGEME typecheck                      # ← TOÀN REPO
+      # - run: CHANGEME lint
+      # - run: CHANGEME test
+      # - run: CHANGEME build
+      # - run: CHANGEME depcruise
+      - run: echo "CHANGEME — điền lệnh từ harness.config.json → gates.preMerge"
+
+  e2e:
+    runs-on: ubuntu-latest
+    # if: chỉ chạy khi path liên quan đổi (affected)
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "CHANGEME — E2E cho mọi platform trong scope"
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Quét secret
+        run: |
+          # Thay bằng gitleaks/trufflehog. Đây là lưới an toàn cuối —
+          # tầng nhanh hơn là .claude/hooks/block-secrets.mjs (~ms) và
+          # .githooks/pre-commit (~s). Đặt check ở tầng NHANH NHẤT bắt được nó.
+          echo "CHANGEME: gitleaks detect --no-git -v"
+      # - name: SAST
+      #   run: semgrep ci

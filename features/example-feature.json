@@ -1,0 +1,24 @@
+{
+  "id": "example-feature",
+  "issue": "ABC-001",
+  "owner": "@dri",
+  "category": "functional",
+  "description": "Feature mẫu — xoá khi áp template lên project thật. Cho thấy hình dạng của một hợp đồng default-FAIL.",
+  "contract": null,
+  "steps": [
+    "Mở màn hình chính",
+    "Thực hiện hành động X",
+    "Xác nhận kết quả Y hiển thị",
+    "Tải lại trang/app, xác nhận Y vẫn còn"
+  ],
+  "platforms": {
+    "core": { "passes": false, "evidence": null },
+    "web": { "passes": false, "evidence": null },
+    "ios": { "passes": "n/a", "evidence": "template chưa có mobile" },
+    "android": { "passes": "n/a", "evidence": "template chưa có mobile" },
+    "desktop": { "passes": "n/a", "evidence": "template chưa có desktop" },
+    "api": { "passes": false, "evidence": null }
+  },
+  "a11y": { "passes": false, "evidence": null },
+  "perf": { "passes": false, "evidence": null }
+}

@@ -1,0 +1,43 @@
+# Năm dòng đầu cứu một team đa OS.
+# Đây là file mà 90% team đa OS làm sai, và nó tạo ra conflict GIẢ trên mọi PR.
+# Commit NGAY, trước khi có người Windows join.
+
+* text=auto eol=lf
+
+# File PHẢI là CRLF (script Windows)
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# Binary — đừng bao giờ convert
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.ico     binary
+*.webp    binary
+*.woff    binary
+*.woff2   binary
+*.ttf     binary
+*.pdf     binary
+*.zip     binary
+*.keystore binary
+*.jks     binary
+
+# Generated — đánh dấu để host thu gọn diff và reviewer bỏ qua
+*.gen.ts        linguist-generated=true
+*.gen.tsx       linguist-generated=true
+*.gen.js        linguist-generated=true
+*.pb.go         linguist-generated=true
+*_pb2.py        linguist-generated=true
+
+# Lockfile — không diff, và KHÔNG BAO GIỜ merge tay.
+# Lockfile là output của một solver: merge văn bản hai output không cho ra
+# output hợp lệ. Conflict → checkout một bên rồi chạy lại install.
+package-lock.json  linguist-generated=true -diff
+pnpm-lock.yaml     linguist-generated=true -diff
+yarn.lock          linguist-generated=true -diff
+bun.lockb          binary linguist-generated=true
+Cargo.lock         linguist-generated=true -diff
+poetry.lock        linguist-generated=true -diff
+go.sum             linguist-generated=true -diff

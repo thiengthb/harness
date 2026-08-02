@@ -1,0 +1,7 @@
+{
+  "$comment": "Chỉ liệt kê id + file + priority. DRI sửa. Ít đổi. Hook chặn agent sửa file này.",
+  "$comment_why": "Một feature_list.json 200+ feature mà 4 người cùng đổi field passes = conflict mỗi PR, và conflict trong JSON dễ làm agent 'sửa bậy' cả file — đúng cái mà thiết kế JSON muốn tránh. Chẻ theo feature là cách rẻ nhất để hết conflict.",
+  "features": [
+    { "id": "example-feature", "file": "features/example-feature.json", "priority": 1 }
+  ]
+}

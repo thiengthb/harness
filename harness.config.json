@@ -1,0 +1,93 @@
+{
+  "$comment": "NGUỒN SỰ THẬT của lớp harness. Mọi hook và script trong tooling/ đọc file này. Đây là chỗ DUY NHẤT biết về stack cụ thể — sửa file này khi áp template lên project mới, không sửa hook.",
+  "version": 1,
+
+  "project": {
+    "id": "CHANGEME-project-id",
+    "dri": "@CHANGEME",
+    "issuePrefixes": ["ABC"],
+    "platforms": ["core", "web", "ios", "android", "desktop", "api"]
+  },
+
+  "$comment_commands": "Để chuỗi rỗng \"\" nếu project chưa có lệnh đó — hook sẽ bỏ qua thay vì fail. {file} là placeholder cho đường dẫn file.",
+  "commands": {
+    "install": "",
+    "gen": "",
+    "typecheck": "",
+    "lint": "",
+    "lintFix": "",
+    "test": "",
+    "build": "",
+    "verify": "",
+    "e2e": "",
+    "depcruise": ""
+  },
+
+  "$comment_paths": "Glob theo cú pháp minimatch, đường dẫn POSIX (dùng / kể cả trên Windows).",
+  "paths": {
+    "generated": [
+      "**/*.gen.*",
+      "**/generated/**",
+      "**/migrations/**",
+      "**/dist/**",
+      "**/build/**"
+    ],
+    "secrets": [
+      "**/.env",
+      "**/.env.*",
+      "**/*.pem",
+      "**/id_rsa*",
+      "**/id_ed25519*",
+      "**/secrets/**",
+      "**/*.p12",
+      "**/*.keystore",
+      "**/*.jks"
+    ],
+    "harness": [
+      ".claude/settings.json",
+      ".claude/hooks/**",
+      ".claude/rules/**",
+      ".mcp.json",
+      "CLAUDE.md",
+      "AGENTS.md",
+      "harness.config.json",
+      ".github/CODEOWNERS"
+    ],
+    "$comment_hot": "Vùng nóng: file mà nhiều người/agent hay chạm cùng lúc. Đo bằng `node tooling/coactivity.mjs` rồi điền vào đây.",
+    "hot": [
+      "packages/contracts/**",
+      "**/index.ts",
+      "**/routes.*",
+      "**/i18n/**",
+      "package.json"
+    ],
+    "lintable": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.mjs"],
+    "$comment_publicSurface": "Đổi export ở đây = breaking change, phải liệt kê consumer + label `breaking`.",
+    "publicSurface": ["packages/contracts/**", "packages/core/**", "packages/ports/**"]
+  },
+
+  "$comment_limits": "Con số. Sửa theo năng lực thật của đội, đừng để mặc định.",
+  "limits": {
+    "maxSessionsPerPerson": 2,
+    "maxWorktrees": 4,
+    "prWarnLines": 400,
+    "prFailLines": 800,
+    "prWarnFiles": 15,
+    "reservationTtlHours": 8,
+    "staleLockMinutes": 5,
+    "docStaleDays": 90
+  },
+
+  "$comment_gates": "Gate chạy ở Stop hook. Bỏ tên gate khỏi mảng để tắt. gen-clean = chạy `gen` rồi kiểm git diff rỗng.",
+  "gates": {
+    "stop": ["gen-clean", "typecheck", "test"],
+    "preMerge": ["gen-clean", "typecheck", "lint", "test", "build", "depcruise", "e2e"]
+  },
+
+  "$comment_knowledge": "Cơ chế mang trí tuệ qua project khác. Xem knowledge/README.md.",
+  "knowledge": {
+    "packName": "CHANGEME-org-harness-pack",
+    "upstream": "",
+    "exportScopes": ["universal", "stack"]
+  }
+}

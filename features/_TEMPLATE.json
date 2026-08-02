@@ -1,0 +1,24 @@
+{
+  "id": "CHANGEME-slug",
+  "issue": "ABC-000",
+  "owner": "@CHANGEME",
+  "category": "functional",
+  "description": "Một câu, mô tả điều NGƯỜI DÙNG làm được. Không mô tả code.",
+  "contract": "đường/dẫn/tới/schema#TênType",
+  "steps": [
+    "Bước người dùng thật thực hiện — đủ cụ thể để viết E2E từ đây",
+    "...",
+    "Xác nhận trạng thái sau khi tải lại (persist)"
+  ],
+  "$comment_platforms": "Default-FAIL. Agent CHỈ được đổi `passes` và `evidence`. Xoá/sửa `steps` là KHÔNG CHẤP NHẬN ĐƯỢC — CI check ở tooling/check-feature-integrity.mjs sẽ bắt.",
+  "platforms": {
+    "core": { "passes": false, "evidence": null },
+    "web": { "passes": false, "evidence": null },
+    "ios": { "passes": false, "evidence": null },
+    "android": { "passes": false, "evidence": null },
+    "desktop": { "passes": "n/a", "evidence": "ngoài scope, xem ABC-000" },
+    "api": { "passes": false, "evidence": null }
+  },
+  "a11y": { "passes": false, "evidence": null },
+  "perf": { "passes": false, "evidence": null }
+}

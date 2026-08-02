@@ -1,0 +1,24 @@
+{
+  "generatedBy": "tooling/knowledge/lint.mjs",
+  "count": 1,
+  "byScope": {
+    "universal": 1
+  },
+  "lessons": [
+    {
+      "id": "L0001",
+      "file": "knowledge/lessons/0001-lockfile-merge-tay.md",
+      "title": "Agent merge tay lockfile khi có conflict, tạo cây dependency không tồn tại",
+      "scope": "universal",
+      "class": "orchestration",
+      "representation": "computational-control",
+      "status": "active",
+      "added": "2026-08-03",
+      "occurrences": 3,
+      "artifacts": [
+        "AGENTS.md §Git & PR",
+        ".github/workflows/ci.yml (job lockfile-integrity)"
+      ]
+    }
+  ]
+}

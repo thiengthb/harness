@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+# Bật bằng: git config core.hooksPath .githooks   (tooling/init.mjs làm tự động)
+#
+# File này là ngoại lệ duy nhất của luật "mọi script harness viết bằng Node":
+# git chạy hook qua sh trên mọi nền tảng (kể cả Git for Windows), nên shim này
+# phải là sh. TOÀN BỘ LOGIC nằm trong .mjs bên dưới — shim chỉ gọi node.
+set -e
+
+node tooling/check-reservations.mjs
+node tooling/precommit-scan.mjs

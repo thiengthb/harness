@@ -1,0 +1,17 @@
+# <type>(<scope>): <mô tả ngắn, thể mệnh lệnh, không chấm cuối câu>
+#
+# type: feat | fix | refactor | perf | test | docs | build | ci | chore
+#
+# Thân: VÌ SAO, không phải CÁI GÌ (diff đã nói cái gì).
+#
+# Refs: <issue>
+# Co-Authored-By: Claude <noreply@anthropic.com>
+#   ↑ giữ dòng này nếu agent viết phần lớn.
+#     Sáu tháng sau bạn sẽ muốn biết "code agent có tỉ lệ bug cao hơn không".
+#     Không có trailer thì không có phân tích. Tốn 0 công.
+#
+# Reviewed-By: <tên> <email>
+#
+# ── Nhắc ─────────────────────────────────────────────────────────────────────
+# Commit NHỎ và THƯỜNG XUYÊN. Không chỉ vì lịch sử đẹp:
+# commit nhỏ CO CỬA SỔ CONFLICT. Đây là lợi ích kỹ thuật trực tiếp.

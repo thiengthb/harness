@@ -1,0 +1,79 @@
+name: harness-parity
+
+# Nơi Parity Contract được CƯỠNG CHẾ.
+# Không có workflow này, "harness của team" thực chất là "harness của người dùng macOS".
+# Hook fail trên một OS = hook bị revert.
+
+on:
+  pull_request:
+    paths:
+      - '.claude/**'
+      - 'tooling/**'
+      - 'evals/**'
+      - 'harness.config.json'
+      - '.gitattributes'
+      - '.githooks/**'
+      - '.github/workflows/harness-parity.yml'
+  push:
+    branches: [main]
+    paths: ['.claude/**', 'tooling/**', 'harness.config.json']
+
+jobs:
+  parity:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Hook phải chạy được với `node` TRẦN, trước cả khi install.
+      # Nếu bước này fail, hook của bạn có dependency ngoài — vi phạm Parity Contract.
+      - name: Hook chạy được không cần dependency
+        run: node tooling/test-hooks.mjs
+
+      - name: Knowledge lint
+        run: node tooling/knowledge/lint.mjs
+
+      - name: Feature integrity
+        if: github.event_name == 'pull_request'
+        run: node tooling/check-feature-integrity.mjs origin/${{ github.base_ref }}
+
+      - name: Eval — liệt kê (không tốn token)
+        run: node evals/run.mjs --dry
+
+      - name: Kích thước harness
+        run: node tooling/harness-size.mjs
+
+      # init.mjs phải chạy được cả 3 OS. Nó là chỗ duy nhất biết về khác biệt OS.
+      - name: Bootstrap
+        run: node tooling/init.mjs
+        continue-on-error: true   # template chưa cấu hình lệnh → FAIL là đúng. Bỏ dòng này khi đã cấu hình.
+
+  no-bash-in-harness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Không có script bash/PowerShell trong .claude/
+        run: |
+          found=$(find .claude -type f \( -name '*.sh' -o -name '*.bash' -o -name '*.ps1' \) 2>/dev/null || true)
+          if [ -n "$found" ]; then
+            echo "::error::Vi phạm Parity Contract — script không phải Node trong .claude/:"
+            echo "$found"
+            echo "Mọi script harness viết bằng Node (.mjs). Xem AGENTS.md §Parity Contract."
+            exit 1
+          fi
+          echo "OK — chỉ có Node trong .claude/"
+
+      - name: settings.json không gọi bash/cmd/powershell trực tiếp
+        run: |
+          if grep -Eq '"command"\s*:\s*"(bash|sh|cmd|powershell|pwsh)\b' .claude/settings.json; then
+            echo "::error::hook command gọi shell trực tiếp — dùng 'node <script>.mjs'"
+            exit 1
+          fi
+          echo "OK"

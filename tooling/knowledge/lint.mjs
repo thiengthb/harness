@@ -1,0 +1,90 @@
+#!/usr/bin/env node
+/**
+ * Kiểm sức khoẻ của knowledge/lessons/ và sinh knowledge/index.json.
+ *
+ * Bắt bốn thứ mà con người luôn bỏ sót:
+ *   - frontmatter thiếu/sai (bài học không lint được thì không export được)
+ *   - THIẾU exit-condition  → bài học sẽ sống mãi mãi
+ *   - quá hạn expires-review → có thể đã thành dead weight
+ *   - occurrences < 2        → một lần là ngẫu nhiên, chưa đủ để promote
+ */
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { parseFrontmatter } from '../lib/frontmatter.mjs';
+import { repoPath, writeJson, report, exists } from '../lib/harness.mjs';
+
+const DIR = repoPath('knowledge', 'lessons');
+const REQUIRED = ['id', 'title', 'scope', 'class', 'representation', 'status', 'added', 'exit-condition'];
+const SCOPES = /^(universal|project|stack:[a-z0-9._-]+)$/;
+const CLASSES = ['context', 'tools', 'orchestration', 'state', 'verification', 'recovery', 'economics', 'learning'];
+const REPRS = ['test', 'generator', 'computational-control', 'verification-skill', 'gotcha', 'skill', 'rule'];
+
+const ok = [], warn = [], fail = [];
+const index = [];
+
+if (!exists(DIR)) {
+  report('KNOWLEDGE LINT', { warn: ['knowledge/lessons/ chưa tồn tại'] });
+  process.exit(0);
+}
+
+const files = readdirSync(DIR).filter(f => f.endsWith('.md') && !f.startsWith('_'));
+const seenIds = new Map();
+
+for (const f of files) {
+  const { data } = parseFrontmatter(readFileSync(join(DIR, f), 'utf8'));
+  const tag = `${f}`;
+
+  const missing = REQUIRED.filter(k => data[k] === undefined || data[k] === '' || data[k] === null);
+  if (missing.length) { fail.push(`${tag}: thiếu ${missing.join(', ')}`); continue; }
+
+  if (seenIds.has(data.id)) fail.push(`${tag}: id ${data.id} trùng với ${seenIds.get(data.id)}`);
+  seenIds.set(data.id, f);
+
+  if (!SCOPES.test(String(data.scope))) fail.push(`${tag}: scope "${data.scope}" không hợp lệ (universal | project | stack:<tên>)`);
+  if (!CLASSES.includes(String(data.class))) fail.push(`${tag}: class "${data.class}" không thuộc bảng chẩn đoán`);
+  if (!REPRS.includes(String(data.representation))) fail.push(`${tag}: representation "${data.representation}" không hợp lệ`);
+
+  const occ = Number(data.occurrences ?? 0);
+  if (data.status === 'active' && occ < 2) {
+    warn.push(`${tag}: occurrences=${occ} — một lần là ngẫu nhiên, chưa đủ điều kiện promote`);
+  }
+
+  if (data.status === 'active' && ['rule', 'skill'].includes(String(data.representation))) {
+    warn.push(`${tag}: representation="${data.representation}" là dạng đắt nhất. Đã kiểm 1–5 chưa? (xem knowledge/README.md)`);
+  }
+
+  const review = data['expires-review'];
+  if (review) {
+    const due = new Date(review).getTime();
+    if (!Number.isNaN(due) && due < Date.now() && data.status === 'active') {
+      warn.push(`${tag}: quá hạn review (${review}) — chạy /entropy-sweep, có thể đã là dead weight`);
+    }
+  } else if (data.status === 'active') {
+    warn.push(`${tag}: không có expires-review — bài học này sẽ không bao giờ bị xét lại`);
+  }
+
+  if (!Array.isArray(data.evidence) || data.evidence.length === 0) {
+    warn.push(`${tag}: không có evidence — đây là ý kiến, chưa phải bằng chứng`);
+  }
+
+  index.push({
+    id: data.id, file: `knowledge/lessons/${f}`, title: data.title,
+    scope: data.scope, class: data.class, representation: data.representation,
+    status: data.status, added: data.added, occurrences: occ,
+    artifacts: Array.isArray(data.artifacts) ? data.artifacts : [],
+  });
+}
+
+index.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+writeJson(repoPath('knowledge', 'index.json'), {
+  generatedBy: 'tooling/knowledge/lint.mjs',
+  count: index.length,
+  byScope: index.reduce((m, l) => ({ ...m, [l.scope]: (m[l.scope] || 0) + 1 }), {}),
+  lessons: index,
+});
+
+ok.push(`${index.length} bài học hợp lệ → knowledge/index.json`);
+const portable = index.filter(l => l.scope !== 'project' && l.status === 'active').length;
+ok.push(`${portable} bài học mang đi được sang project khác`);
+
+process.exit(report('KNOWLEDGE LINT', { ok, warn, fail }) ? 0 : 1);
