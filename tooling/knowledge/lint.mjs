@@ -18,6 +18,12 @@ const REQUIRED = ['id', 'title', 'scope', 'class', 'representation', 'status', '
 const SCOPES = /^(universal|project|stack:[a-z0-9._-]+)$/;
 const CLASSES = ['context', 'tools', 'orchestration', 'state', 'verification', 'recovery', 'economics', 'learning'];
 const REPRS = ['test', 'generator', 'computational-control', 'verification-skill', 'gotcha', 'skill', 'rule'];
+// `candidate` = nhận từ repo khác, repo NÀY chưa gặp lần nào. Xem tooling/knowledge/accept.mjs.
+const STATUSES = ['active', 'candidate', 'superseded', 'retired'];
+// Dạng nào cưỡng chế bằng máy thì phải có gate đi kèm, nếu không bên nhận
+// không kiểm được nó còn đúng hay không.
+const NEEDS_GATE = ['test', 'computational-control', 'generator'];
+const CANDIDATE_STALE_DAYS = 90;
 
 const ok = [], warn = [], fail = [];
 const index = [];
@@ -43,10 +49,33 @@ for (const f of files) {
   if (!SCOPES.test(String(data.scope))) fail.push(`${tag}: scope "${data.scope}" không hợp lệ (universal | project | stack:<tên>)`);
   if (!CLASSES.includes(String(data.class))) fail.push(`${tag}: class "${data.class}" không thuộc bảng chẩn đoán`);
   if (!REPRS.includes(String(data.representation))) fail.push(`${tag}: representation "${data.representation}" không hợp lệ`);
+  if (!STATUSES.includes(String(data.status))) fail.push(`${tag}: status "${data.status}" không hợp lệ (${STATUSES.join(' | ')})`);
 
   const occ = Number(data.occurrences ?? 0);
   if (data.status === 'active' && occ < 2) {
     warn.push(`${tag}: occurrences=${occ} — một lần là ngẫu nhiên, chưa đủ điều kiện promote`);
+    if (Array.isArray(data['seen-in']) && data['seen-in'].length >= 2) {
+      warn.push(`${tag}:   ↑ nhưng đã thấy ở ${data['seen-in'].length} repo độc lập — gộp bằng chứng: node tooling/knowledge/accept.mjs <ref> --merge ${data.id}`);
+    }
+  }
+
+  // Gate phải đi kèm bài học, nếu không "bước 3 không được bỏ" chính là bước
+  // không đi được sang repo khác.
+  if (data.status === 'active' && NEEDS_GATE.includes(String(data.representation))
+      && !(Array.isArray(data.evals) && data.evals.length)) {
+    warn.push(`${tag}: dạng "${data.representation}" mà không có \`evals:\` — mang sang repo khác thì bên nhận không kiểm được`);
+  }
+  for (const e of (Array.isArray(data.evals) ? data.evals : [])) {
+    if (!exists(repoPath(String(e).split(' ')[0]))) fail.push(`${tag}: evals "${e}" không tồn tại`);
+  }
+
+  // Bài học nhận từ repo khác mà 3 tháng repo NÀY chưa gặp lần nào → nó không đúng
+  // ở đây. Giữ lại là nợ context; đây chính là dạng rác mà import không gác thì tích lại.
+  if (data.status === 'candidate') {
+    const days = (Date.now() - new Date(data.added).getTime()) / 86400000;
+    if (Number.isFinite(days) && days > CANDIDATE_STALE_DAYS) {
+      warn.push(`${tag}: candidate đã ${Math.round(days)} ngày (>${CANDIDATE_STALE_DAYS}) — repo này chưa gặp lần nào. Gặp rồi → status: active. Chưa → retire.`);
+    }
   }
 
   if (data.status === 'active' && ['rule', 'skill'].includes(String(data.representation))) {

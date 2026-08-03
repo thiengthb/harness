@@ -54,12 +54,18 @@ if (!manifest) {
 
 // ── So với thứ đã có ─────────────────────────────────────────────────────────
 const localDir = repoPath('knowledge', 'lessons');
-const localTitles = new Set();
+const strip = e => String(e).replace(/^\s*(\[[^\]]*\]\s*)+/, '').trim();
+const localByTitle = new Map();
 const localIds = new Set();
 if (exists(localDir)) {
   for (const f of readdirSync(localDir).filter(f => f.endsWith('.md'))) {
     const { data } = parseFrontmatter(readFileSync(join(localDir, f), 'utf8'));
-    if (data.title) localTitles.add(String(data.title).toLowerCase().trim());
+    if (data.title) {
+      localByTitle.set(String(data.title).toLowerCase().trim(), {
+        id: data.id,
+        evidence: new Set((Array.isArray(data.evidence) ? data.evidence : []).map(strip)),
+      });
+    }
     if (data.id) localIds.add(String(data.id));
   }
 }
@@ -68,23 +74,41 @@ const INCOMING = repoPath('knowledge', 'incoming', manifest.pack || 'pack');
 rmSync(INCOMING, { recursive: true, force: true });
 mkdirSync(join(INCOMING, 'lessons'), { recursive: true });
 
-const fresh = [], dupes = [], idClash = [];
+const fresh = [], mergeable = [], dupes = [], idClash = [];
 
 for (const f of readdirSync(join(packDir, 'lessons')).filter(f => f.endsWith('.md'))) {
   const raw = readFileSync(join(packDir, 'lessons', f), 'utf8');
   const { data } = parseFrontmatter(raw);
   const title = String(data.title || '').toLowerCase().trim();
+  const hit = localByTitle.get(title);
 
-  if (localTitles.has(title)) { dupes.push(data.title); continue; }
+  // BA RỔ, KHÔNG PHẢI HAI.
+  // Bản trước chỉ có "mới" và "trùng → bỏ". Nhưng "trùng tiêu đề mà có bằng chứng
+  // MỚI" là ca GIÁ TRỊ NHẤT của cả cơ chế: nó là cách duy nhất một bài học
+  // universal đủ ngưỡng "2 lần độc lập" — vì bài học càng universal thì càng phân
+  // tán mỏng, mỗi repo chỉ gặp một lần. Bỏ rổ này đi là tự vô hiệu hoá ngưỡng.
+  if (hit) {
+    const newEvidence = (Array.isArray(data.evidence) ? data.evidence : [])
+      .filter(e => !hit.evidence.has(strip(e)));
+    if (!newEvidence.length) { dupes.push(data.title); continue; }
+    writeFileSync(join(INCOMING, 'lessons', f), raw, 'utf8');
+    mergeable.push({ id: data.id, title: data.title, file: f, mergeId: hit.id, newEvidence });
+    continue;
+  }
+
   if (localIds.has(String(data.id))) idClash.push(`${data.id} (${data.title})`);
 
   writeFileSync(join(INCOMING, 'lessons', f), raw, 'utf8');
   fresh.push({ id: data.id, title: data.title, scope: data.scope, representation: data.representation, file: f });
 }
 
-if (exists(join(packDir, 'artifacts'))) {
-  cpSync(join(packDir, 'artifacts'), join(INCOMING, 'artifacts'), { recursive: true });
+for (const sub of ['artifacts', 'evals']) {
+  if (exists(join(packDir, sub))) cpSync(join(packDir, sub), join(INCOMING, sub), { recursive: true });
 }
+// Giữ pack.json: accept.mjs đọc nó để gắn provenance (bài học này từ repo nào,
+// commit nào). Mất provenance ở bước đầu thì lần review sau bạn đi tìm PR #123
+// trong repo mình và không thấy gì.
+try { cpSync(join(packDir, 'pack.json'), join(INCOMING, 'pack.json')); } catch {}
 
 // ── Báo cáo có hành động ─────────────────────────────────────────────────────
 const reviewPath = join(INCOMING, 'REVIEW.md');
@@ -101,11 +125,31 @@ Vào repo: **${config().project?.id}**
 ${fresh.length ? fresh.map(l => `### ${l.id} — ${l.title}
 - scope: \`${l.scope}\` · dạng: \`${l.representation}\`
 - [ ] Còn đúng với repo NÀY không? (scope \`stack:*\` chỉ đúng nếu stack khớp)
-- [ ] Nếu nhận: copy \`lessons/${l.file}\` → \`knowledge/lessons/\`, **cấp id mới**, cập nhật \`evidence\`
+- [ ] Nếu nhận:
+      \`\`\`
+      node tooling/knowledge/accept.mjs ${manifest.pack || 'pack'}/${l.file}
+      \`\`\`
+      (tự cấp id mới, gắn nguồn, đặt \`status: candidate\`)
+- [ ] Nếu repo NÀY **đã có** bài học này — cộng bằng chứng độc lập thay vì tạo bản trùng:
+      \`\`\`
+      node tooling/knowledge/accept.mjs ${manifest.pack || 'pack'}/${l.file} --merge <id-có-sẵn>
+      \`\`\`
+- [ ] Nếu bỏ: \`node tooling/knowledge/accept.mjs ${manifest.pack || 'pack'}/${l.file} --reject "lý do"\`
 - [ ] Nếu nó kèm artifact: DRI đọc code trước khi copy vào \`.claude/\` hoặc \`tooling/\`
 `).join('\n') : '_(không có bài học mới)_'}
 
-## Đã có, bỏ qua (${dupes.length})
+## Bằng chứng độc lập cho bài học ĐÃ CÓ (${mergeable.length})
+
+Repo này đã có bài học này, nhưng pack mang bằng chứng mà bạn chưa có. Gộp vào —
+đừng tạo bản trùng. Bằng chứng từ repo **độc lập** mạnh hơn hai lần trong cùng repo:
+nó loại được giả thuyết "chỉ đặc thù repo này".
+
+${mergeable.length ? mergeable.map(l => `### → gộp vào \`${l.mergeId}\` — ${l.title}
+${l.newEvidence.map(e => `- ${e}`).join('\n')}
+- [ ] \`node tooling/knowledge/accept.mjs ${manifest.pack || 'pack'}/${l.file} --merge ${l.mergeId}\`
+`).join('\n') : '_(không có)_'}
+
+## Đã có, không có gì mới — bỏ qua (${dupes.length})
 
 ${dupes.length ? dupes.map(d => `- ${d}`).join('\n') : '_(không có)_'}
 
@@ -118,7 +162,8 @@ ${(manifest.artifacts || []).map(a => `- [ ] \`${a}\` — đọc trước khi co
 if (cleanup) rmSync(cleanup, { recursive: true, force: true });
 
 ok.push(`${fresh.length} bài học mới → knowledge/incoming/${manifest.pack}/`);
-if (dupes.length) ok.push(`${dupes.length} bài học đã có, bỏ qua`);
+if (mergeable.length) ok.push(`★ ${mergeable.length} bài học ĐÃ CÓ nhưng có bằng chứng độc lập mới → gộp được (xem REVIEW.md)`);
+if (dupes.length) ok.push(`${dupes.length} bài học đã có, không có gì mới, bỏ qua`);
 if (idClash.length) warn.push(`${idClash.length} id trùng — phải cấp lại trước khi nhận`);
 ok.push(`ĐỌC TIẾP: ${reviewPath.replace(repoPath('') + '', '')}`);
 warn.push('Không có gì được áp dụng tự động. Đây là cố ý.');

@@ -20,7 +20,8 @@ Script xử lý những thứ mà **copy file không làm được**: đổi tê
 | Thay đổi | Cần migration? |
 |---|---|
 | Thêm **hook** mới | **CÓ** — xem cạm bẫy ngay dưới |
-| Thêm skill / doc / agent mới | **Không** — copy file là đủ |
+| Thêm skill / agent mới (lớp cơ chế) | **Không** — copy file là đủ |
+| Thêm **nội dung seed** mới (eval task, doc, rule) | **CÓ** — dùng `ctx.copyFromTemplate` |
 | Sửa logic một hook | **Không** |
 | Đổi tên field trong `harness.config.json` | **CÓ** — nếu không, hook đọc `undefined` và **fail âm thầm** |
 | Đổi cấu trúc thư mục | **CÓ** |
@@ -70,7 +71,35 @@ export async function up(ctx) {
 ```
 
 `ctx` có: `repoPath` · `readJson` · `writeJson` · `readFileSync` · `writeFileSync` ·
-`existsSync` · `run` · `log`.
+`existsSync` · `run` · `log` · **`tplPath`** · **`copyFromTemplate`**.
+
+`copyFromTemplate(rel, { overwrite = false })` là cách SEED nội dung mới vào project.
+Cần vì `upgrade.mjs` chỉ cập nhật lớp **cơ chế** — một file lớp **nội dung** mới của
+template (eval task seed, doc, rule) sẽ không tự tới được project đã áp. Trả `false`
+nếu file đã tồn tại (không ghi đè nội dung của project). Xem `002-gate-di-theo-bai-hoc.mjs`.
+
+## Ràng buộc cấu trúc: migration chạy dưới `upgrade.mjs` của version TRƯỚC
+
+Bạn chạy `node tooling/upgrade.mjs <template>` **từ trong project**, nên đó là bản
+copy của project — tức bản của version **cũ**. Nó copy file cơ chế mới xuống đĩa
+(kể cả chính `upgrade.mjs`), rồi mới chạy migration — nhưng module đã nạp vào bộ nhớ
+vẫn là code cũ, và `ctx` do code cũ dựng.
+
+**Hệ quả: một migration cho version N không được dùng tính năng `ctx` thêm ở version N.**
+Nó chỉ dùng được `ctx` của version ≤ N-1. Cải tiến `ctx` luôn có hiệu lực chậm một
+version — và không có cách nào tránh, kể cả tự re-exec, vì logic re-exec cũng nằm
+trong bản mới không được chạy.
+
+Ba cách xử lý, theo thứ tự ưu tiên:
+
+1. **Thêm tính năng `ctx` một version TRƯỚC migration cần nó.** Sạch nhất.
+2. **Migration phòng thủ**: `typeof ctx.foo === 'function' ? ... : <đường lùi>`.
+   Đường lùi hay dùng: `.claude/harness-manifest.json → source` ghi đường dẫn
+   template lúc áp gần nhất. Xem `002-gate-di-theo-bai-hoc.mjs`.
+3. **Log cách làm tay** khi cả hai không được. Migration thất bại phải nói cách sửa.
+
+Phát hiện này đến từ test E2E, không từ đọc code — `ctx.copyFromTemplate` được thêm
+ở v1.4.0 và migration v1.4.0 gọi nó thì nhận `is not a function`.
 
 ## Ba luật
 

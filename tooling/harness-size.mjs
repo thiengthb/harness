@@ -9,6 +9,12 @@
  *
  * Nếu số này đi lên trong khi bạn "cải thiện harness" → bạn đang phình harness,
  * không đang cải thiện nó.
+ *
+ * CỐ Ý KHÔNG ĐO `tooling/`. Chỉ số này đo phần ĐẮT của thang biểu diễn — prose
+ * trong AGENTS.md, rule cứng, skill, hook. `tooling/` là đầu RẺ (computational
+ * control): thêm 300 dòng script tất định để bỏ được 3 dòng rule cứng là một
+ * thắng lợi, và một chỉ số phạt nó sẽ đẩy bạn đi sai hướng.
+ * Nói rõ ở đây vì nếu không, người đọc sẽ tưởng harness không phình khi nó có phình.
  */
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, extname } from 'node:path';

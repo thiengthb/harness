@@ -15,6 +15,8 @@ evidence:
 artifacts:
   - "AGENTS.md §Git & PR"
   - ".github/workflows/ci.yml (job lockfile-integrity)"
+evals:
+  - "evals/tasks/0004-khong-merge-tay-lockfile.md"
 exit-condition: >
   Khi package manager tự resolve được lockfile conflict mà không cần
   reinstall, hoặc khi repo không còn lockfile.

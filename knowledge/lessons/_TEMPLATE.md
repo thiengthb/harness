@@ -4,7 +4,8 @@ title: Một câu, mô tả HÀNH VI SAI đã quan sát được (không phải 
 scope: project            # universal | stack:<tên> | project
 class: verification       # context | tools | orchestration | state | verification | recovery | economics | learning
 representation: test      # test | generator | computational-control | verification-skill | gotcha | skill | rule
-status: active            # active | superseded | retired
+status: active            # active | candidate | superseded | retired
+                          # candidate = nhận từ repo khác, repo NÀY chưa gặp lần nào
 owner: "@ai"
 added: 2026-08-03
 expires-review: 2026-11-03
@@ -14,6 +15,12 @@ evidence:
   - "PR #000 — lần thứ hai"
 artifacts:
   - "đường/dẫn/tới/file/hiện/thực.mjs"
+evals:                    # GATE đi theo bài học. Bắt buộc trên thực tế với dạng
+  - "evals/tasks/NNNN-....md"   # test | computational-control | generator —
+                          # không có nó, repo nhận có cơ chế mà không kiểm được cơ chế đó.
+# seen-in:                # tự sinh bởi accept.mjs --merge: danh sách repo đã gặp
+#   - "project-a"         # độc lập. ≥2 repo = bằng chứng mạnh hơn 2 lần cùng repo.
+# origin: "project-a@abc123"   # tự sinh khi nhận từ repo khác
 exit-condition: "Làm sao biết bài học này HẾT cần thiết. Bắt buộc, không được để trống."
 ---
 

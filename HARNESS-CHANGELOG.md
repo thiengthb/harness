@@ -11,6 +11,58 @@
 
 ---
 
+## 1.4.0 — 2026-08-03
+
+### Thêm — vòng học giờ có CHIỀU LÊN
+
+Trước đây vòng học chỉ chạy trong một project, cộng vận chuyển NGANG giữa hai
+project (`export`→`import`). Template không tham gia. Hậu quả: trí tuệ tích ở LÁ,
+không về GỐC — project bạn tạo tháng sau vẫn khởi động từ đúng số bài học seed, dù
+các project cũ đã học được nhiều thứ. `knowledge.upstream` được khai trong config
+mà **không có code nào đọc**; `knowledge/proposals/**` được whitelist trong
+`protect-harness` mà thư mục không tồn tại và không ai đọc. Ý định có, cơ chế không.
+
+- **`tooling/knowledge/upstream.mjs`** — chiều project → template. Gửi ba thứ:
+  bài học mang đi được (trừ `candidate`), **gate của chúng** (`evals:`), và **diff
+  cơ chế** (file harness project đã sửa so với manifest — ứng viên cải tiến template).
+  Ghi vào `<template>/knowledge/incoming/<project>/` + `CONTRIB.md` có checklist.
+  Không bao giờ ghi vào `.claude/` của template.
+- **`tooling/knowledge/accept.mjs`** — bước "tôi đã nhận", trước đây không tồn tại
+  nên `import` là NGÕ CỤT (copy tay, id trùng, mất provenance).
+  `--list` · `--merge <id>` · `--reject "lý do"` (ghi `DECISIONS.log`).
+- **Trường `evals:` trong bài học** — GATE đi theo bài học. `export`/`upstream` copy
+  file eval kèm; `lint` cảnh báo khi dạng cưỡng chế bằng máy mà không khai gate.
+- **`status: candidate`** — bài học nhận từ repo khác, repo này chưa gặp lần nào.
+  Không được export, không được gửi lên. `lint` nhắc sau 90 ngày.
+- **`seen-in`** — danh sách repo đã gặp độc lập. `scope: project` tự leo lên
+  `universal` khi thấy ở ≥2 repo.
+- **`ctx.copyFromTemplate` / `ctx.tplPath` cho migration** — cho migration SEED
+  được nội dung mới. Không có nó, migration chỉ biến đổi được thứ đã có, và một
+  file lớp nội dung mới của template không bao giờ tới được project đã áp.
+- `evals/tasks/0004-khong-merge-tay-lockfile.md` — gate cho bài học L0001.
+
+### Sửa
+
+- **Nghịch lý ngưỡng 2 lần.** Điều kiện promote là "≥2 lần độc lập", nhưng bài học
+  càng universal càng phân tán mỏng: A gặp 1 lần, B gặp 1 lần, không ai đủ 2 — luật
+  lọc bỏ đúng những bài học đáng mang đi nhất. `accept --merge` cộng bằng chứng
+  chéo repo. 1 + 1 = 2.
+- **`import.mjs` bỏ mất ca giá trị nhất.** Nó loại theo tiêu đề, nên "cùng bài học,
+  bằng chứng MỚI" bị bỏ im lặng. Nay ba rổ: mới · gộp được · đã có không gì mới.
+- **Chống lạm phát bằng chứng.** Bài học nảy vòng A→B→A mang bằng chứng gốc của A về
+  A dưới nhãn của B. So khớp nay bỏ mọi tiền tố `[...]` rồi mới đối chiếu nội dung;
+  `occurrences` cộng theo số dòng thật sự thêm, không theo con số pack tự khai.
+- **`--audit` không thể bắt eval task bị bỏ sót** vì IGNORE che cả nhóm
+  `evals/tasks/`. Đã bỏ; gặp thật khi task 0004 không được ship và `lint` của
+  project đỏ.
+- `entropy-scan` nhắc khi pack chờ duyệt >30 ngày — "chờ người" không có hạn thì
+  thành "không bao giờ", và `incoming/` tích thành bãi rác ai cũng tưởng là backlog.
+
+### Không breaking
+
+Trường mới đều tuỳ chọn. Project ở 1.3.0 nâng lên 1.4.0 chỉ nhận thêm cảnh báo
+`lint` nhắc khai `evals:` — không có gì vỡ.
+
 ## 1.3.0 — 2026-08-03
 
 ### BREAKING (hành vi guard đổi — đọc kỹ)

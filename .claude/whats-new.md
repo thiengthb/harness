@@ -1,4 +1,4 @@
-<!-- version: 2026-08-03-d -->
+<!-- version: 2026-08-03-e -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,17 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-03 — Bài học giờ đi được NGƯỢC LÊN template (v1.4.0)
+
+1. **`node tooling/knowledge/upstream.mjs <template>`** — gửi bài học + gate + diff
+   cơ chế của project này ngược lên template. Trước đây chiều này không tồn tại:
+   trí tuệ tích ở project, project mới vẫn khởi động từ số 0.
+2. **`node tooling/knowledge/accept.mjs --list`** — duyệt pack nạp về. `--merge <id>`
+   cộng bằng chứng từ repo khác vào bài học có sẵn: đó là cách một bài học universal
+   đủ ngưỡng "2 lần độc lập", vì mỗi repo chỉ gặp nó một lần.
+3. Bài học dạng test/hook/generator giờ nên khai **`evals:`** — gate đi theo bài học.
+   Không có gate thì repo nhận có cơ chế mà không kiểm được cơ chế đó.
 
 ## 2026-08-03 — Sửa migration KHÔNG còn bị chặn oan (v1.3.0)
 

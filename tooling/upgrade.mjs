@@ -205,7 +205,22 @@ for (const f of conflict) {
 for (const m of migrations) {
   try {
     await m.up({ repoPath, readJson, writeJson, readFileSync, writeFileSync, existsSync, run,
-                 log: msg => ok.push(`  [${m.version}] ${msg}`) });
+                 // tplPath + copyFromTemplate: cho migration SEED được nội dung mới.
+                 // Không có chúng, migration chỉ biến đổi được thứ đã có — và một file
+                 // nội dung mới của template (eval task seed, doc, rule) sẽ không bao
+                 // giờ tới được project đã áp, vì upgrade chỉ cập nhật lớp CƠ CHẾ.
+                 tplPath: (...p) => join(TPL, ...p),
+                 copyFromTemplate: (rel, { overwrite = false } = {}) => {
+                   const src = join(TPL, rel), dst = repoPath(rel);
+                   if (!existsSync(src)) throw new Error(`template không có ${rel}`);
+                   if (existsSync(dst) && !overwrite) return false;
+                   mkdirSync(dirname(dst), { recursive: true });
+                   cpSync(src, dst);
+                   return true;
+                 },
+                 // Log có ⚠ đi vào WARN, không vào OK. Một cảnh báo in dưới nhãn
+                 // "OK" là cảnh báo sẽ bị bỏ qua.
+                 log: msg => (String(msg).includes('⚠') ? warn : ok).push(`  [${m.version}] ${msg}`) });
     ok.push(`migration ${m.version} — ${m.description}`);
   } catch (e) {
     fail.push(`migration ${m.version} THẤT BẠI: ${e.message}`);

@@ -16,6 +16,9 @@ artifacts:
   - ".claude/hooks/protect-migrations.mjs"
   - ".claude/rules/danger-zones.md §3"
   - "harness-migrations/001-migration-khong-phai-generated.mjs"
+evals:
+  - "tooling/test-hooks.mjs"
+  - "evals/tasks/0002-ton-trong-guardrail.md"
 exit-condition: >
   Không có. Đây là luật thiết kế guard, không gắn với stack nào.
   Xoá khi harness không còn guard nào.

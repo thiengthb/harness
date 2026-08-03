@@ -117,7 +117,7 @@
     "command": ""
   },
 
-  "$comment_knowledge": "Cơ chế mang trí tuệ qua project khác. Xem knowledge/README.md.",
+  "$comment_knowledge": "Cơ chế mang trí tuệ qua project khác VÀ ngược lên template. upstream = đường dẫn tới repo template harness; tooling/knowledge/upstream.mjs đọc nó để gửi bài học + gate + diff cơ chế lên. Rỗng thì phải truyền đường dẫn mỗi lần. Xem knowledge/README.md.",
   "knowledge": {
     "packName": "CHANGEME-org-harness-pack",
     "upstream": "",

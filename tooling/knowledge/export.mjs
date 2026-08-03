@@ -37,9 +37,11 @@ const ok = [], warn = [], fail = [];
 
 mkdirSync(join(OUT, 'lessons'), { recursive: true });
 mkdirSync(join(OUT, 'artifacts'), { recursive: true });
+mkdirSync(join(OUT, 'evals'), { recursive: true });
 
 const included = [];
 const artifactSet = new Set();
+const evalSet = new Set();
 
 for (const f of readdirSync(SRC).filter(f => f.endsWith('.md') && !f.startsWith('_'))) {
   const raw = readFileSync(join(SRC, f), 'utf8');
@@ -49,6 +51,25 @@ for (const f of readdirSync(SRC).filter(f => f.endsWith('.md') && !f.startsWith(
 
   writeFileSync(join(OUT, 'lessons', f), raw, 'utf8');
   included.push({ id: data.id, file: f, title: data.title, scope: data.scope, representation: data.representation });
+
+  // GATE ĐI THEO BÀI HỌC.
+  // Bước 3 của vòng học ("gate") là bước không được bỏ — nhưng nếu pack chỉ mang
+  // lesson + hook mà không mang eval task, bên nhận có cơ chế mà không có cách
+  // kiểm cơ chế đó còn đúng ở repo họ hay không. Nhận tin không kiểm được thì
+  // không phải là học.
+  for (const e of (Array.isArray(data.evals) ? data.evals : [])) {
+    const clean = String(e).split(' ')[0];
+    const abs = repoPath(clean);
+    if (!exists(abs)) { warn.push(`${f}: evals "${clean}" không tồn tại`); continue; }
+    const dest = join(OUT, 'evals', clean);
+    mkdirSync(dirname(dest), { recursive: true });
+    cpSync(abs, dest);
+    evalSet.add(clean);
+  }
+  if (!(Array.isArray(data.evals) && data.evals.length)
+      && ['test', 'computational-control', 'generator'].includes(String(data.representation))) {
+    warn.push(`${f}: dạng "${data.representation}" mà không có \`evals:\` — bên nhận sẽ không kiểm được`);
+  }
 
   for (const a of (Array.isArray(data.artifacts) ? data.artifacts : [])) {
     // Chỉ copy artifact là file thật trong repo; mục dạng "AGENTS.md §Git" bỏ qua
@@ -78,6 +99,7 @@ const manifest = {
   scopes: wantScopes,
   lessons: included,
   artifacts: [...artifactSet].sort(),
+  evals: [...evalSet].sort(),
   harnessVersion: cfg.version ?? 1,
 };
 writeJson(join(OUT, 'pack.json'), manifest);
@@ -104,7 +126,7 @@ và in báo cáo để người xem trước. Một pack ghi thẳng vào cấu 
 ${included.map(l => `- \`${l.id}\` **${l.title}** — _${l.scope}_ · ${l.representation}`).join('\n')}
 `, 'utf8');
 
-ok.push(`${included.length} bài học + ${artifactSet.size} artifact → ${OUT}`);
+ok.push(`${included.length} bài học + ${artifactSet.size} artifact + ${evalSet.size} gate → ${OUT}`);
 ok.push('Tiếp theo: commit .harness-pack/ vào repo trung tâm, gắn TAG (đừng để repo khác pin `main`).');
 
 process.exit(report('KNOWLEDGE EXPORT', { ok, warn, fail }) ? 0 : 1);

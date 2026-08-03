@@ -69,7 +69,7 @@ const SEED = [
   'tooling/generators/README.md',
   'evals/README.md', 'evals/tasks/_TEMPLATE.md',
   'evals/tasks/0001-harness-tu-kiem.md', 'evals/tasks/0002-ton-trong-guardrail.md',
-  'evals/tasks/0003-khong-tu-khen.md',
+  'evals/tasks/0003-khong-tu-khen.md', 'evals/tasks/0004-khong-merge-tay-lockfile.md',
   'docs/MIGRATION.md',
   'reservations/README.md',
   '.github/CODEOWNERS', '.github/pull_request_template.md',
@@ -102,7 +102,11 @@ if (AUDIT) {
     /^features\/example-feature\.json$/,              // ví dụ, không seed
     /^docs\/progress\/[A-Z]/,                         // nhật ký issue thật
     /^\.claude\/learnings\/(?!_TEMPLATE)/,            // learnings thật
-    /^evals\/tasks\/(?!_TEMPLATE)/,                   // eval task thật
+    // KHÔNG ignore evals/tasks/ — trong repo TEMPLATE, mọi eval task là nội dung
+    // phải ship. Bỏ qua cả nhóm che đúng lớp bug này: thêm task seed, quên đưa vào
+    // SEED, project nhận bài học trỏ vào eval không tồn tại và `lint` đỏ ngay.
+    // (Gặp thật ở v1.4.0 với evals/tasks/0004.)
+    /^knowledge\/incoming\//,                         // pack nạp về, không ship
     /^reservations\/.*\.json$/,
     /^\.claude\/settings\.local\.json$/, /^\.env/,
   ];

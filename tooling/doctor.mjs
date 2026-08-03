@@ -107,7 +107,12 @@ const lessonCount = readJson(repoPath('knowledge', 'index.json'), { count: 0 }).
 const evalCount = exists(repoPath('evals', 'tasks'))
   ? (await import('node:fs')).readdirSync(repoPath('evals', 'tasks')).filter(f => f.endsWith('.md') && !f.startsWith('_')).length : 0;
 
-console.log(`  fixlog: ${fixCount} mục  ·  bài học: ${lessonCount}  ·  eval task: ${evalCount}`);
+const incDir = repoPath("knowledge", "incoming");
+const pending = exists(incDir)
+  ? (await import("node:fs")).readdirSync(incDir).filter(d => exists(repoPath("knowledge","incoming",d,"lessons"))).length : 0;
+
+console.log(`  fixlog: ${fixCount} mục  ·  bài học: ${lessonCount}  ·  eval task: ${evalCount}  ·  pack chờ duyệt: ${pending}`);
+if (pending) advice.push(`${pending} pack chờ duyệt ở knowledge/incoming/ — quyết đi: node tooling/knowledge/accept.mjs --list`);
 
 if (fixCount === 0) advice.push('fixlog trống — vòng học chưa có nguyên liệu. Đây là việc RẺ NHẤT và GIÁ TRỊ NHẤT: `node tooling/fixlog.mjs "..."` mỗi lần bạn phải sửa tay (3 giây)');
 if (evalCount === 0) advice.push('không có eval task — bạn đang TỐI ƯU MÙ: không có cách nào biết một thay đổi harness làm tốt lên hay tệ đi');

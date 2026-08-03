@@ -136,6 +136,25 @@ if (existsSync(repoPath('.claude', 'hooks'))) {
   }
 }
 
+// ── 7c. Pack nạp vào rồi bỏ quên ─────────────────────────────────────────────
+// `import.mjs` cố tình dừng ở knowledge/incoming/ và chờ người duyệt. Nhưng "chờ
+// người" không có hạn thì thành "không bao giờ" — và incoming/ tích thành bãi rác
+// mà ai cũng tưởng là backlog. Một pack chờ >30 ngày là một quyết định chưa ra.
+const INC = repoPath('knowledge', 'incoming');
+if (existsSync(INC)) {
+  for (const pack of readdirSync(INC)) {
+    const dir = join(INC, pack, 'lessons');
+    if (!existsSync(dir)) continue;
+    const files = readdirSync(dir).filter(f => f.endsWith('.md'));
+    if (!files.length) continue;
+    const oldest = Math.min(...files.map(f => statSync(join(dir, f)).mtimeMs));
+    const days = Math.round((Date.now() - oldest) / 86400000);
+    if (days > 30) {
+      warn.push(`knowledge/incoming/${pack}: ${files.length} bài học chờ duyệt ${days} ngày — quyết đi: node tooling/knowledge/accept.mjs --list`);
+    }
+  }
+}
+
 // ── 8. CHANGEME còn sót ──────────────────────────────────────────────────────
 // Trong REPO TEMPLATE, CHANGEME là đúng — đó là placeholder cho project sẽ dùng nó.
 // Trong PROJECT THẬT, CHANGEME nghĩa là harness chưa được cấu hình → gate không tồn tại.
