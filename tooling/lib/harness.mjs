@@ -77,9 +77,29 @@ export function matchGlob(pathPosix, glob) {
   return _globCache.get(glob).test(pathPosix);
 }
 
-/** So khớp với một danh sách glob. */
+/**
+ * So khớp với một danh sách glob, hỗ trợ PHỦ ĐỊNH `!glob` theo đúng luật `.gitignore`: duyệt từ trên
+ * xuống, pattern SAU ghi đè pattern TRƯỚC.
+ *
+ * Vì sao cần: `paths.secrets` muốn nói "mọi file .env — TRỪ .env.example". Không có phủ định thì chỉ
+ * còn hai lựa chọn, cả hai đều sai — để `**\/.env.*` thì chặn luôn `.env.example` (file mà
+ * `tooling/init.mjs` CẦN và `.gitignore` đã whitelist, nên pre-commit báo sai ở commit ĐẦU TIÊN của
+ * mọi project mới), hoặc liệt kê tay từng hậu tố env (quên một cái là hở một secret thật).
+ *
+ *   matchAny('.env.example',    ['**\/.env.*', '!**\/.env.example'])  → false
+ *   matchAny('.env.production', ['**\/.env.*', '!**\/.env.example'])  → true
+ */
 export function matchAny(pathPosix, globs) {
-  return (globs || []).some(g => matchGlob(pathPosix, g));
+  let hit = false;
+  for (const g of globs || []) {
+    if (typeof g !== 'string' || g === '') continue;
+    if (g.startsWith('!')) {
+      if (matchGlob(pathPosix, g.slice(1))) hit = false;
+    } else if (matchGlob(pathPosix, g)) {
+      hit = true;
+    }
+  }
+  return hit;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -88,7 +108,14 @@ export function matchAny(pathPosix, globs) {
 
 let _config = null;
 
-/** Đọc harness.config.json (có cache). Không bao giờ throw — thiếu file thì trả default rỗng. */
+/**
+ * Đọc harness.config.json (có cache). Không bao giờ throw — thiếu file thì trả default rỗng.
+ *
+ * `HARNESS_CONFIG` trỏ sang một file config KHÁC. Chỉ dùng cho TEST: nó để `tooling/test-hooks.mjs`
+ * assert LOGIC của hook trên một config dựng sẵn, thay vì assert lên config THẬT của project.
+ * Không có nó, các case "lệnh chưa khai → bỏ qua" chỉ xanh khi project chưa cấu hình gì — tức là
+ * điền `commands` (việc SỐ 1 khi áp template) làm chính test suite của harness đỏ.
+ */
 export function config() {
   if (_config) return _config;
   const defaults = {
@@ -96,7 +123,8 @@ export function config() {
     commands: {}, paths: {}, limits: {}, gates: { stop: [], preMerge: [] }, knowledge: {},
   };
   try {
-    const raw = JSON.parse(readFileSync(repoPath('harness.config.json'), 'utf8'));
+    const override = process.env.HARNESS_CONFIG;
+    const raw = JSON.parse(readFileSync(override || repoPath('harness.config.json'), 'utf8'));
     _config = {
       ...defaults, ...raw,
       project: { ...defaults.project, ...(raw.project || {}) },

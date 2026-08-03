@@ -39,9 +39,11 @@
       "**/db/migrate/**",
       "**/alembic/versions/**"
     ],
+    "$comment_secrets": "Hỗ trợ phủ định `!glob` (luật .gitignore: pattern sau ghi đè pattern trước — xem matchAny trong tooling/lib/harness.mjs). `.env.example` PHẢI đi qua: tooling/init.mjs copy nó thành .env và .gitignore đã whitelist nó.",
     "secrets": [
       "**/.env",
       "**/.env.*",
+      "!**/.env.example",
       "**/*.pem",
       "**/id_rsa*",
       "**/id_ed25519*",

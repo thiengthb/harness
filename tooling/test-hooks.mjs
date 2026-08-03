@@ -60,7 +60,11 @@ const cases = [
   ['block-secrets.mjs', { tool_input: { file_path: 'certs/server.pem' } }, BLOCK, 'ghi .pem bị chặn'],
   ['block-secrets.mjs', { tool_input: { file_path: 'src/a.ts', content: 'const k = "sk-abcdefghijklmnopqrstuvwxyz012345"' } }, BLOCK, 'secret trong nội dung bị chặn'], // harness-allow-secret
   ['block-secrets.mjs', { tool_input: { file_path: 'src/a.ts', content: 'const k = process.env.API_KEY' } }, OK, 'đọc từ env được phép'],
-  ['block-secrets.mjs', { tool_input: { file_path: '.env.example' } }, BLOCK, '.env.example cũng khớp .env.* — CỐ Ý, sửa paths.secrets nếu muốn khác'],
+  // `.env.example` PHẢI đi qua: tooling/init.mjs copy nó thành .env, .gitignore whitelist nó, và
+  // paths.secrets mặc định phủ định nó bằng `!**/.env.example`. Trước đây case này assert BLOCK và
+  // gọi đó là "cố ý" — nhưng nó làm pre-commit chặn commit ĐẦU TIÊN của mọi project mới.
+  ['block-secrets.mjs', { tool_input: { file_path: '.env.example' } }, OK, '.env.example được phép (paths.secrets phủ định nó)'],
+  ['block-secrets.mjs', { tool_input: { file_path: 'config/.env.example' } }, OK, '.env.example trong thư mục con cũng được phép'],
 
   // ── Generated ──────────────────────────────────────────────────────────────
   ['block-generated-edit.mjs', { tool_input: { file_path: 'packages/api-client/x.gen.ts' } }, BLOCK, 'sửa .gen.* bị chặn'],
@@ -112,8 +116,11 @@ const cases = [
   // Một hook crash sẽ chặn MỌI THỨ. Đây là test rẻ nhất và quan trọng nhất cho chúng.
   ['session-start.mjs', {}, OK, 'chạy được với input rỗng'],
   ['session-start.mjs', { source: 'startup' }, OK, 'chạy được với input thật'],
-  ['stop-gate.mjs', {}, OK, 'gate chưa cấu hình lệnh → bỏ qua, KHÔNG fail'],
-  ['post-edit-lint.mjs', { tool_input: { file_path: 'src/a.ts' } }, OK, 'lintFix chưa khai → bỏ qua'],
+  // Hai case dưới assert LOGIC "lệnh chưa khai → bỏ qua", nên chúng phải chạy trên một config DỰNG
+  // SẴN (fixtures/config-unconfigured.json), không phải trên config thật của project. Bám vào config
+  // thật thì điền `commands` — việc SỐ 1 khi áp template — sẽ làm chính test suite này đỏ.
+  ['stop-gate.mjs', {}, OK, 'gate chưa cấu hình lệnh → bỏ qua, KHÔNG fail', { HARNESS_CONFIG: () => repoPath('tooling', 'fixtures', 'config-unconfigured.json') }],
+  ['post-edit-lint.mjs', { tool_input: { file_path: 'a.ts' } }, OK, 'lintFix chưa khai → bỏ qua', { HARNESS_CONFIG: () => repoPath('tooling', 'fixtures', 'config-unconfigured.json') }],
   ['post-edit-lint.mjs', { tool_input: { file_path: 'assets/logo.png' } }, OK, 'file không lint được → bỏ qua'],
   ['post-edit-lint.mjs', { tool_input: { file_path: 'packages/x/y.gen.ts' } }, OK, 'file generated → bỏ qua'],
   ['post-edit-lint.mjs', {}, OK, 'không có file_path → bỏ qua'],

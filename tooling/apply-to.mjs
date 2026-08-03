@@ -58,6 +58,7 @@ const SEED = [
   '.mcp.json.example',
   'knowledge/README.md', 'knowledge/lessons/_TEMPLATE.md',
   'knowledge/lessons/0001-lockfile-merge-tay.md', 'knowledge/lessons/0002-guard-ban-nham.md',
+  'knowledge/lessons/0003-self-test-gia-dinh-repo-cua-no.md',
   'features/_index.json', 'features/_TEMPLATE.json',
   'docs/CONFLICTS.md', 'docs/WIP.md', 'docs/BRANCH-PROTECTION.md',
   'docs/DOR-DOD.md', 'docs/onboarding.md', 'docs/ROADMAP-30D.md',
@@ -91,6 +92,23 @@ function filesUnder(rel) {
 // Lớp bug này im lặng: thêm một file, quên cập nhật danh sách, và template ship
 // thiếu mà không ai biết cho tới khi một project mới thiếu mất một hook.
 // Chạy trong CI (harness-parity.yml).
+//
+// CHỈ CÓ NGHĨA TRONG REPO TEMPLATE. Ở project ĐÍCH, mọi file source của project (app/, src/, lib/…)
+// đương nhiên không nằm trong HARNESS/SEED, nên check này báo "thiếu N file" với N = cả codebase —
+// đỏ trong khi hệ thống hoàn toàn đúng. Một check đỏ-mãi dạy người ta phớt lờ màu đỏ, nên nó tự
+// nhận ra mình đang ở đâu và bỏ qua.
+//
+// Tín hiệu: `.claude/harness-manifest.json` chỉ được apply-to ghi ra ở ĐÍCH, không bao giờ tồn tại
+// trong template. Đây là tín hiệu sẵn có, không phải cờ mới phải nhớ bật.
+const IS_TARGET_PROJECT = existsSync(join(REPO_ROOT, '.claude', 'harness-manifest.json'));
+if (AUDIT && IS_TARGET_PROJECT) {
+  console.log(
+    '\n○ AUDIT bỏ qua: đây là project ĐÍCH (có .claude/harness-manifest.json), không phải repo template.\n' +
+      '  Check này đối chiếu HARNESS/SEED với cây file của TEMPLATE — chạy nó ở đây chỉ báo\n' +
+      '  source của chính project là "thiếu". Chạy `--audit` trong repo template.\n',
+  );
+  process.exit(0);
+}
 if (AUDIT) {
   const covered = new Set([...HARNESS, ...SEED].flatMap(filesUnder));
   // Cố ý không mang đi: nội dung riêng của repo này, artifact sinh ra, hoặc file gốc

@@ -1,0 +1,48 @@
+{
+  "$comment": "FIXTURE cho tooling/test-hooks.mjs — KHÔNG phải config của project nào. Mô phỏng một project vừa áp template và CHƯA điền `commands`. Các hook phải BỎ QUA im lặng (exit 0) trong trạng thái này, chứ không fail: template phải chạy được trên project chưa cấu hình đủ. Trỏ vào bằng HARNESS_CONFIG=<file này>.",
+  "version": 1,
+  "project": {
+    "id": "fixture-unconfigured",
+    "dri": "@fixture",
+    "integrationBranch": "origin/main",
+    "issuePrefixes": ["FIX"],
+    "platforms": ["core"]
+  },
+  "commands": {
+    "install": "",
+    "gen": "",
+    "typecheck": "",
+    "lint": "",
+    "lintFix": "",
+    "test": "",
+    "build": "",
+    "verify": "",
+    "e2e": "",
+    "depcruise": ""
+  },
+  "paths": {
+    "generated": ["**/*.gen.*", "**/generated/**"],
+    "migrations": ["**/migrations/**"],
+    "secrets": ["**/.env", "**/.env.*", "!**/.env.example"],
+    "harness": [".claude/settings.json", ".claude/hooks/**", "harness.config.json"],
+    "hot": [],
+    "lintable": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.mjs"],
+    "publicSurface": []
+  },
+  "limits": {
+    "maxSessionsPerPerson": 2,
+    "maxWorktrees": 4,
+    "prWarnLines": 400,
+    "prFailLines": 800,
+    "prWarnFiles": 15,
+    "reservationTtlHours": 8,
+    "staleLockMinutes": 5,
+    "docStaleDays": 90
+  },
+  "gates": {
+    "stop": ["gen-clean", "typecheck", "test"],
+    "preMerge": ["gen-clean", "typecheck", "lint", "test", "build"]
+  },
+  "budget": { "maxTurnsPerRun": 25, "maxWallClockMinutes": 90, "monthlyUsdCap": 0 },
+  "knowledge": { "packName": "fixture-pack", "upstream": "", "exportScopes": ["universal"] }
+}

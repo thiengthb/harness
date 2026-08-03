@@ -1,4 +1,4 @@
-<!-- version: 2026-08-03-e -->
+<!-- version: 2026-08-04-a -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,18 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-04 — Self-test không còn đỏ giả ở project đích (v1.5.0)
+
+1. **`paths.secrets` giờ phủ định được**: `"**/.env.*"` + `"!**/.env.example"`.
+   Trước đây pre-commit chặn `.env.example` — file `init.mjs` cần — ngay ở commit đầu.
+2. **`--audit` tự bỏ qua** ở project đích (nó là check của repo template). Hết `Template
+   coverage FAIL` trong `doctor` và trong CI parity.
+3. **`test-hooks` assert logic, không assert config của bạn.** Điền `commands` không còn
+   làm test suite đỏ. Cần một trạng thái config thì dùng `HARNESS_CONFIG=<fixture>`.
+
+Không phải BREAKING — không cần làm gì. Muốn nhận bản sửa:
+`node tooling/upgrade.mjs <đường-dẫn-template> --apply`
 
 ## 2026-08-03 — Bài học giờ đi được NGƯỢC LÊN template (v1.4.0)
 

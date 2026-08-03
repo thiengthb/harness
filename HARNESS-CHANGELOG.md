@@ -11,6 +11,44 @@
 
 ---
 
+## 1.5.0 — 2026-08-04
+
+### Sửa — self-test của template không còn đỏ giả ở project đích
+
+Ba defect cùng một lớp: self-test assert **cấu hình của project** thay vì **logic của
+harness**, nên chúng xanh trong repo template và đỏ ở project đầu tiên áp nó — mà
+project đó không sai gì, nó chỉ làm đúng điều README dặn (điền `commands`).
+
+Phát hiện khi áp v1.4.0 lên project thật (`sakubun`): `test-hooks` 49/52,
+`doctor` báo `Template coverage FAIL` với "thiếu 351 file" — 351 file đó là source
+của chính project.
+
+1. **`matchAny()` hỗ trợ phủ định `!glob`** (luật `.gitignore`: pattern sau ghi đè
+   pattern trước). `paths.secrets` mặc định giờ là `"**/.env.*"` + `"!**/.env.example"`.
+   Trước đây `**/.env.*` chặn luôn `.env.example` — file mà `tooling/init.mjs` CẦN và
+   `.gitignore` đã whitelist — nên pre-commit báo sai ở commit ĐẦU TIÊN của mọi project
+   mới, và đường thoát dễ nhất là `--no-verify`.
+2. **`apply-to.mjs --audit` tự bỏ qua ở project đích.** Tín hiệu: `.claude/harness-manifest.json`
+   chỉ tồn tại ở ĐÍCH. Check này đối chiếu HARNESS/SEED với cây file của TEMPLATE, chạy
+   ở đích thì báo cả codebase là "thiếu" — và `harness-parity.yml` chạy nó trong CI, nên
+   MỌI PR đầu tiên của MỌI project đích đều đỏ.
+3. **`config()` đọc `HARNESS_CONFIG`** + `tooling/fixtures/config-unconfigured.json`.
+   Hai case "lệnh chưa khai → bỏ qua" giờ chạy trên fixture, không trên config thật.
+   Case `post-edit-lint` cũng bỏ hardcode `src/a.ts` (project không dùng layout `src/`
+   thì eslint trả "No files matching the pattern" → exit 2 → hook chặn đúng thiết kế,
+   test sai).
+
+Bài học: `knowledge/lessons/0003-self-test-gia-dinh-repo-cua-no.md` (scope `universal`).
+
+### BREAKING — không
+
+`matchAny` chỉ THÊM hành vi: danh sách không có `!` chạy y như trước. Project đã áp
+v1.4.0 không cần làm gì; muốn nhận bản sửa thì `node tooling/upgrade.mjs <template> --apply`.
+
+Nếu bạn đã tự vá `paths.secrets` bằng cách liệt kê hậu tố env (cách duy nhất trước
+v1.5.0), giờ thay được bằng `"**/.env.*", "!**/.env.example"` — ngắn hơn và không quên
+hậu tố mới.
+
 ## 1.4.0 — 2026-08-03
 
 ### Thêm — vòng học giờ có CHIỀU LÊN

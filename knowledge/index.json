@@ -1,8 +1,8 @@
 {
   "generatedBy": "tooling/knowledge/lint.mjs",
-  "count": 2,
+  "count": 3,
   "byScope": {
-    "universal": 2
+    "universal": 3
   },
   "lessons": [
     {
@@ -34,6 +34,22 @@
         ".claude/hooks/protect-migrations.mjs",
         ".claude/rules/danger-zones.md §3",
         "harness-migrations/001-migration-khong-phai-generated.mjs"
+      ]
+    },
+    {
+      "id": "L0003",
+      "file": "knowledge/lessons/0003-self-test-gia-dinh-repo-cua-no.md",
+      "title": "Self-test của template phải assert LOGIC, không assert cấu hình của project đích",
+      "scope": "universal",
+      "class": "verification",
+      "representation": "test",
+      "status": "active",
+      "added": "2026-08-04",
+      "occurrences": 3,
+      "artifacts": [
+        "tooling/lib/harness.mjs — config() đọc HARNESS_CONFIG",
+        "tooling/fixtures/config-unconfigured.json",
+        "tooling/apply-to.mjs — --audit tự bỏ qua khi thấy .claude/harness-manifest.json"
       ]
     }
   ]
