@@ -19,7 +19,7 @@
  * không đọc được lịch sử git. Nó là **tầng rẻ nhất chạy được ở mọi repo không cần cài gì**.
  */
 import { readFileSync, existsSync } from 'node:fs';
-import { git, repoPath, toRepoRel, matchAny, pathsFor, report } from './lib/harness.mjs';
+import { git, repoPath, toRepoRel, matchAny, pathsFor, report, SECRET_PATTERNS } from './lib/harness.mjs';
 
 const ALL = process.argv.includes('--all');
 const staged = ALL
@@ -29,13 +29,10 @@ if (!staged.length && !ALL) process.exit(0);
 
 const fail = [], warn = [], ok = [];
 
-const SECRET_PATTERNS = [
-  [/\bsk-[A-Za-z0-9_-]{20,}/, 'API key dạng sk-'],
-  [/\bAKIA[0-9A-Z]{16}\b/, 'AWS access key'],
-  [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, 'private key'],
-  [/\bgh[pousr]_[A-Za-z0-9]{30,}/, 'GitHub token'],
-  [/(postgres|mysql|mongodb(\+srv)?):\/\/[^\s:@/]+:[^\s@/]+@/, 'connection string có mật khẩu'],
-];
+// SECRET_PATTERNS ở `lib/harness.mjs` — MỘT nguồn. Bản cũ ở đây có 5 pattern trong khi
+// `block-secrets.mjs` có 7: thiếu Slack token và JWT. Và tầng NÀY là tầng duy nhất thấy
+// thứ NGƯỜI gõ tay (hook PreToolUse chỉ thấy thứ agent ghi), nên hai pattern thiếu ở đây
+// là một lỗ thật, không phải một sự bất đối xứng vô hại.
 
 for (const f of staged) {
   const rel = toRepoRel(f);
@@ -65,7 +62,7 @@ for (const f of staged) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (/harness-allow-secret/.test(line)) continue;
-    for (const [re, name] of SECRET_PATTERNS) {
+    for (const { re, name } of SECRET_PATTERNS) {
       if (re.test(line)) {
         fail.push(`${rel}:${i + 1}: phát hiện ${name}\n         Nếu đây là fixture test: thêm comment \`harness-allow-secret\` vào cuối dòng.`);
         break;

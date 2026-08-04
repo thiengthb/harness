@@ -11,6 +11,36 @@
 
 ---
 
+## 2.2.0 — 2026-08-04
+
+**minor.** Không cần migration.
+
+### Một nguồn cho `SECRET_PATTERNS` — và lỗ nó đang che
+
+Danh sách hình-dạng-secret tồn tại **hai bản**: `.claude/hooks/block-secrets.mjs` (**7**
+pattern) và `tooling/precommit-scan.mjs` (**5**). Bản ở pre-commit thiếu **Slack token**
+và **JWT**.
+
+**Chiều của lỗ đó là chiều tệ hơn.** `block-secrets` là PreToolUse — nó chỉ thấy thứ
+**AGENT** ghi. Tầng duy nhất thấy thứ **NGƯỜI** gõ tay là `pre-commit`, và đó chính là
+tầng thiếu hai pattern. Một Slack token do người dán vào file rồi commit **đi qua sạch**.
+
+Nay `SECRET_PATTERNS` ở `tooling/lib/harness.mjs`, cả hai tầng import. Chỗ sửa **không
+phải** "thêm hai pattern vào bản kia" — đó chỉ đặt lại đồng hồ cho lần lệch sau: hai bản
+của một sự thật không lệch vào ngày viết, chúng lệch vào ngày ai đó thêm một pattern và
+chỉ thấy một chỗ.
+
+Test là test **CẤU TRÚC**, không phải test hành vi: nó khẳng định **không file nào khai
+lại** danh sách (`const SECRET_PATTERNS =`), vì chế độ hỏng ở đây là *"hai bản lệch"*, không
+phải *"pattern sai"*. Neo vào **KHAI**, không vào **NHẮC** — cả hai file đều có comment nhắc
+tới nó. Đã thử: khai lại ⇒ ĐỎ; `SECRET_PATTERNS_MUTANT_PROBE =` ⇒ vẫn xanh (neo đủ hẹp).
+
+Thêm hai case hành vi cho Slack token và JWT. Chuỗi trong test bị **ghép ở runtime** là cố
+ý: `block-secrets` **không** honor marker `harness-allow-secret`, nên một literal đủ hình
+dạng trong file test sẽ bị chính nó chặn lúc ai đó sửa file đó.
+
+---
+
 ## 2.1.0 — 2026-08-04
 
 **minor, nhưng CÓ VIỆC PHẢI LÀM TAY** (xem `harness-migrations/004`).
