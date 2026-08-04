@@ -2,7 +2,9 @@
 name: pre-merge
 description: Cổng cuối trước khi mở PR trong repo dùng chung. Dùng trước khi tạo
   pull request, hoặc khi PR bị CI đỏ và cần kiểm lại toàn bộ.
-allowed-tools: [Bash, Read, Edit, Glob, Grep]
+allowed-tools: [Bash, Read, Glob, Grep]
+disallowed-tools: Write Edit
+disable-model-invocation: true
 ---
 
 # Pre-merge

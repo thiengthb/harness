@@ -125,6 +125,109 @@ if (mf) console.log(`  harness version: ${mf.templateVersion} (áp ${String(mf.u
 else if (localVer) console.log(`  harness version: ${localVer} (chưa có manifest — nâng cấp lần tới sẽ không phát hiện được file bạn đã sửa)`);
 else advice.push('không có .claude/harness-manifest.json — chạy upgrade.mjs một lần để tạo, nếu không nâng cấp sau này sẽ ghi đè mù');
 
+// ── Bề mặt vendor: frontmatter skill + rule ──────────────────────────────────
+//
+// VÌ SAO CHECK NÀY BÁO CÁO CHỨ KHÔNG FAIL: doctor có caller phụ thuộc exit 0,
+// và một field lạ là ĐỀ XUẤT xem lại, không phải phán quyết.
+//
+// GIỮ NGÀY TRÊN DANH SÁCH. Vendor thêm field liên tục; một allowlist không ngày
+// sẽ báo một field ĐANG CHẠY là inert — đó là hướng sai làm người ta bỏ qua check.
+// Fetch từ code.claude.com/docs/en/skills — 2026-08-04.
+const KNOWN_SKILL_KEYS = new Set([
+  'name', 'description', 'argument-hint', 'arguments', 'disable-model-invocation',
+  'user-invocable', 'allowed-tools', 'disallowed-tools', 'model', 'effort',
+  'context', 'agent', 'background', 'hooks', 'paths', 'shell',
+]);
+// Claude Code CHỈ đọc `paths` trong .claude/rules/*.md. Năm trường còn lại là đầu
+// vào cho entropy-scan.mjs — hợp lệ, có người đọc thật, nhưng KHÔNG được vendor
+// cưỡng chế. Gọi đúng tên để repo thứ N không tưởng chúng là cấu hình.
+const CC_RULE_KEYS = new Set(['paths']);
+const HARNESS_RULE_KEYS = new Set(['owner', 'added', 'expires-review', 'why', 'exit-condition']);
+
+console.log('\n── BỀ MẶT VENDOR ──');
+const { readdirSync } = await import('node:fs');
+const fmKeys = (txt) => {
+  const m = txt.match(/^---\r?\n([\s\S]*?)\r?\n---/);          // CHỈ khối frontmatter,
+  if (!m) return [];                                            // không phải cả file —
+  return [...m[1].matchAll(/^([A-Za-z][\w-]*):/gm)].map(x => x[1]); // văn xuôi NHẮC tới một
+};                                                               // key không phải là KHAI nó.
+
+let skillTotal = 0, discoverable = 0, grantsWrite = [];
+const unknownKeys = [];
+const skillsDir = repoPath('.claude', 'skills');
+if (exists(skillsDir)) {
+  for (const name of readdirSync(skillsDir)) {
+    const f = repoPath('.claude', 'skills', name, 'SKILL.md');
+    if (!exists(f)) continue;
+    skillTotal++;
+    const txt = readFileSync(f, 'utf8');
+    const keys = fmKeys(txt);
+    const fm = txt.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? '';
+    if (!/^disable-model-invocation:\s*true/m.test(fm)) discoverable++;
+    // allowed-tools CẤP quyền (dùng không cần hỏi). Trường HẠN CHẾ là disallowed-tools.
+    // Thân skill nói "không ra thay đổi" mà frontmatter tiền-duyệt Write = mâu thuẫn.
+    if (/^allowed-tools:.*\b(Write|Edit)\b/m.test(fm)
+        && /không ra thay đổi|KHÔNG tự sửa|chỉ đọc|DỪNG, báo cáo/i.test(txt)) grantsWrite.push(name);
+    for (const k of keys) if (!KNOWN_SKILL_KEYS.has(k)) unknownKeys.push(`skill/${name}: ${k}`);
+  }
+}
+const skillCap = cfg.limits?.maxSkills ?? 12;
+console.log(`  skill: ${skillTotal} tổng · ${discoverable} model tự gọi được (trần ${skillCap})`);
+if (discoverable > skillCap) advice.push(`${discoverable} skill trong tầng discovery (trần ${skillCap}) — mỗi cái trả tiền thuê \`description\` MỌI phiên. Thêm \`disable-model-invocation: true\` cho skill nghi thức: chi phí context về 0, không mất chức năng`);
+for (const g of grantsWrite) advice.push(`skill \`${g}\`: thân nói KHÔNG ra thay đổi nhưng \`allowed-tools\` tiền-duyệt Write/Edit. Trường HẠN CHẾ là \`disallowed-tools\` — đây là template, nó DẠY thói quen cho mọi repo nhận nó`);
+
+const rulesDir = repoPath('.claude', 'rules');
+let rulesNoPaths = 0;
+if (exists(rulesDir)) {
+  for (const name of readdirSync(rulesDir).filter(f => f.endsWith('.md') && !f.startsWith('_') && f !== 'README.md')) {
+    const keys = fmKeys(readFileSync(repoPath('.claude', 'rules', name), 'utf8'));
+    if (!keys.includes('paths')) rulesNoPaths++;
+    for (const k of keys) if (!CC_RULE_KEYS.has(k) && !HARNESS_RULE_KEYS.has(k)) unknownKeys.push(`rule/${name}: ${k}`);
+  }
+  console.log(`  rule: ${readdirSync(rulesDir).filter(f => f.endsWith('.md')).length} file · ${rulesNoPaths} không có \`paths\` (nạp cho MỌI request)`);
+  if (rulesNoPaths > 3) advice.push(`${rulesNoPaths} rule không có \`paths\` — mỗi cái là thuế context cho mọi người ở mọi request. Trần hợp lý: 3–5 rule an toàn toàn cục`);
+}
+for (const u of unknownKeys) advice.push(`frontmatter key lạ — ${u} (allowlist cập nhật 2026-08-04; nếu vendor vừa thêm field này thì cập nhật allowlist trong doctor, đừng bỏ qua check)`);
+
+// ── Danh mục công cụ: SINH, không gõ tay ─────────────────────────────────────
+//
+// Mọi thứ máy biết được thì sinh ra. Một bảng hook viết tay trong README lệch
+// khỏi thực tế mà không ai thấy — và hai trong ba dòng thiếu thường là loại
+// CHẶN được lệnh ghi file.
+console.log('\n── DANH MỤC HOOK ──');
+const settings = readJson(repoPath('.claude', 'settings.json'), {});
+const wired = new Map();                                  // file → [event…]
+for (const [event, groups] of Object.entries(settings.hooks ?? {})) {
+  for (const g of groups ?? []) for (const h of g.hooks ?? []) {
+    const m = String(h.command ?? '').match(/hooks[\/\\]([\w.-]+\.mjs)/);
+    if (m) wired.set(m[1], [...(wired.get(m[1]) ?? []), event]);
+  }
+}
+const applyTo = exists(repoPath('tooling', 'apply-to.mjs')) ? readFileSync(repoPath('tooling', 'apply-to.mjs'), 'utf8') : '';
+// Khớp cả '.claude/hooks' (thư mục) lẫn '.claude/hooks/x.mjs' (file lẻ). Bản đầu
+// của check này đòi dấu `/` cuối và cho DƯƠNG TÍNH GIẢ ngay lần chạy đầu tiên:
+// PHẠM VI của check sai, không phải logic của nó — đúng chỗ cần nhìn trước tiên.
+const carriesHooks = /['"]\.claude\/hooks(['"/])/.test(applyTo);
+const onDisk = exists(repoPath('.claude', 'hooks'))
+  ? readdirSync(repoPath('.claude', 'hooks')).filter(f => f.endsWith('.mjs')) : [];
+for (const f of onDisk) {
+  const events = wired.get(f);
+  const src = readFileSync(repoPath('.claude', 'hooks', f), 'utf8');
+  const canBlock = /\bblock\(|EXIT_BLOCK|exit\(2\)/.test(src);
+  // `fired` của một hook KHÔNG có đường exit 2 là `n/a`, không phải `0`.
+  // Gộp hai giá trị đó là cách một bảng nói "cái gác này vô dụng" về một cái gác đang làm việc.
+  console.log(`  ${events ? '✓' : '✗'} ${f.padEnd(28)} ${events ? events.join(',') : 'KHÔNG CẮM'}   ${canBlock ? 'chặn được' : 'chỉ nhắc (n/a, không phải 0)'}`);
+  if (!events) advice.push(`hook \`${f}\` có trên đĩa nhưng KHÔNG có trong settings.json — mã chết trông như đang sống`);
+}
+if (!carriesHooks && onDisk.length) advice.push('apply-to.mjs không mang `.claude/hooks/` — repo tiêu thụ sẽ nhận settings.json trỏ vào file không tồn tại');
+
+// Deny rule là lớp 2 cho hai hook glob-tĩnh. Deny rule KHÔNG test được bằng spawn hook,
+// nên chỗ nó được kiểm là ĐÂY — nếu không, xoá nó đi cũng không ai biết.
+const deny = settings.permissions?.deny ?? [];
+const WANT_DENY = ['Edit(**/*.gen.*)', 'Edit(/features/_index.json)'];
+for (const d of WANT_DENY) if (!deny.includes(d)) advice.push(`thiếu deny rule \`${d}\` — hook tương ứng chỉ khớp Write|Edit, deny rule phủ thêm \`sed -i\`/\`cat >\` trong Bash và hợp nhất vào ranh giới sandbox`);
+for (const d of deny) if (/^(Write|NotebookEdit|Glob|MultiEdit)\(/.test(d)) advice.push(`deny rule \`${d}\` KHÔNG BAO GIỜ được tra cứu — Claude Code chỉ kiểm file theo \`Edit(path)\` và \`Read(path)\`. Đổi thành \`Edit(...)\``);
+
 // ── Tổng kết ─────────────────────────────────────────────────────────────────
 const failed = results.filter(r => r.status === 'fail');
 console.log('\n╔══════════════════════════════════════════════════════════════╗');

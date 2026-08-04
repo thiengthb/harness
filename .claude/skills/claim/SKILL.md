@@ -4,6 +4,7 @@ description: Nhận một issue và dựng môi trường làm việc cách ly. 
   một task mới trong repo dùng chung, khi được giao issue, hoặc khi không rõ nên
   làm gì tiếp theo.
 allowed-tools: [Bash, Read, Write, Edit, Glob, Grep]
+disable-model-invocation: true
 ---
 
 # Claim một issue

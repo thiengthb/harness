@@ -50,8 +50,54 @@ harness của bạn đang **phình**, không đang tốt lên. Đối chiếu ng
 | Dịch/áp dụng mechanical theo rulebook | nhỏ hơn / rẻ | rulebook đã chứa trí tuệ |
 | Classify, format, tóm tắt ngắn | rẻ nhất | không cần suy luận |
 
-Khai ở `budget.modelTiering`. Nguyên lý: **model mạnh nhất đi vào chỗ QUYẾT ĐỊNH,
-model rẻ đi vào chỗ THỰC THI mechanical.**
+Nguyên lý: **model mạnh nhất đi vào chỗ QUYẾT ĐỊNH, model rẻ đi vào chỗ THỰC THI
+mechanical.**
+
+**Bảng trên là NGUYÊN LÝ, không phải cấu hình.** `budget.modelTiering` từng tồn tại
+trong `harness.config.json` và **không script nào đọc nó** — một field ma trông như
+đang cưỡng chế điều gì đó. Nó đã bị cắt. Chỗ cưỡng chế được là `permissions`:
+
+```jsonc
+// .claude/settings.json → permissions
+"ask": ["Agent(model:opus)"]     // model đắt phải có người bấm
+```
+
+Ba giới hạn phải biết trước khi viết luật loại này:
+- **Mỗi rule một tham số.** Muốn gate cả `model` lẫn `isolation` thì viết hai rule.
+- Giá trị so với **literal Claude gửi**, trước mọi chuẩn hoá — `Agent(model:opus)`
+  khớp alias `opus`, KHÔNG khớp model ID đầy đủ. Dùng `--verbose` để thấy giá trị thật.
+- Tham số model **bỏ trống** thì `Agent(model:*)` **không** khớp.
+
+## §1.1 Khi nào KHÔNG delegate — phần đắt hơn bảng ở trên
+
+Một subagent khởi động **NGUỘI**: nó phải suy ra lại context mà main loop đã giữ sẵn.
+Với việc điều tra nội bộ mà main loop **đã có** context, **hãy làm trực tiếp** —
+fan-out tốn hơn phần tiết kiệm được.
+
+Chỉ delegate khi việc thoả **một trong ba** điều kiện, và "để cho nhanh" không nằm
+trong đó:
+
+| Điều kiện | Ví dụ |
+|---|---|
+| **RỘNG** | quét nhiều file / nhiều URL, cần kết luận chứ không cần nội dung |
+| **MÁY MÓC** | một phép biến đổi đã biết, lặp trên N mục |
+| **LÀM BẨN CONTEXT** | trang thô, log khổng lồ — phải chết trong một context cô lập |
+
+Và phản ví dụ quan trọng nhất: **khi một phép biến đổi hàng loạt diễn đạt được
+chính xác thì một SCRIPT thắng mọi model** — miễn phí, lặp lại được, review được
+bằng diff, và **không thể diễn đạt lại nội dung nó đang di chuyển**. Một model được
+giao "đổi tên field ở 203 dòng" sẽ đổi luôn vài chỗ nó nghĩ là nên đổi.
+
+Ba tầng research, để không mặc định dùng tầng đắt nhất:
+
+| Tầng | Khi nào | Mặc định? |
+|---|---|---|
+| **Quick** | mọi yêu cầu "research X" không định tính | ✅ **ĐÂY LÀ MẶC ĐỊNH** |
+| Standard | cần đối chiếu ≥3 nguồn | khi Quick không đủ |
+| Deep | **chỉ khi** người dùng nói "kỹ" / "thorough" | không bao giờ tự chọn |
+
+Bốn luật đi kèm: search **rộng** – fetch **hẹp** · **distill ở biên, tổng hợp ở tâm** ·
+model theo việc · main loop giữ tập URL và **không bao giờ refetch**.
 
 ## Sáu chỉ số "harness có đang tốt lên"
 

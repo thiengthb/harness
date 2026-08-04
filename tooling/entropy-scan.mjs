@@ -180,6 +180,88 @@ if (touched.length) {
   if (!wnTouched) warn.push(`${new Set(touched).size} file harness đổi trong 14 ngày nhưng .claude/whats-new.md KHÔNG đổi — nửa team đang hành xử theo rule cũ`);
 }
 
+// ── 10. PHÒNG CHỜ NGHỈ HƯU — có bằng chứng, và KHÔNG có lệnh xoá ─────────────
+//
+//   node tooling/entropy-scan.mjs --stage <file> --why "lý do ≥20 ký tự"
+//   node tooling/entropy-scan.mjs --verify        đo lại; DẤU HIỆU SỐNG = miễn tội
+//   node tooling/entropy-scan.mjs --ready         in lệnh cho MỘT CON NGƯỜI
+//
+// SUY ĐOÁN VÔ TỘI. Gánh nặng chứng minh nằm ở bên XOÁ, không bao giờ ở bên GIỮ.
+// Một file không bị bỏ vì không ai chứng minh được nó đang dùng; nó chỉ bị bỏ khi
+// ai đó chứng minh được CÁI GÌ ĐÃ THAY THẾ NÓ.
+//
+// CỐ Ý KHÔNG CÓ LỆNH `--delete`. Một bước không thu hồi được không phải việc của
+// agent. `--ready` in ra lệnh, người gõ.
+//
+// SỰ CHỜ ĐỢI CHÍNH LÀ THÍ NGHIỆM — đó là cách duy nhất quan sát được nhu cầu mà
+// mình chưa nghĩ ra. Và khi miễn tội, ĐỒNG HỒ BỊ XOÁ chứ không phải tạm dừng.
+//
+// Nguy hiểm ở đây không phải sự bất cẩn mà là SỰ TỰ TIN: một checker không crash,
+// nó cho ra một phán quyết tử hình tự tin, cụ thể, và sai.
+//
+// ĐIỀU KIỆN THOÁT: nếu sau 6 tháng `--verify` chưa MỘT LẦN NÀO miễn tội cho file
+// nào, phòng chờ này là nghi thức — rút thời gian chờ từ 30 ngày xuống 14.
+const ATTIC = repoPath('.claude', 'state', 'attic.json');
+const readAttic = () => { try { return JSON.parse(readFileSync(ATTIC, 'utf8')); } catch { return { staged: [] }; } };
+
+/**
+ * HAI CON SỐ, không phải một. Một món chỉ đủ điều kiện nghỉ hưu khi CẢ HAI đúng:
+ *   · không có dấu hiệu dùng nào trong TOÀN BỘ lịch sử (không phải "N ngày im ắng")
+ *   · có NHIỀU NHẤT MỘT liên kết trỏ tới
+ * Một lần nhắc là NHẮC; hai lần là PHỤ THUỘC. Đừng bao giờ xoá theo một con số:
+ * "không script nào đọc file này" từng được dùng làm bằng chứng không ai đọc,
+ * và tầng bị kết án hoá ra được đọc 93 lần bởi con người.
+ */
+function evidenceFor(target) {
+  const t = String(target).replace(/^\.\//, '');
+  const base = t.split('/').pop().replace(/\.[^.]+$/, '');
+  const inbound = git(['grep', '-l', '--', base]).stdout.split('\n')
+    .filter(Boolean).filter(f => f !== t);
+  const commits = git(['log', '--oneline', '--', t]).stdout.split('\n').filter(Boolean).length;
+  return { inbound: inbound.length, inboundFiles: inbound.slice(0, 5), commits, at: new Date().toISOString() };
+}
+
+const ai = process.argv.indexOf('--stage');
+if (ai >= 0) {
+  const target = process.argv[ai + 1];
+  const wi = process.argv.indexOf('--why');
+  const why = wi >= 0 ? process.argv[wi + 1] : '';
+  // KHÔNG BAO GIỜ ĐỦ ĐIỀU KIỆN: lớp harness. Một cái phanh mà đề xuất đầu tiên của
+  // nó là xoá một luật an toàn đang sống thì sẽ bị tắt ngay — và tắt là đúng.
+  if (!target || !existsSync(repoPath(target))) { console.error(`Không tồn tại: ${target}`); process.exit(1); }
+  if (matchAny(target, pathsFor('harness'))) { console.error(`${target} thuộc paths.harness — KHÔNG BAO GIỜ đủ điều kiện nghỉ hưu tự động.`); process.exit(1); }
+  if (why.length < 20) { console.error('--why phải ≥20 ký tự. "không dùng nữa" không phải lý do; CÁI GÌ đã thay thế nó?'); process.exit(1); }
+  const a = readAttic();
+  a.staged = a.staged.filter(s => s.file !== target);
+  a.staged.push({ file: target, why, stagedAt: new Date().toISOString(), evidence: evidenceFor(target) });
+  const { writeJson } = await import('./lib/harness.mjs');
+  writeJson(ATTIC, a);
+  console.log(`Đã đưa vào phòng chờ: ${target}\n  Chờ ≥30 ngày VÀ ≥2 lần retro tuần. Bất kỳ dấu hiệu sống nào cũng miễn tội và XOÁ đồng hồ.`);
+  process.exit(0);
+}
+if (process.argv.includes('--verify') || process.argv.includes('--ready')) {
+  const a = readAttic(); const kept = []; const lines = [];
+  for (const s of a.staged) {
+    if (!existsSync(repoPath(s.file))) { lines.push(`  đã biến mất: ${s.file}`); continue; }
+    const now2 = evidenceFor(s.file);
+    const alive = now2.inbound > s.evidence.inbound || now2.commits > s.evidence.commits;
+    const days = Math.round(daysAgo(s.stagedAt));
+    if (alive) { lines.push(`  MIỄN TỘI ${s.file} — có dấu hiệu sống (inbound ${s.evidence.inbound}→${now2.inbound}, commit ${s.evidence.commits}→${now2.commits}). Đồng hồ bị XOÁ.`); continue; }
+    if (days >= 30 && now2.inbound <= 1) lines.push(`  SẴN SÀNG  ${s.file} (chờ ${days} ngày, inbound ${now2.inbound}) — lý do: ${s.why}\n            → ${cfg.project?.dri || 'DRI'} gõ:  git rm ${s.file}`);
+    else lines.push(`  còn chờ  ${s.file} (${days}/30 ngày, inbound ${now2.inbound} — cần ≤1)`);
+    kept.push(s);
+  }
+  a.staged = kept;
+  const { writeJson } = await import('./lib/harness.mjs');
+  writeJson(ATTIC, a);
+  console.log(`\n=== PHÒNG CHỜ NGHỈ HƯU (${kept.length} đang chờ) ===`);
+  console.log(lines.length ? lines.join('\n') : '  (trống)');
+  console.log('\n  Không có lệnh --delete, cố ý. Bước không thu hồi được không phải việc của agent.\n');
+  process.exit(0);
+}
+const stagedNow = readAttic().staged.length;
+if (stagedNow) ok.push(`phòng chờ: ${stagedNow} mục — chạy \`--verify\` để đo lại (dấu hiệu sống = miễn tội)`);
+
 if (!warn.length && !fail.length) ok.push('không phát hiện dấu hiệu hết hạn nào');
 
 const good = report('ENTROPY SCAN', { ok, warn, fail });

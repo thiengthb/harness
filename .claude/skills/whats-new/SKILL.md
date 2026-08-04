@@ -3,6 +3,7 @@ name: whats-new
 description: Xem hoặc cập nhật thông báo thay đổi harness cho team. Dùng sau khi
   merge một thay đổi vào .claude/, hoặc khi muốn biết harness vừa đổi gì.
 allowed-tools: [Read, Bash]
+disable-model-invocation: true
 ---
 
 # What's new

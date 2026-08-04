@@ -84,6 +84,9 @@ Danh mục tra cứu. Khi có gì đó sai mà bạn chưa gọi tên được, 
 | F4 | **Pin `main` cho harness dùng chung nhiều repo** | một commit sai làm hỏng đồng thời N repo | pin tag/sha + canary repo |
 | F5 | **Globalize NGƯỠNG** (coverage, dedupe %) | repo legacy fail liên tục → mọi người tắt gate | globalize **cơ chế**, không globalize **ngưỡng** |
 | F6 | **Để agent sửa được cấu hình harness của nó** | biến "đổi harness" thành edit tiện tay; mất lòng tin đội | `protect-harness` + cửa thoát có log |
+| F7 | **Fan-out subagent cho việc điều tra nội bộ mà main loop ĐÃ CÓ context** | subagent khởi động NGUỘI, phải suy ra lại thứ đang có sẵn — fan-out tốn hơn phần tiết kiệm | delegate khi việc RỘNG / MÁY MÓC / LÀM BẨN CONTEXT. Ba điều kiện, không phải "để cho nhanh". Xem `docs/ECONOMICS.md §1.1` |
+| F8 | **Gõ một key cấu hình làm đổi QUYỀN mà chưa đọc semantics từ tài liệu gốc** | `allowed-tools` **CẤP** quyền (dùng không cần hỏi); trường **hạn chế** là `disallowed-tools`. Không linter nào bắt được một trường có thật dùng NGƯỢC | đọc bảng frontmatter chính thức trước khi gõ. "Tôi biết trường này tên gì" ≠ "tôi đã đọc nó làm gì" |
+| F9 | **Cắm hook vào một sự kiện chỉ vì nghe tên hợp lý** | event tồn tại KHÔNG có nghĩa là đường truyền tin tồn tại — có event không dùng được `systemMessage`, có event mà exit 2 **xoá prompt của người dùng** | kiểm bảng event: matcher nào, exit 2 có chặn không, nói được với agent bằng đường nào |
 
 ---
 
@@ -99,6 +102,30 @@ Danh mục tra cứu. Khi có gì đó sai mà bạn chưa gọi tên được, 
 | G6 | **Agent có quyền production** | rủi ro không hồi phục | staging only; người bấm nút prod |
 | G7 | **Giữ harness cũ sau khi đổi model** | mỗi mảnh harness là một giả định về giới hạn model — giả định hết hạn | deprecation review + chạy **harness trần** |
 | G8 | **Cải thiện harness không có eval gate** | tối ưu mù; harness phình mà tưởng đang tốt lên | 12–20 task eval, tách capability/regression |
+
+---
+
+## H. Nhóm dụng cụ đo — lớp lỗi KHÔNG CÓ triệu chứng riêng
+
+> Nhóm này nguy hiểm khác các nhóm trên. Một hook chặn sai thì có người kêu. Một
+> **phép đo** sai thì không ai kêu — nó chỉ hiện ra dưới dạng một kết luận sai mà
+> mọi người tin. Và vì harness dùng chính các phép đo này để quyết định cắt bỏ,
+> một phép đo sai dẫn thẳng tới một hành động không thu hồi được.
+
+| # | Anti-pattern | Vì sao hỏng | Sửa |
+|---|---|---|---|
+| H1 | **Gộp "chưa đo được" vào `0`** | ba giá trị `0` / `n/a` / `?` là ba thứ khác nhau: đã-đo-và-bằng-không · bằng-không-DO-CẤU-TRÚC · chưa-có-dữ-liệu. Gộp hai cái bất kỳ là cách một thay đổi schema biến thành một đề xuất XOÁ | `report()` có 5 rổ. Một tổng kết có `unknown` thì **không được gọi là xanh** |
+| H2 | **Một phép đo không nói nó đo ở CÂY NÀO** | trạng thái BÌNH THƯỜNG của phiên harness là ở trong worktree, và `sparsePaths` làm file vắng mặt **hợp lệ** → "harness đang co" trong khi không có gì co | `reportScope()` gọi trong `report()` — một chỗ, mọi công cụ thừa hưởng. Baseline ghi cây đã đo và **từ chối so** khác cây |
+| H3 | **"Harness không chạy" bị gộp vào pass hoặc fail** | hướng nói dối là **ngẫu nhiên**: một phép đo rỗng lúc thì bịa ra thảm hoạ, lúc thì bịa ra sự vô dụng | trạng thái THỨ BA, tường minh. Gate bị bỏ qua phải NÓI RA rằng nó bị bỏ qua |
+| H4 | **Không có bằng chứng một hook đã CHẠY** | hook không phải một lần gọi công cụ — không gì trong transcript thấy nó chạy. "Chưa từng nổ" và "chưa từng được cắm" đọc **giống hệt nhau**, và cái im lặng ấy nghiêng về "đem đi xoá" | `hookRan()` ghi cả nhánh cho-qua. Việc ghi chép **không bao giờ** được đổi exit code |
+| H5 | **Một mutant chỉ CRASH được tính là "đã giết"** | crash chứng minh suite nhận ra file hỏng — nó không nói gì về hành vi mà mutant tuyên bố đã gỡ. Xanh mà chưa kiểm gì cả | `mutate()` kiểm `ran` trước `killed`. Vá bằng `[].push(...)`, không phải `if (false)` |
+| H6 | **Mutant sống sót → đi soi logic** | ba trên ba lần, nguyên nhân là **PHẠM VI** của check chứ không phải logic. Logic là thứ tác giả đang nghĩ tới lúc viết test nên nó được phủ; phạm vi được khai một lần rồi không ai khẳng định lại | mutant ĐẦU TIÊN tiêu vào phạm vi: thay bộ lọc bằng `() => true`. Vẫn xanh ⇒ dòng khai phạm vi là trang trí |
+| H7 | **Xoá theo MỘT con số** | "không script nào đọc file này" từng được dùng làm bằng chứng không ai đọc — tầng bị kết án hoá ra được đọc 93 lần **bởi người** | hai con số: không dấu hiệu dùng trong TOÀN BỘ lịch sử **VÀ** ≤1 liên kết trỏ tới. Một lần nhắc là nhắc, hai lần là **phụ thuộc** |
+| H8 | **Bật một gate mới ở mức ĐỎ** | gate đỏ ngày đầu không dạy ai điều gì — nó dạy người ta cách **tắt gate** | ratchet: khai mốc hôm nay, chỉ nổ khi số **tăng**, hạ mốc trong **cùng commit** với mỗi lần sửa. Backlog nằm công khai, có ngày |
+| H9 | **Chỉ khẳng định exit code cho một nhánh từ chối** | "nó exit 2" không phải bằng chứng nó nổ **đúng lý do**. Và dòng GỢI Ý là thứ agent đọc để biết làm gì tiếp — xoá nó đi mà suite vẫn xanh | kiểm cả phần TỪ CHỐI lẫn phần GỢI Ý. Một cái gác cho-qua mà vẫn in thì phải **khai** nó in gì |
+| H10 | **Nhận diện "phiên không người" bằng `!isTTY`** | hook LUÔN được spawn với stdio piped → isTTY false ở **mọi** phiên, kể cả phiên có người ngồi nhìn. Mọi thứ fail-đóng dựng trên đó thành guard bắn nhầm cho cả team | chỉ ba tín hiệu đọc được từ trong hook: `CI`, `CLAUDE_CODE_ENTRYPOINT=sdk-cli`, cờ tường minh |
+
+---
 
 ---
 

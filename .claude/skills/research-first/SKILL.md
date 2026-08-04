@@ -4,6 +4,7 @@ description: Trước khi implement một capability không tầm thường, tì
   có (thư viện, OSS, SaaS, code trong chính repo) thay vì tự viết. Dùng khi bắt đầu
   feature mới, khi cần capability chưa có trong repo, hoặc khi ước lượng > 200 dòng code.
 allowed-tools: [Read, Grep, Glob, Bash, WebSearch, WebFetch]
+disallowed-tools: Write Edit
 ---
 
 # Research-first: tìm trước khi xây
