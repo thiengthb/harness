@@ -18,8 +18,9 @@ AGENT = MODEL + HARNESS
 # 1. Copy lớp harness vào project của bạn
 node /đường/dẫn/harness/tooling/apply-to.mjs /đường/dẫn/project-cua-ban --apply
 
-# 2. Trong project đó, điền MỘT file
-$EDITOR harness.config.json      # project.id, dri, và commands.*
+# 2. Trong project đó — PHỎNG VẤN, không phải sửa tay
+node tooling/setup.mjs --detect        # xem nó đọc được gì, không ghi
+node tooling/setup.mjs --apply         # hỏi ~10 câu, ghi config + ADR 0001
 
 # 3. Bootstrap + kiểm
 node tooling/init.mjs
@@ -27,6 +28,12 @@ node tooling/harness-doctor.mjs          # ← lệnh DUY NHẤT bạn cần nh�
 
 # 4. Điền AGENTS.md — chỉ 3 mục: Project · Lệnh · Gotchas
 ```
+
+`setup.mjs` đọc `package.json` / `pyproject.toml` / `go.mod` / `Cargo.toml` + lockfile rồi
+đề xuất từng `commands.*` **kèm bằng chứng** (`← package.json → scripts.build`). Nó **không
+bao giờ bịa** một lệnh: không thấy thì để rỗng và nói ra. Nó **không cài gì** — chọn stack là
+quyết định của người, nó chỉ in lệnh. Và nó **từ chối kết thúc** khi `commands.verify` còn
+rỗng, vì đó chính là trạng thái làm mọi thứ còn lại thành trang trí.
 
 ## Nâng cấp về sau
 
@@ -105,6 +112,7 @@ tooling/
 ├── init.mjs                 ★ bootstrap 3 OS — chỗ DUY NHẤT biết về khác biệt OS
 ├── test-hooks.mjs           ★ ≥70 test cho hook — thứ gần như không ai làm
 ├── apply-to.mjs             áp template lên project khác
+├── setup.mjs                ★ phỏng vấn 1 lần: phát hiện stack → commands + ADR 0001
 ├── fixlog.mjs               ★ bước 1 vòng học, 3 giây/lần
 ├── coactivity.mjs           bậc 0 của ladder: ĐO, đừng đoán
 ├── harness-size.mjs         harness đang phình hay đang co?

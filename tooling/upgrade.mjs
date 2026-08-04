@@ -24,7 +24,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, readdirSync
 import { join, resolve, sep, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { REPO_ROOT, repoPath, readJson, writeJson, report, run } from './lib/harness.mjs';
+import { REPO_ROOT, repoPath, readJson, writeJson, report, run, MECHANISM_PATHS } from './lib/harness.mjs';
 
 const args = process.argv.slice(2);
 const src = args.find(a => !a.startsWith('--'));
@@ -91,16 +91,7 @@ if (existsSync(changelogPath)) {
 // ── So sánh file ─────────────────────────────────────────────────────────────
 // Chỉ nâng cấp lớp CƠ CHẾ. File nội dung (AGENTS.md, config, features/) là của
 // project — template không được đụng, chỉ báo nếu có thay đổi đáng biết.
-const MECHANISM = [
-  '.claude/hooks', '.claude/skills', '.claude/agents',
-  'tooling/lib', 'tooling/knowledge', 'tooling/fixtures', 'tooling/generators',
-  'tooling/init.mjs', 'tooling/test-hooks.mjs', 'tooling/test-migrations.mjs', 'tooling/apply-to.mjs', 'tooling/upgrade.mjs',
-  'tooling/fixlog.mjs', 'tooling/coactivity.mjs', 'tooling/harness-size.mjs',
-  'tooling/capo-report.mjs', 'tooling/harness-doctor.mjs', 'tooling/doctor.mjs', 'tooling/entropy-scan.mjs',
-  'tooling/check-reservations.mjs', 'tooling/check-feature-integrity.mjs',
-  'tooling/wt-clean.mjs', 'tooling/statusline.mjs', 'tooling/precommit-scan.mjs',
-  '.githooks', 'evals/run.mjs', 'harness-migrations',
-];
+const MECHANISM = MECHANISM_PATHS;
 // File tham chiếu: template cải thiện nhưng project có thể đã sửa. Chỉ BÁO, không đụng.
 const ADVISORY = [
   'docs/CONFLICTS.md', 'docs/WIP.md', 'docs/BRANCH-PROTECTION.md', 'docs/ROADMAP-30D.md',
@@ -249,7 +240,10 @@ for (const group of MECHANISM) {
     try { files[f] = sha(repoPath(f)); } catch {}
   }
 }
+// HỢP NHẤT, không thay thế — cùng lý do như trong apply-to.mjs: `profile` của setup.mjs
+// (và bất cứ khoá nào thêm sau này) không được bốc hơi ở mỗi lần nâng cấp.
 writeJson(repoPath('.claude', 'harness-manifest.json'), {
+  ...(readJson(repoPath('.claude', 'harness-manifest.json')) ?? {}),
   templateVersion: tplVersion,
   upgradedAt: new Date().toISOString(),
   previousVersion: curVersion,

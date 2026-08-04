@@ -422,6 +422,52 @@ export const REQUIRED_ATTRIBUTES = ['* text=auto eol=lf'];
 export const REQUIRED_UNIGNORE = ['!.claude/'];
 
 /**
+ * Cửa thoát trong `ci.yml` — đúng ở REPO TEMPLATE (nơi `commands` rỗng là placeholder và
+ * không có dòng này thì CI template đỏ vĩnh viễn), SAI ở mọi project đích (gate bị bỏ qua
+ * vẫn cho tick XANH).
+ *
+ * MỘT nguồn, ba nơi dùng: `apply-to` xoá lúc copy · migration `004` xoá cho project đã áp
+ * bản cũ · `harness-doctor` báo CHẶN nếu nó còn. Trước 2.6.0 chỉ có đường `upgrade` xử lý
+ * nó, nên project áp MỚI nhận cửa thoát và một dòng CHẶN của doctor ngay từ phút đầu —
+ * chào mừng bằng một lỗi mà chính công cụ vừa tạo ra.
+ *
+ * KHÔNG dùng `[\s\S]*?`: neo chính xác `env:` ở 4 space, comment ở 6 space, rồi đúng dòng
+ * biến. Lazy match sẽ ăn sang `steps:` nếu ai đó đổi thứ tự.
+ */
+export const CI_ESCAPE_HATCH = /\n {4}env:\n(?: {6}#[^\n]*\n)* {6}HARNESS_ALLOW_SKIPPED_GATES: '1'\n/;
+
+/**
+ * LỚP CƠ CHẾ: file thuộc về harness, không thuộc về project — cập nhật được, không hỏi.
+ * `apply-to.mjs` copy nó sang project mới; `upgrade.mjs` cập nhật nó ở project đã áp.
+ *
+ * MỘT DANH SÁCH, HAI NƠI DÙNG — vì trước 2.6.0 nó là hai danh sách, và chúng đã lệch:
+ * `upgrade.mjs → MECHANISM` **thiếu `tooling/gates.mjs`**. Nghĩa là runner gate — file mà
+ * cả ba stage và cả CI đều gọi — chưa bao giờ được cập nhật qua đường nâng cấp. Sửa một
+ * lỗi trong nó ở template sẽ không tới project nào, và không gì báo: project vẫn chạy bản
+ * 2.0.0 của gates.mjs trong khi manifest ghi 2.4.1.
+ *
+ * Đây đúng lớp bug mà `apply-to --audit` sinh ra để chặn, nhưng audit chỉ soi MỘT trong hai
+ * danh sách. Hai bản của một sự thật không lệch vào ngày viết; chúng lệch vào ngày ai đó
+ * thêm một file và chỉ thấy một chỗ.
+ *
+ * `tooling/generators/` KHÔNG ở đây: README của nó là SEED (project viết generator của
+ * riêng họ vào đó), và một thứ vừa là SEED vừa là cơ chế sẽ bị ghi đè ở lần nâng cấp đầu.
+ */
+export const MECHANISM_PATHS = [
+  '.claude/hooks', '.claude/skills', '.claude/agents',
+  'tooling/lib', 'tooling/knowledge', 'tooling/fixtures',
+  'tooling/init.mjs', 'tooling/test-hooks.mjs', 'tooling/test-migrations.mjs',
+  'tooling/apply-to.mjs', 'tooling/upgrade.mjs', 'tooling/gates.mjs', 'tooling/setup.mjs',
+  'tooling/fixlog.mjs', 'tooling/coactivity.mjs', 'tooling/harness-size.mjs',
+  'tooling/capo-report.mjs', 'tooling/harness-doctor.mjs', 'tooling/doctor.mjs',
+  'tooling/entropy-scan.mjs',
+  'tooling/check-reservations.mjs', 'tooling/check-feature-integrity.mjs',
+  'tooling/wt-clean.mjs', 'tooling/statusline.mjs', 'tooling/precommit-scan.mjs',
+  '.githooks', 'evals/run.mjs',
+  'harness.version', 'HARNESS-CHANGELOG.md', 'harness-migrations',
+];
+
+/**
  * Dòng nào trong `required` chưa có trong `text`. So khớp sau khi trim, theo DÒNG
  * NGUYÊN VẸN — không phải `includes`: `.claude/state/` là chuỗi con của
  * `!.claude/state/keep.json`, và một phép `includes` sẽ coi dòng phủ định là "đã có".

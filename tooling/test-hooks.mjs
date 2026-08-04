@@ -131,6 +131,18 @@ try {
   MERGED_REF = c.stdout;
 } catch (e) { setupErr = String(e.message || e); }
 
+/**
+ * Guard theo ĐƯỜNG DẪN phải được assert trên một `paths` DỰNG SẴN, không phải trên config
+ * thật của repo đang chạy suite. `tooling/setup.mjs` thu hẹp `paths.migrations` về đúng thư
+ * mục migration có thật của project (ví dụ `prisma/migrations/**`) — sau đó
+ * `db/migrations/0001_init.sql` không còn khớp, hook không chặn, và suite ĐỎ ở mọi project
+ * đã cấu hình ĐÚNG. Tức là: làm việc số 1 khi áp template sẽ làm test của harness đỏ.
+ *
+ * Lần thứ tư lớp lỗi này nổ (knowledge/lessons/0003). Cơ chế sửa đã có sẵn từ trước —
+ * `HARNESS_CONFIG` — chỉ là các case này chưa được nối vào nó.
+ */
+const GUARD_CFG = { HARNESS_CONFIG: () => repoPath('tooling', 'fixtures', 'config-guard-paths.json') };
+
 const cases = [
   // ── DCG ────────────────────────────────────────────────────────────────────
   ['dcg.mjs', { tool_input: { command: 'git push --force origin main' } }, BLOCK, 'force push bị chặn', null, /force-with-lease/],
@@ -165,19 +177,19 @@ const cases = [
   // ── Generated ──────────────────────────────────────────────────────────────
   // Gợi ý "sửa NGUỒN rồi chạy {gen}" LÀ toàn bộ giá trị của hook này — không có nó,
   // agent bị chặn mà không biết đường nào đi tiếp. Khẳng định nó, đừng chỉ đếm exit.
-  ['block-generated-edit.mjs', { tool_input: { file_path: 'packages/api-client/x.gen.ts' } }, BLOCK, 'sửa .gen.* bị chặn', null, /Sửa nguồn sinh ra file này/],
-  ['block-generated-edit.mjs', { tool_input: { file_path: 'packages/core/src/a.ts' } }, OK, 'file nguồn được phép'],
+  ['block-generated-edit.mjs', { tool_input: { file_path: 'packages/api-client/x.gen.ts' } }, BLOCK, 'sửa .gen.* bị chặn', GUARD_CFG, /Sửa nguồn sinh ra file này/],
+  ['block-generated-edit.mjs', { tool_input: { file_path: 'packages/core/src/a.ts' } }, OK, 'file nguồn được phép', GUARD_CFG],
   // Case này TRƯỚC ĐÂY khẳng định "sửa migration bị chặn" — SAI, và test đã đóng
   // đinh cái sai đó. Migration hầu hết là viết tay; chặn hết là bắn nhầm hằng ngày.
   // Nay do protect-migrations.mjs lo, và chỉ khi migration ĐÃ MERGE.
-  ['block-generated-edit.mjs', { tool_input: { file_path: 'db/migrations/001_init.sql' } }, OK, 'migration KHÔNG phải generated — được sửa'],
+  ['block-generated-edit.mjs', { tool_input: { file_path: 'db/migrations/001_init.sql' } }, OK, 'migration KHÔNG phải generated — được sửa', GUARD_CFG],
 
   // ── Migration đã merge ─────────────────────────────────────────────────────
-  ['protect-migrations.mjs', { tool_input: { file_path: 'packages/core/src/a.ts' } }, OK, 'file thường không liên quan'],
-  ['protect-migrations.mjs', { tool_input: { file_path: 'db/migrations/999_moi_toanh.sql' } }, OK, 'migration MỚI luôn được phép'],
-  ['protect-migrations.mjs', { tool_input: { file_path: 'db/migrations/0001_init.sql' } }, BLOCK, 'migration ĐÃ MERGE bị chặn', { HARNESS_INTEGRATION_BRANCH: () => MERGED_REF }, /migration MỚI|đã merge/],
-  ['protect-migrations.mjs', { tool_input: { file_path: 'db/migrations/0001_init.sql' } }, OK, 'cửa thoát HARNESS_ALLOW_MIGRATION_EDIT mở được', { HARNESS_INTEGRATION_BRANCH: () => MERGED_REF, HARNESS_ALLOW_MIGRATION_EDIT: '1' }, /Sửa migration đã merge với cửa thoát/],
-  ['protect-migrations.mjs', { tool_input: { file_path: 'db/migrations/0001_init.sql' } }, OK, 'nhánh tích hợp không resolve được → FAIL OPEN, không chặn', { HARNESS_INTEGRATION_BRANCH: 'nhanh-khong-ton-tai-2f9a' }],
+  ['protect-migrations.mjs', { tool_input: { file_path: 'packages/core/src/a.ts' } }, OK, 'file thường không liên quan', GUARD_CFG],
+  ['protect-migrations.mjs', { tool_input: { file_path: 'db/migrations/999_moi_toanh.sql' } }, OK, 'migration MỚI luôn được phép', GUARD_CFG],
+  ['protect-migrations.mjs', { tool_input: { file_path: 'db/migrations/0001_init.sql' } }, BLOCK, 'migration ĐÃ MERGE bị chặn', { ...GUARD_CFG, HARNESS_INTEGRATION_BRANCH: () => MERGED_REF }, /migration MỚI|đã merge/],
+  ['protect-migrations.mjs', { tool_input: { file_path: 'db/migrations/0001_init.sql' } }, OK, 'cửa thoát HARNESS_ALLOW_MIGRATION_EDIT mở được', { ...GUARD_CFG, HARNESS_INTEGRATION_BRANCH: () => MERGED_REF, HARNESS_ALLOW_MIGRATION_EDIT: '1' }, /Sửa migration đã merge với cửa thoát/],
+  ['protect-migrations.mjs', { tool_input: { file_path: 'db/migrations/0001_init.sql' } }, OK, 'nhánh tích hợp không resolve được → FAIL OPEN, không chặn', { ...GUARD_CFG, HARNESS_INTEGRATION_BRANCH: 'nhanh-khong-ton-tai-2f9a' }],
   ['protect-migrations.mjs', { tool_input: null }, OK, 'input rác không làm crash'],
 
   // ── Harness ────────────────────────────────────────────────────────────────
@@ -229,7 +241,7 @@ const cases = [
   // qua đọc y hệt một gate đang xanh, và đó là cách một repo tưởng mình có gate.
   ['post-edit-lint.mjs', { tool_input: { file_path: 'a.ts' } }, OK, 'lintFix chưa khai → bỏ qua', { HARNESS_CONFIG: () => repoPath('tooling', 'fixtures', 'config-unconfigured.json') }],
   ['post-edit-lint.mjs', { tool_input: { file_path: 'assets/logo.png' } }, OK, 'file không lint được → bỏ qua'],
-  ['post-edit-lint.mjs', { tool_input: { file_path: 'packages/x/y.gen.ts' } }, OK, 'file generated → bỏ qua'],
+  ['post-edit-lint.mjs', { tool_input: { file_path: 'packages/x/y.gen.ts' } }, OK, 'file generated → bỏ qua', GUARD_CFG],
   ['post-edit-lint.mjs', {}, OK, 'không có file_path → bỏ qua'],
 
   // ── observe.mjs — QUAN SÁT, không bao giờ chặn ở BẤT KỲ sự kiện nào ─────────

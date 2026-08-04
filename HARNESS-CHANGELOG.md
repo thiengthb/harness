@@ -11,6 +11,75 @@
 
 ---
 
+## 2.6.0 — 2026-08-05
+
+**minor.** Không cần migration. `tooling/setup.mjs` — phỏng vấn một lần sau khi áp template.
+
+### Vấn đề: "việc số 1" chỉ là một dòng nhắc
+
+README nói thẳng *"không có lệnh verify thì gate không tồn tại và toàn bộ harness này chỉ
+là trang trí"*, nhưng đường tới đó là `$EDITOR harness.config.json` — tức là nó xảy ra khi
+có người nhớ. Bằng chứng mạnh nhất nằm ngay trong repo này: chính template in cảnh báo
+*"chưa khai lệnh verify/test — gate đang rỗng"* ở **mọi phiên**. Người viết harness còn để
+rỗng thì người áp harness cũng vậy.
+
+`setup.mjs` đọc `package.json` / `pyproject.toml` / `go.mod` / `Cargo.toml` + lockfile, đề
+xuất từng lệnh **kèm bằng chứng** (`← package.json → scripts.build`), hỏi những gì không
+đọc được, rồi ghi `harness.config.json` + `docs/adr/0001-<id>-stack-va-quy-trinh.md`.
+
+Bốn luật của nó, viết trong file:
+
+1. **Mỗi câu hỏi ghi vào một field MÁY đọc, hoặc không hỏi.** Phần không biểu diễn được
+   thành config (sản phẩm cho ai, gu thiết kế, deploy đi đâu) vào ADR 0001 — và thứ được
+   kiểm là *có ADR hay không*, không phải nội dung.
+2. **Không bao giờ bịa một lệnh.** Không đọc được thì để rỗng và nói ra. Đoán sai không tạo
+   ra một gate sai — nó tạo ra MỘT GATE ÍT HƠN, vì cách sửa nhanh nhất mà người đang gấp
+   tìm ra là xoá tên gate khỏi `gates`. (Ví dụ đã xử lý: script `test` mặc định của
+   `npm init` chỉ để `exit 1` — nhận nó là nhận một gate đỏ vô nghĩa.)
+3. **Không cài gì.** Chọn stack là quyết định kiến trúc: agent ĐỀ XUẤT, người PROMOTE.
+4. **`--apply` TỪ CHỐI kết thúc khi `commands.verify` rỗng** (exit 2, không ghi gì).
+   Cửa thoát `--allow-empty-verify` có, và nó **nằm lại trong manifest** để `harness-doctor`
+   báo CHẶN — một ngoại lệ không có dấu vết là một ngoại lệ vĩnh viễn.
+
+Đo trên 4 repo giả: Next+pnpm+prisma · Python(uv/ruff/mypy/pytest) · npm trống · Vite.
+Repo Next đi từ 0 gate → **10 gate chạy thật**, một lệnh.
+
+### Ba lỗi lộ ra khi thử đường đi thật — cả ba đều im lặng
+
+- **`apply-to --update` XOÁ `profile` khỏi manifest.** Manifest là hồ sơ TÍCH LUỸ, nhưng cả
+  `apply-to` và `upgrade` ghi đè cả object. Triệu chứng: doctor báo *"chưa chạy setup"* cho
+  project vừa chạy setup — một lời buộc tội sai, đúng loại làm người ta ngừng tin bảng chẩn
+  đoán. Nay hợp nhất, không thay thế.
+- **`upgrade.mjs → MECHANISM` thiếu `tooling/gates.mjs`.** Runner gate — file mà cả ba stage
+  và CI đều gọi — **chưa bao giờ được cập nhật qua đường nâng cấp**. Project chạy bản 2.0.0
+  của nó trong khi manifest ghi 2.4.1, và không gì báo. Hai danh sách cho một khái niệm
+  ("lớp cơ chế") lệch đúng như mọi lần: `--audit` chỉ soi một trong hai. Nay **một hằng số**
+  `MECHANISM_PATHS` cho cả hai nơi.
+- **Project áp MỚI nhận cửa thoát CI.** `HARNESS_ALLOW_SKIPPED_GATES` chỉ đúng ở repo
+  template; migration `004` gỡ nó, nhưng migration chỉ chạy ở đường `upgrade`. Nên mọi
+  project áp mới nhận cửa thoát **và** một dòng CHẶN của doctor ngay phút đầu — công cụ tự
+  tạo lỗi rồi tự báo lỗi đó. `apply-to` nay gỡ lúc copy, dùng chung regex `CI_ESCAPE_HATCH`.
+
+### Làm đúng "việc số 1" từng làm ĐỎ chính test suite của harness
+
+`test-hooks.mjs` khẳng định `db/migrations/0001_init.sql` bị chặn — đúng với `paths.migrations`
+MẶC ĐỊNH của template (`**/migrations/**`). `setup.mjs` thu hẹp nó về thư mục migration CÓ
+THẬT (`prisma/migrations/**`), sau đó đường dẫn kia không khớp, hook không chặn, và suite
+đỏ ở **mọi project cấu hình đúng**. Tương tự, thông điệp của `block-generated-edit` đổi khi
+`commands.gen` được khai.
+
+Lần thứ tư của lớp lỗi `knowledge/lessons/0003` (self-test giả định repo của chính nó). Cơ
+chế sửa đã có sẵn từ trước — `HARNESS_CONFIG` — chỉ là các case này chưa được nối vào nó.
+Nay chúng chạy trên `tooling/fixtures/config-guard-paths.json`. Đã kiểm: suite xanh ở CẢ
+repo template LẪN project đã cấu hình đầy đủ.
+
+### Đường đi đầy đủ, đo được
+
+`apply-to` → `setup --apply` → `init` trên một repo Vite trống: **0 dòng CHẶN** ở
+`harness-doctor`. Trước 2.6.0 cùng đường đi đó cho 3 dòng CHẶN + 8 dòng nhắc.
+
+---
+
 ## 2.5.0 — 2026-08-05
 
 **minor.** Migration `006` bắt buộc. Áp template lên project THẬT có ba lỗ, và cả ba đều

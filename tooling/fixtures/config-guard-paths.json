@@ -1,0 +1,24 @@
+{
+  "$comment": "FIXTURE cho tooling/test-hooks.mjs — KHÔNG phải config của project nào. Mục đích DUY NHẤT: cho các case guard theo ĐƯỜNG DẪN (block-generated-edit, protect-migrations, post-edit-lint) một `paths` cố định để assert LOGIC của hook. Không có nó, suite khẳng định lên `paths` THẬT của project — và `tooling/setup.mjs` thu hẹp `paths.migrations` về đúng thư mục migration có thật (ví dụ `prisma/migrations/**`), nên `db/migrations/0001_init.sql` không còn khớp, hook không chặn, và test đỏ ở MỌI project đã cấu hình đúng. Cùng lớp với knowledge/lessons/0003: self-test giả định repo của chính nó. `commands.gen` để RỖNG là cố ý — nhánh thông điệp chung của block-generated-edit chỉ tồn tại khi chưa khai lệnh gen.",
+  "version": 1,
+  "project": {
+    "id": "fixture-guard-paths",
+    "dri": "@fixture",
+    "integrationBranch": "origin/main",
+    "issuePrefixes": ["FIX"],
+    "platforms": ["core"]
+  },
+  "commands": { "gen": "", "typecheck": "", "test": "", "lintFix": "" },
+  "paths": {
+    "generated": ["**/*.gen.*", "**/generated/**", "**/dist/**"],
+    "migrations": ["**/migrations/**", "**/migrate/**", "**/db/migrate/**"],
+    "secrets": ["**/.env", "**/.env.*", "!**/.env.example"],
+    "harness": [".claude/settings.json", ".claude/hooks/**", "harness.config.json"],
+    "hot": [],
+    "lintable": ["**/*.ts", "**/*.tsx"],
+    "publicSurface": []
+  },
+  "limits": { "maxSessionsPerPerson": 2, "maxWorktrees": 4, "staleLockMinutes": 5 },
+  "gates": { "stop": [], "subagent": [], "preMerge": [] },
+  "knowledge": { "packName": "fixture-pack", "upstream": "", "exportScopes": ["universal"], "autoMemoryDirectory": "" }
+}
