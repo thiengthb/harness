@@ -43,6 +43,67 @@ Lớp 2 (LLM-judge, chỉ khi lớp 1 không đủ):  rubric cho chất lượng
    (vòng regression, retry mù, thiếu verify). Xếp hạng dịch chuyển tới 5 bậc khi
    chấm theo chất lượng quá trình.
 
+## Bốn luật cho eval CÓ MODEL tham gia
+
+Chỉ áp khi `evals.command` đã được điền. Assertion tất định không cần bốn luật này —
+nhưng khoảnh khắc bạn spawn một model, cả bốn đều bắt buộc, vì thứ eval đo lúc đó
+không còn là "code có chạy không" mà là "một luật có đổi được HÀNH VI không".
+
+| | Luật | Vì sao |
+|---|---|---|
+| 1 | **Hai nhánh** control/treatment, khác đúng **MỘT** biến | Không có control thì mọi thay đổi đều "có tác dụng" — bạn không có mẫu số |
+| 2 | **`direction()` viết bằng CODE, TRƯỚC khi chạy** | Một kết quả rỗng không kể lại thành thắng lợi được. Văn xuôi thì kể lại được |
+| 3 | **"Harness không chạy" là TRẠNG THÁI THỨ BA** | Dùng rổ `na` / `unknown` của `report()` trong `tooling/lib/harness.mjs`. Gộp nó vào pass hay fail đều bịa ra một phát hiện |
+| 4 | **`--smoke` trước, trên MỖI máy mới** | Chứng minh spawn được model **trước đã**. Một eval chưa từng spawn nổi thì mọi test của nó vô nghĩa |
+
+### Ba cái bẫy đã có người trả giá — không phải suy đoán
+
+Đọc trực tiếp từ mã của một project anh em trên cùng máy này (2026-08-04), nơi cả ba
+đã nổ thật. Chỗ tự kiểm được là **số hiệu**, không phải lời kể: `DEP0190` trong tài
+liệu Node, `CVE-2024-27980` trong changelog Node.
+
+**① Reachability — cái bẫy đắt nhất, và nó nói dối ĐÚNG HƯỚNG bạn mong.**
+`--permission-mode acceptEdits` nhận **EDIT** nhưng vẫn **từ chối Bash**. Một lần chạy
+headless được bảo `node build.mjs` trả lời *"The command needs your approval to run."*
+Hệ quả: đường thành công **không tới được**, hai nhánh trông y hệt nhau, và eval công
+bố NULL/NEGATIVE về một biến chưa bao giờ có chỗ để nhúc nhích. Lần chạy đầu của một
+eval như thế cho NULL 3/3 và suýt hạ cấp một luật đúng.
+
+> **Luật rút ra:** cấp đúng công cụ mà đường thành công cần (`--allowedTools`), **và**
+> từ chối công bố NULL nếu **không lần chạy nào** đi tới được đường thành công. Không
+> có tiền điều kiện đó thì NULL là **hiện vật của dụng cụ**, không phải phát hiện về luật.
+
+**② Spawn xuyên OS — Parity Contract áp vào đây, không có ngoại lệ.**
+Trên Windows: `claude` → `ENOENT` (launcher trên PATH là `claude.cmd`, và Node **không**
+áp `PATHEXT` ở đây) · `claude.cmd` → `EINVAL` (Node từ chối spawn `.cmd` trực tiếp kể từ
+bản vá `CVE-2024-27980`) · có shell → chạy. Nhưng dưới `shell`, **`DEP0190`**: Node **nối**
+tham số chứ không escape. Nên **không nội suy gì biến đổi được vào command** — prompt,
+thứ duy nhất dài và do người nhập, luôn đi qua **stdin**, không bao giờ qua argv.
+
+> Harness đã học **nửa còn lại** của cùng một bẫy ở v2.0.0, theo chiều ngược: `git()`
+> trong `tooling/lib/harness.mjs` **luôn** `shell: false`, vì `shell: true` nối các tham
+> số có dấu cách lại và làm `parity (windows-latest)` đỏ với `fatal: must give exactly
+> one tree`. Cùng một `DEP0190`, hai kết luận trái nhau, **cả hai đều đúng**: cần shell
+> thì phải validate mọi giá trị nội suy; không cần shell thì đừng bật nó.
+
+**③ Env của tiến trình con: DENYLIST, không allowlist.**
+Một allowlist `{HOME, PATH, TERM}` với ý định *"đừng để lọt biến `CLAUDE_*` của phiên
+này"* giết luôn lần chạy trên Windows, vì nó bỏ mất `PATHEXT`. Denylist (xoá mọi khoá
+khớp `/^CLAUDE/i`) nói đúng cái yêu cầu thật. **Một allowlist phải liệt kê mọi biến mà
+toolchain cần, và nó sai ngay khi toolchain cần thêm một biến nữa.**
+
+### Vì sao `evals.command` để RỖNG trong template — và khi nào thì lấp
+
+Rỗng là **đúng**: gọi agent tốn tiền, nên nó phải là hành động chủ động của project
+đích, không phải mặc định thừa hưởng. Hệ quả cần nói ra: **template này chưa từng chạy
+một eval có model tham gia**, nên theo luật 3 nó là `unknown`, không phải 0.
+
+Bộ khung hai nhánh (`evals/lib/arms.mjs`) **chưa được viết**, và đó là quyết định có mốc
+kích hoạt chứ không phải việc bị bỏ quên: **viết nó khi repo tiêu thụ đầu tiên điền
+`evals.command`**. Lý do: phần đắt của cơ chế này không phải `direction()` — nó là **tầng
+spawn** ở ba cái bẫy trên. Viết tầng đó cho một `command` rỗng là viết một cơ chế báo
+`?` vĩnh viễn, và theo tiêu chí của chính mục này, một cái gác chưa từng đỏ chưa rõ giá trị.
+
 ## Nghi thức bắt buộc: deprecation review mỗi lần đổi model
 
 Đây là thứ ngăn harness của bạn thành nghĩa địa.

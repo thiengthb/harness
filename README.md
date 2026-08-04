@@ -88,7 +88,7 @@ CLAUDE.md                    → @AGENTS.md
 ├── settings.json            harness của TEAM (commit, chỉ DRI sửa)
 ├── settings.local.example.json  van xả áp cá nhân (sparsePaths, statusline)
 ├── whats-new.md             thông báo đổi harness, hiện MỘT LẦN mỗi version
-├── hooks/*.mjs              9 hook, Node thuần, chạy 3 OS
+├── hooks/*.mjs              10 hook, Node thuần, chạy 3 OS
 ├── rules/                   rule theo `paths`, có owner + expires-review
 ├── skills/                  12 skill (ngưỡng ≤12 — thêm nữa thì phải bỏ bớt)
 ├── agents/                  evaluator · design-evaluator · security-reviewer
@@ -102,7 +102,7 @@ knowledge/                   ★ TRÍ TUỆ TÍCH LUỸ, MANG ĐI ĐƯỢC
 
 tooling/
 ├── init.mjs                 ★ bootstrap 3 OS — chỗ DUY NHẤT biết về khác biệt OS
-├── test-hooks.mjs           ★ 28 test cho hook — thứ gần như không ai làm
+├── test-hooks.mjs           ★ 70 test cho hook — thứ gần như không ai làm
 ├── apply-to.mjs             áp template lên project khác
 ├── fixlog.mjs               ★ bước 1 vòng học, 3 giây/lần
 ├── coactivity.mjs           bậc 0 của ladder: ĐO, đừng đoán
