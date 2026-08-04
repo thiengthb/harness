@@ -185,6 +185,33 @@ cách một ngoại lệ có lý do biến thành mặc định không ai nhớ 
 `harness-doctor` nhắc: repo **không phải** template mà có `prFailLines ≥ 1500` thì nên
 hạ về 400/800.
 
+#### Sửa — hai lớp cưỡng chế tưởng đang chạy mà không chạy
+
+Phát hiện khi mở PR cho chính đợt này, cả hai đo bằng API chứ không đọc tài liệu:
+
+1. **`main` chưa từng được bảo vệ.** `gh api …/branches/main/protection` → `404 Branch
+   not protected`. Suốt thời gian đó mọi gate trong harness (8 CI check, ngưỡng kích cỡ,
+   parity 3 OS) là **tư vấn**: một `git push origin main` bỏ qua sạch. `docs/BRANCH-PROTECTION.md`
+   nay chứa **cấu hình tái lập được** (một khối `gh api -X PUT`), không phải một checklist
+   để tự đối chiếu bằng mắt. Dòng quan trọng nhất và dễ bỏ nhất là **`enforce_admins: true`**:
+   repo một người thì collaborator duy nhất LÀ admin, nên để `false` là miễn trừ đúng
+   người duy nhất push được — bảo vệ không ai.
+   Kèm cảnh báo: **`git push --dry-run` KHÔNG kiểm được luật này** (nó không chạy
+   pre-receive hook), nên nó báo "thành công" cho một push mà server sẽ từ chối.
+
+2. **`CODEOWNERS` placeholder là user THẬT của người lạ.** Đo 2026-08-04: `dri` và
+   `Tech-lead` đều tồn tại trên GitHub. Một dòng CODEOWNERS chỉ có hiệu lực khi handle
+   **TỒN TẠI *VÀ* có quyền PUSH** — hai điều kiện, không phải một; thiếu cái nào GitHub
+   cũng bỏ qua **im lặng**, PR hiện *"không yêu cầu review nào"*. Thông điệp của
+   `harness-doctor` nói *"handle không tồn tại"*, thực tế nguy hiểm hơn: **tồn tại nhưng
+   không phải người bạn nghĩ**. Nay nó nêu đúng hai điều kiện + hai lệnh `gh api` để kiểm.
+
+   Và bản thân check đó **đang bắn nhầm**: nó `includes('@dri')` trên **cả file**, nên một
+   comment GIẢI THÍCH về placeholder cũng bị tính là dùng placeholder. Nay chỉ đọc **dòng
+   luật** (bỏ comment, kể cả comment cuối dòng) và so cột owner với một tập placeholder.
+   Cùng lớp lỗi với `fmKeys()`: *văn xuôi NHẮC tới một thứ không phải là KHAI nó* — và một
+   check tự bắn nhầm là một check sẽ bị tắt.
+
 #### Còn đỏ, và biết vì sao
 
 `node evals/run.mjs` → **2/4** (không tụt so với trước đợt này). Hai eval đỏ vì trạng
