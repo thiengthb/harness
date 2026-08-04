@@ -40,9 +40,25 @@ jobs:
         run: |
           WARN=$(node -e "console.log(require('./harness.config.json').limits.prWarnLines)")
           FAIL=$(node -e "console.log(require('./harness.config.json').limits.prFailLines)")
+          # Ba nhóm bị LOẠI khỏi phép đếm, mỗi nhóm một lý do KHÁC nhau:
+          #
+          #   *.gen.* · lock · generated/  — không ai review chúng, chúng là OUTPUT.
+          #   docs/ · CHANGELOG · README · whats-new · learnings/ — load-bearing NHƯNG
+          #     review bằng cách khác: đọc văn xuôi, không truy vết luồng thực thi. Gộp
+          #     chúng vào cùng một ngưỡng làm ngưỡng mất nghĩa theo CẢ HAI chiều: một PR
+          #     500 dòng ADR bị chặn oan, còn 300 dòng hook thì lọt vì "đa số là docs".
+          #     Ngưỡng này bảo vệ SỰ CHÚ Ý của reviewer cho phần đổi HÀNH VI.
+          #
+          # AGENTS.md CỐ Ý KHÔNG được loại: nó nạp vào MỌI phiên của MỌI người nên nó là
+          # chỉ thị đang thi hành, không phải tài liệu. Tính theo token × số lần đọc, đó
+          # là file đắt nhất repo — nó phải nằm trong phép đếm.
           LINES=$(git diff origin/${{ github.base_ref }}...HEAD --numstat \
             -- . ':(exclude)**/*.gen.*' ':(exclude)**/*lock*' ':(exclude)**/generated/**' \
+                 ':(exclude)docs/**' ':(exclude)HARNESS-CHANGELOG.md' ':(exclude)README.md' \
+                 ':(exclude).claude/whats-new.md' ':(exclude).claude/learnings/**' \
+                 ':(exclude)knowledge/README.md' \
             | awk '{a+=$1; d+=$2} END {print a+d+0}')
+          echo "(đã loại generated/lockfile và tài liệu; AGENTS.md vẫn tính)"
           echo "Thay đổi $LINES dòng (cảnh báo $WARN, fail $FAIL)"
           if [ "$LINES" -gt "$FAIL" ]; then
             echo "::error::PR quá lớn ($LINES dòng). Chẻ nhỏ. Một PR = một mục đích."
