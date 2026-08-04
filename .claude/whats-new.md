@@ -1,4 +1,4 @@
-<!-- version: 2026-08-04-f -->
+<!-- version: 2026-08-05-a -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,21 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-05 — Áp template có ba lỗ im lặng, đã bịt (v2.5.0)
+
+1. **Chạy lại `apply-to` hoặc `upgrade` trên project của bạn.** `.gitignore` /
+   `.gitattributes` của harness trước đây **không bao giờ tới** project đã có hai file đó
+   (tức là mọi project thật). Nếu bạn thấy `.claude/settings.local.json` hoặc
+   `.claude/telemetry/` trong `git status` thì đây là lý do.
+2. **Repo bạn có `.claude/` trong `.gitignore`?** Vậy `.claude/hooks/` chưa từng được
+   commit — cả đội tưởng có harness, thật ra chỉ máy chạy `apply-to` có. Migration `006` tự
+   thêm `!.claude/`. Dòng đúng là `!.claude/`, KHÔNG phải `!.claude/settings.json`: sau khi
+   cả thư mục bị loại, phủ định cho từng file bên trong **vô tác dụng** (đo bằng
+   `git check-ignore`).
+3. **ADR của lớp harness dời sang `docs/adr/harness/`.** Số `0001` giờ thuộc về SẢN PHẨM.
+4. `/verify-ui` giờ được `/ship-feature` bước 5 gọi tới, và điều kiện thoát của nó khoá vào
+   `commands.e2e` thay vì một field không bao giờ tồn tại.
 
 ## 2026-08-04 — Skill `/whats-new` bị XOÁ · hai chỉ số thôi nói dối (v2.4.0)
 

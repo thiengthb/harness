@@ -1,3 +1,7 @@
+<!-- Đánh số của SẢN PHẨM bắt đầu từ 0001 và sống ở `docs/adr/`.
+     ADR của lớp harness ở `docs/adr/harness/` — namespace riêng, để lớp harness không
+     chiếm số của sản phẩm (trước 2.5.0 nó chiếm 0001 và 0002). -->
+
 # ADR NNNN — <tiêu đề>
 
 - **Trạng thái**: Proposed | Accepted | Superseded by NNNN

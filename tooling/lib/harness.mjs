@@ -373,6 +373,64 @@ export const SECRET_PATTERNS = [
   { re: /(postgres|mysql|mongodb(\+srv)?):\/\/[^\s:@/]+:[^\s@/]+@/, name: 'connection string có mật khẩu' },
 ];
 
+/**
+ * Dòng mà `.gitignore` / `.gitattributes` của MỌI repo áp harness phải có.
+ * MỘT nguồn, hai tầng dùng: `apply-to.mjs` THÊM dòng thiếu, `harness-doctor.mjs` KIỂM.
+ *
+ * VÌ SAO NÓ TỒN TẠI. Hai file này từng nằm trong `SEED` của `apply-to.mjs`, và `SEED`
+ * **không bao giờ ghi đè file đã tồn tại**. Mọi project THẬT đều đã có `.gitignore`
+ * ⇒ với đúng nhóm project mà harness nhắm tới, các dòng dưới đây im lặng KHÔNG tới.
+ * Chỉ project trống rỗng nhận được chúng — tức là cơ chế chỉ hoạt động ở ca không cần nó.
+ *
+ * Hậu quả không phải lý thuyết: project commit `.claude/settings.local.json` (van xả áp
+ * CÁ NHÂN của một người trở thành cấu hình của cả đội) và `.claude/telemetry/` (log
+ * máy-cục-bộ vào lịch sử chung, xung đột ở mọi PR). Và `* text=auto eol=lf` — điều số 8
+ * trong "mười hai điều" của README — cũng không tới, nên lớp conflict GIẢ mà nó xoá được
+ * vẫn còn nguyên ở đúng những repo đa OS.
+ *
+ * ĐÂY LÀ DANH SÁCH TỐI THIỂU, KHÔNG PHẢI CẢ FILE. Copy cả file là phép sai (project có
+ * ignore riêng của họ, và ghi đè nó là phá dữ liệu). Thêm dòng thiếu là phép đúng: nó
+ * idempotent, và nó không có ý kiến gì về phần còn lại của file.
+ *
+ * Vắng một dòng ở đây KHÔNG phải "đội họ có sở thích khác" — nó là dữ liệu cá nhân hoặc
+ * log đi vào lịch sử chung. Nên apply-to thêm lại nó ở MỌI lần áp, cố ý, kể cả khi có
+ * người đã xoá tay. Muốn thật sự bỏ thì sửa danh sách này trong một PR có người duyệt.
+ */
+export const REQUIRED_IGNORE = [
+  '.claude/settings.local.json',
+  '.claude/worktrees/',
+  '.claude/telemetry/',
+  '.claude/state/',
+  'knowledge/incoming/',
+  '.harness-pack/',
+];
+export const REQUIRED_ATTRIBUTES = ['* text=auto eol=lf'];
+
+/**
+ * Chỉ thêm khi git ĐANG ignore một file harness phải commit — ca gần như chắc chắn gặp:
+ * rất nhiều repo đã có `.claude/` trong `.gitignore` TRƯỚC khi áp harness, vì đó là lời
+ * khuyên phổ biến cho cấu hình agent cá nhân. Áp harness vào đó mà không sửa nghĩa là
+ * `.claude/hooks/` và `.claude/settings.json` không bao giờ được commit: cả đội tưởng
+ * mình có harness, nhưng chỉ MỘT người — người chạy apply-to — thật sự có.
+ *
+ * PHẢI là `!.claude/`, KHÔNG phải `!.claude/settings.json`. Đo 2026-08-05 bằng
+ * `git check-ignore`: sau một dòng loại cả thư mục (`.claude/`), mọi phủ định cho FILE
+ * bên trong đều VÔ TÁC DỤNG — git không re-include file có thư mục cha bị loại. Dòng
+ * `!.claude/settings.json` trông như đã sửa, và không sửa gì cả. Đây đúng là dạng lỗi
+ * tệ nhất của lớp này: nó im lặng và nó trông như đã xong.
+ */
+export const REQUIRED_UNIGNORE = ['!.claude/'];
+
+/**
+ * Dòng nào trong `required` chưa có trong `text`. So khớp sau khi trim, theo DÒNG
+ * NGUYÊN VẸN — không phải `includes`: `.claude/state/` là chuỗi con của
+ * `!.claude/state/keep.json`, và một phép `includes` sẽ coi dòng phủ định là "đã có".
+ */
+export function missingLines(text, required) {
+  const have = new Set(String(text).split('\n').map(l => l.trim()));
+  return required.filter(l => !have.has(l));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Telemetry (cá nhân, gitignore) — nguyên liệu của vòng học
 // ─────────────────────────────────────────────────────────────────────────────

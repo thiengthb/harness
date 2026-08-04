@@ -11,6 +11,72 @@
 
 ---
 
+## 2.5.0 — 2026-08-05
+
+**minor.** Migration `006` bắt buộc. Áp template lên project THẬT có ba lỗ, và cả ba đều
+im lặng ở đúng nhóm project mà harness nhắm tới.
+
+### `.gitignore` dùng SAI PHÉP TOÁN — cơ chế chỉ chạy ở ca không cần nó
+
+`.gitignore` và `.gitattributes` nằm trong `SEED`, và `SEED` **không bao giờ ghi đè file
+đã tồn tại**. Mọi project thật đều đã có `.gitignore` ⇒ các dòng của harness **chưa từng
+tới**. Chỉ thư mục trống nhận được chúng.
+
+Hậu quả không phải lý thuyết: project commit `.claude/settings.local.json` (van xả áp CÁ
+NHÂN thành cấu hình của cả đội) và `.claude/telemetry/` (log máy-cục-bộ vào lịch sử chung,
+conflict ở mọi PR). Và `* text=auto eol=lf` — **điều số 8 trong "mười hai điều"** của README
+— cũng không tới, nên lớp conflict GIẢ mà nó xoá được vẫn còn nguyên. **Không check nào
+phát hiện**: không có một dòng nào về `.gitignore` trong `harness-doctor` trước bản này.
+
+Nay có **phép thứ ba**: `MERGE` — thêm dòng THIẾU, không copy, không bỏ qua. Danh sách tối
+thiểu ở `REQUIRED_IGNORE` / `REQUIRED_ATTRIBUTES` (`tooling/lib/harness.mjs`), một nguồn cho
+cả hai tầng dùng: `apply-to` thêm, `harness-doctor` kiểm.
+
+### Ca phổ biến nhất lại là ca hỏng nặng nhất: `.claude/` đã bị ignore từ trước
+
+Rất nhiều repo có `.claude/` trong `.gitignore` **trước khi** áp harness — đó là lời khuyên
+phổ biến cho cấu hình agent cá nhân. Áp harness vào đó mà không sửa nghĩa là
+`.claude/hooks/` và `.claude/settings.json` **không bao giờ được commit**: cả đội tưởng
+mình có harness, còn thật ra chỉ MỘT người có — người đã chạy `apply-to`.
+
+Đo bằng `git check-ignore` (2026-08-05): sau một dòng loại cả thư mục, **mọi phủ định cho
+FILE bên trong đều vô tác dụng** — git không re-include file có thư mục cha bị loại. Nên
+`!.claude/settings.json` trông như đã sửa và **không sửa gì cả**; dòng đúng là `!.claude/`.
+`apply-to` chỉ thêm nó khi ĐO THẤY có file bị chôn, và nó **nói ra** — nó đảo một quyết
+định tường minh của project nên nó phải có bằng chứng.
+
+`harness-doctor` giờ kiểm **cả hai chiều** bằng chính `git check-ignore`, không so chuỗi:
+đường dẫn cá nhân có bị ignore không, và file harness của team có bị ignore không. So chuỗi
+trả lời *"file ignore có chứa dòng X"*; câu hỏi thật là *"git có ignore đường dẫn này"* —
+và hai câu đó khác nhau đúng ở ca làm người ta mất cả buổi.
+
+### ADR của lớp harness chiếm số 0001/0002 của SẢN PHẨM
+
+`docs/adr/0001-harness-baseline.md` + `0002-tai-phan-vai-native.md` hạ cánh thẳng vào
+`docs/adr/` của project, nên ADR **đầu tiên** của đội buộc phải là `0003` — quyết định đầu
+tiên của sản phẩm được đánh số như thể nó là quyết định thứ ba. Nay chúng ở
+`docs/adr/harness/`. Migration chỉ dời file có ĐÚNG tên template đã ship; ADR do đội tự
+viết không bị đụng (fixture có một `0003` của sản phẩm để chứng minh).
+
+### `ctx.moveFile` — "đổi cấu trúc thư mục" trước đây chỉ tồn tại trên giấy
+
+`harness-migrations/README.md` liệt kê *"đổi cấu trúc thư mục"* là việc BẮT BUỘC có
+migration, nhưng `ctx` không có cách nào **di chuyển** một file: migration phải tự `import`
+node:fs (không migration nào làm) hoặc gọi `git mv` (fail ở test vì thư mục fixture không
+phải git repo). Thêm `moveFile` vào **cả** `upgrade.mjs` và `test-migrations.mjs` — hai
+`ctx` lệch nhau thì suite đo sai thứ, và comment trong `test-migrations` đã nói vậy.
+
+### Dọn hai dấu vết của 2.3.0
+
+- `verify-ui` khoá **điều kiện thoát** vào một field tên `visual` — field mà
+  `harness.config.json` nói thẳng là KHÔNG được thêm. Một điều kiện thoát trỏ vào thứ không
+  bao giờ tồn tại là điều kiện thoát không bao giờ đến. Nay khoá vào `e2e`, nơi runner ảnh
+  thật sự sống.
+- `verify-ui` là skill **mồ côi** (không nơi nào trỏ tới). Nay `/ship-feature` bước 5,
+  `docs/DESIGN.md`, và README trỏ tới nó — sửa bằng cách nối vào vòng lặp, không phải xoá.
+
+---
+
 ## 2.4.1 — 2026-08-04
 
 **patch.** Đổi tên metric ở 2.4.0 bỏ **mồ côi** lịch sử của nó.

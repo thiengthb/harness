@@ -10,7 +10,7 @@
 
 Dựng harness đầy đủ. Xem `.claude/whats-new.md`.
 
-Bốn quyết định đã chốt (xem `docs/adr/0001-harness-baseline.md`):
+Bốn quyết định đã chốt (xem `docs/adr/harness/0001-harness-baseline.md`):
 
 1. **Branch strategy**: trunk-based, nhánh < 1 ngày, merge queue bắt buộc
 2. **Ownership `.claude/`**: DRI, cưỡng chế bằng CODEOWNERS + `protect-harness` hook
