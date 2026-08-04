@@ -11,6 +11,26 @@
 
 ---
 
+## 2.7.7 — 2026-08-05
+
+**patch.** `repoRole()` — một nguồn cho câu hỏi *"tôi là template hay repo đã áp?"*.
+
+Câu hỏi đó được hỏi ở **5 chỗ với 3 định nghĩa khác nhau**: `apply-to` chỉ xét manifest;
+`harness-doctor` và `setup.mjs` xét 3 điều kiện; `entropy-scan` tính **cả** `IS_TEMPLATE`
+**lẫn** `IS_CONSUMER` riêng rẽ trong cùng một file — và hai biến đó **không bù nhau**.
+
+Một repo không có cả manifest lẫn changelog thì **cả hai đều `false`**. Trạng thái đó có
+thật (ai đó copy `.claude/` bằng tay, hoặc manifest bị xoá) và **chưa từng được đặt tên**,
+nên mỗi tool âm thầm chọn một mặc định khác nhau cho nó. Đúng phép gộp `0` với `n/a` mà repo
+này cấm ở mọi nơi khác — chỉ có điều nó nằm trong phép **tự nhận diện** của chính harness.
+
+Nay ba giá trị: `template` · `consumer` · `unknown`. Và `unknown` **được nói ra** —
+`harness-doctor` báo CHẶN kèm lý do thật: harness tới đây bằng đường không ai theo dõi được,
+nên `upgrade` sau này sẽ ghi đè MÙ vì không có hash nào để so.
+
+Gần như mọi lỗi của bốn bản 2.5.x–2.7.x đều mọc từ chỗ này: cửa thoát CI, audit tự tắt,
+ngưỡng PR, `test-hooks` đo config sống, cảnh báo upstream nổ ở template. Tám lỗi, một gốc.
+
 ## 2.7.6 — 2026-08-05
 
 **patch.** Kết quả của lần DISTILL đầu tiên trên nguyên liệu THẬT từ ba repo tiêu thụ.

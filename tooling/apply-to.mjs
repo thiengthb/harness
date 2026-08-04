@@ -13,7 +13,7 @@
 import { readdirSync, statSync, mkdirSync, cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, resolve, relative, sep } from 'node:path';
-import { REPO_ROOT, report, run, REQUIRED_IGNORE, REQUIRED_ATTRIBUTES, REQUIRED_UNIGNORE, missingLines, CI_ESCAPE_HATCH, MECHANISM_PATHS } from './lib/harness.mjs';
+import { REPO_ROOT, report, run, REQUIRED_IGNORE, REQUIRED_ATTRIBUTES, REQUIRED_UNIGNORE, missingLines, CI_ESCAPE_HATCH, MECHANISM_PATHS, repoRole } from './lib/harness.mjs';
 
 const args = process.argv.slice(2);
 const target = args.find(a => !a.startsWith('--'));
@@ -137,7 +137,7 @@ function filesUnder(rel) {
 //
 // Tín hiệu: `.claude/harness-manifest.json` chỉ được apply-to ghi ra ở ĐÍCH, không bao giờ tồn tại
 // trong template. Đây là tín hiệu sẵn có, không phải cờ mới phải nhớ bật.
-const IS_TARGET_PROJECT = existsSync(join(REPO_ROOT, '.claude', 'harness-manifest.json'));
+const IS_TARGET_PROJECT = repoRole() === 'consumer';
 if (AUDIT && IS_TARGET_PROJECT) {
   console.log(
     '\n○ AUDIT bỏ qua: đây là project ĐÍCH (có .claude/harness-manifest.json), không phải repo template.\n' +

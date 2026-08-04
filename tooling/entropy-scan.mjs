@@ -13,8 +13,9 @@
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { join, extname } from 'node:path';
 import { parseFrontmatter } from './lib/frontmatter.mjs';
-import { repoPath, config, limit, report, git, matchAny, pathsFor, readJson, stateDir } from './lib/harness.mjs';
+import { repoPath, config, limit, report, git, matchAny, pathsFor, readJson, stateDir, repoRole } from './lib/harness.mjs';
 
+const ROLE = repoRole();
 const ok = [], warn = [], fail = [];
 const cfg = config();
 const STALE_DAYS = limit('docStaleDays', 90);
@@ -164,7 +165,7 @@ if (existsSync(INC)) {
 // cảnh báo vô nghĩa nổ mọi lần dạy người ta bỏ qua cả bảng. Tín hiệu: manifest chỉ tồn tại
 // ở đích (apply-to/upgrade ghi ra), cùng tín hiệu mà --audit và harness-doctor đã dùng.
 const manifestForUpstream = readJson(repoPath('.claude', 'harness-manifest.json'));
-const IS_CONSUMER = !!manifestForUpstream;
+const IS_CONSUMER = ROLE === 'consumer';
 const upLast = readJson(join(stateDir(), 'upstream-last.json'));
 // CHỈ đếm bài học project NÀY tự viết. Bài học SEED đi kèm template thì template đã có sẵn
 // — `upstream.mjs` lọc chúng ra và báo "0 để đóng góp", nhưng cảnh báo này không có template
@@ -205,9 +206,7 @@ if (portable.length) {
 // ── 8. CHANGEME còn sót ──────────────────────────────────────────────────────
 // Trong REPO TEMPLATE, CHANGEME là đúng — đó là placeholder cho project sẽ dùng nó.
 // Trong PROJECT THẬT, CHANGEME nghĩa là harness chưa được cấu hình → gate không tồn tại.
-const IS_TEMPLATE = existsSync(repoPath('HARNESS-CHANGELOG.md'))
-  && existsSync(repoPath('tooling', 'apply-to.mjs'))
-  && !existsSync(repoPath('.claude', 'harness-manifest.json'));
+const IS_TEMPLATE = ROLE === 'template';
 
 const changeme = [];
 for (const f of ['harness.config.json', 'AGENTS.md', '.github/CODEOWNERS']) {

@@ -460,6 +460,30 @@ export const CI_ESCAPE_HATCH = /\n {4}env:\n(?: {6}#[^\n]*\n)* {6}HARNESS_ALLOW_
  * `tooling/generators/` KHÔNG ở đây: README của nó là SEED (project viết generator của
  * riêng họ vào đó), và một thứ vừa là SEED vừa là cơ chế sẽ bị ghi đè ở lần nâng cấp đầu.
  */
+/**
+ * VAI của repo đang chạy. BA giá trị, không hai.
+ *
+ *   'template'  — nguồn: có HARNESS-CHANGELOG + apply-to, KHÔNG có manifest
+ *   'consumer'  — đã áp: có `.claude/harness-manifest.json` (chỉ apply-to/upgrade ghi ra)
+ *   'unknown'   — không đủ dấu hiệu: cài tay, copy dở, hoặc manifest bị xoá
+ *
+ * VÌ SAO MỘT HÀM. Trước 2.7.7 câu hỏi này được hỏi ở **5 chỗ với 3 định nghĩa khác nhau**:
+ * `apply-to` chỉ xét manifest; `harness-doctor` và `setup` xét 3 điều kiện; `entropy-scan`
+ * tính CẢ `IS_TEMPLATE` LẪN `IS_CONSUMER` **riêng rẽ trong cùng một file** — và hai biến đó
+ * KHÔNG bù nhau: một repo không có cả manifest lẫn changelog thì cả hai đều `false`.
+ *
+ * Trạng thái đó có thật (ai đó copy `.claude/` bằng tay) và chưa từng được đặt tên, nên mỗi
+ * tool âm thầm chọn một mặc định khác nhau cho nó. Đúng phép gộp `0` với `n/a` mà repo này
+ * cấm ở mọi nơi khác — chỉ có điều nó nằm trong phép TỰ NHẬN DIỆN của chính harness.
+ *
+ * `consumer` thắng khi có manifest: template không bao giờ có file đó.
+ */
+export function repoRole() {
+  if (exists(repoPath('.claude', 'harness-manifest.json'))) return 'consumer';
+  if (exists(repoPath('HARNESS-CHANGELOG.md')) && exists(repoPath('tooling', 'apply-to.mjs'))) return 'template';
+  return 'unknown';
+}
+
 export const MECHANISM_PATHS = [
   '.claude/hooks', '.claude/skills', '.claude/agents',
   'tooling/lib', 'tooling/knowledge', 'tooling/fixtures',

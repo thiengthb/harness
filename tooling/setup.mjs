@@ -41,7 +41,7 @@
 import { readFileSync, existsSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { REPO_ROOT, repoPath, readJson, writeJson, report, exists } from './lib/harness.mjs';
+import { REPO_ROOT, repoPath, readJson, writeJson, report, exists, repoRole } from './lib/harness.mjs';
 
 const argv = process.argv.slice(2);
 const has = (f) => argv.includes(f);
@@ -51,9 +51,7 @@ const DETECT_ONLY = has('--detect');
 const ANSWERS_FILE = arg('--answers');
 const ALLOW_EMPTY_VERIFY = has('--allow-empty-verify');
 
-const IS_TEMPLATE = exists(repoPath('HARNESS-CHANGELOG.md'))
-  && exists(repoPath('tooling', 'apply-to.mjs'))
-  && !exists(repoPath('.claude', 'harness-manifest.json'));
+const IS_TEMPLATE = repoRole() === 'template';
 if (APPLY && IS_TEMPLATE) {
   console.error(`\n⛔ Đây là REPO TEMPLATE, không phải project đích.\n`
     + `  Ghi cấu hình thật vào đây sẽ biến placeholder của template thành cấu hình của MỘT project,\n`
