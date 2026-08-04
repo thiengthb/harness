@@ -1,4 +1,4 @@
-<!-- version: 2026-08-04-c -->
+<!-- version: 2026-08-04-d -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,15 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-04 — `pre-commit` nay bắt Slack token và JWT (v2.2.0)
+
+Danh sách hình-dạng-secret từng có **hai bản**: hook `block-secrets` 7 pattern, `pre-commit`
+chỉ 5 — thiếu **Slack token** và **JWT**. Hook chỉ thấy thứ **agent** ghi; `pre-commit` là
+tầng duy nhất thấy thứ **bạn** gõ tay. Nên hai pattern thiếu đúng ở tầng gác người.
+
+Nay một nguồn ở `tooling/lib/harness.mjs`. Không cần làm gì — nhưng nếu bạn từng dán một
+token Slack/JWT vào file và nó lọt qua, **giờ nó sẽ bị chặn**, kể cả file cũ (`--all` ở CI).
 
 ## 2026-08-04 — CI không còn xanh giả (v2.1.0)
 

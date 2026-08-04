@@ -150,6 +150,12 @@ const cases = [
   ['block-secrets.mjs', { tool_input: { file_path: 'certs/server.pem' } }, BLOCK, 'ghi .pem bị chặn'],
   ['block-secrets.mjs', { tool_input: { file_path: 'src/a.ts', content: 'const k = "sk-abcdefghijklmnopqrstuvwxyz012345"' } }, BLOCK, 'secret trong nội dung bị chặn'], // harness-allow-secret
   ['block-secrets.mjs', { tool_input: { file_path: 'src/a.ts', content: 'const k = process.env.API_KEY' } }, OK, 'đọc từ env được phép'],
+  // Hai pattern này TỪNG chỉ có ở hook, không có ở pre-commit (xem SECRET_PATTERNS trong
+  // lib). Chuỗi bị GHÉP ở runtime là cố ý: `block-secrets` KHÔNG honor marker
+  // `harness-allow-secret`, nên một literal đủ hình dạng ở đây sẽ bị chính nó chặn lúc
+  // ai đó sửa file này. Đừng "dọn" hai dòng này thành literal — bạn sẽ không ghi được file.
+  ['block-secrets.mjs', { tool_input: { file_path: 'src/a.ts', content: 'const t = "' + 'xox' + 'b-0000000000-AAAAAAAAAAAA"' } }, BLOCK, 'Slack token trong nội dung bị chặn', null, /Slack token/],
+  ['block-secrets.mjs', { tool_input: { file_path: 'src/a.ts', content: 'const t = "' + 'eyJ' + 'aaaaaaaaaaaaaaaaaaaaa.' + 'bbbbbbbbbbbbbbbbbbbbb.' + 'cc"' } }, BLOCK, 'JWT trong nội dung bị chặn', null, /JWT/],
   // `.env.example` PHẢI đi qua: tooling/init.mjs copy nó thành .env, .gitignore whitelist nó, và
   // paths.secrets mặc định phủ định nó bằng `!**/.env.example`. Trước đây case này assert BLOCK và
   // gọi đó là "cố ý" — nhưng nó làm pre-commit chặn commit ĐẦU TIÊN của mọi project mới.
@@ -365,6 +371,28 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   fire({ hook_event_name: 'StopFailure', error: 'server_error' });
   if (exists(crumb)) fail.push('lớp kinh tế: server_error (không phải lỗi tiền) cũng tạo cảnh báo — đây là cách cảnh báo bị phớt lờ');
   else ok.push(`observe.mjs${' '.repeat(17)} lỗi kỹ thuật KHÔNG làm giật mình phiên sau`);
+}
+
+// ─── MỘT nguồn cho SECRET_PATTERNS ───────────────────────────────────────────
+// Test CẤU TRÚC, không test hành vi — vì chế độ hỏng ở đây không phải "pattern sai" mà
+// là "hai bản lệch nhau". Chúng không lệch vào ngày viết; chúng lệch vào ngày có người
+// thêm một pattern và chỉ thấy một chỗ. Đo 2026-08-04: bản ở pre-commit thiếu Slack token
+// và JWT, và pre-commit là tầng DUY NHẤT thấy thứ NGƯỜI gõ tay.
+//
+// Regex tìm `const SECRET_PATTERNS =` (KHAI), không tìm chữ `SECRET_PATTERNS` (NHẮC) —
+// hai file đó đều có comment nhắc tới nó, và văn xuôi nhắc một key không phải khai nó.
+{
+  for (const rel of [['.claude', 'hooks', 'block-secrets.mjs'], ['tooling', 'precommit-scan.mjs']]) {
+    const label = rel.join('/');
+    const txt = readFileSync(repoPath(...rel), 'utf8');
+    if (/\bconst\s+SECRET_PATTERNS\s*=/.test(txt)) {
+      fail.push(`${label} KHAI LẠI SECRET_PATTERNS — phải import từ lib, nếu không hai bản sẽ lệch`);
+    } else if (!/SECRET_PATTERNS/.test(txt)) {
+      fail.push(`${label} không dùng SECRET_PATTERNS — tầng này đang không quét nội dung`);
+    } else {
+      ok.push(`${label.padEnd(28).slice(0, 28)} dùng SECRET_PATTERNS dùng chung, không khai lại`);
+    }
+  }
 }
 
 // ─── precommit-scan --all: lưới an toàn CUỐI ở CI ────────────────────────────

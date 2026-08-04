@@ -345,6 +345,34 @@ export function toolContent(input) {
   return String(ti.content ?? ti.new_string ?? ti.new_source ?? '');
 }
 
+/**
+ * Hình dạng của một secret bị lọt vào NỘI DUNG file. MỘT nguồn, hai tầng dùng.
+ *
+ * VÌ SAO NÓ Ở ĐÂY. Danh sách này từng tồn tại HAI BẢN — `.claude/hooks/block-secrets.mjs`
+ * (7 pattern) và `tooling/precommit-scan.mjs` (5). Đo 2026-08-04: bản ở pre-commit thiếu
+ * **Slack token** và **JWT**.
+ *
+ * Chiều của lỗ đó là chiều tệ hơn. Hook `block-secrets` là PreToolUse: nó chỉ thấy thứ
+ * AGENT ghi. Tầng duy nhất thấy thứ NGƯỜI gõ tay là `pre-commit` — và đó chính là tầng
+ * thiếu hai pattern. Một Slack token do người dán vào file rồi commit đi qua sạch.
+ *
+ * Hai bản của một sự thật không lệch vào ngày viết; chúng lệch vào ngày ai đó thêm một
+ * pattern và chỉ thấy một chỗ. Nên chỗ sửa không phải "thêm hai pattern vào bản kia" —
+ * đó chỉ đặt lại đồng hồ cho lần lệch sau.
+ *
+ * KHÔNG nới pattern cho dễ chịu: miễn trừ đi qua marker `harness-allow-secret` theo
+ * DÒNG (xem `precommit-scan.mjs`), tường minh và audit được, không allowlist cả file.
+ */
+export const SECRET_PATTERNS = [
+  { re: /\bsk-[A-Za-z0-9_-]{20,}/, name: 'API key dạng sk-' },
+  { re: /\bAKIA[0-9A-Z]{16}\b/, name: 'AWS access key' },
+  { re: /-----BEGIN [A-Z ]*PRIVATE KEY-----/, name: 'private key' },
+  { re: /\bgh[pousr]_[A-Za-z0-9]{30,}/, name: 'GitHub token' },
+  { re: /\bxox[baprs]-[A-Za-z0-9-]{10,}/, name: 'Slack token' },
+  { re: /\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\./, name: 'JWT' },
+  { re: /(postgres|mysql|mongodb(\+srv)?):\/\/[^\s:@/]+:[^\s@/]+@/, name: 'connection string có mật khẩu' },
+];
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Telemetry (cá nhân, gitignore) — nguyên liệu của vòng học
 // ─────────────────────────────────────────────────────────────────────────────
