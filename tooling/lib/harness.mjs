@@ -494,7 +494,8 @@ export const MECHANISM_PATHS = [
   'tooling/entropy-scan.mjs',
   'tooling/check-reservations.mjs', 'tooling/check-feature-integrity.mjs',
   'tooling/wt-clean.mjs', 'tooling/statusline.mjs', 'tooling/precommit-scan.mjs',
-  '.githooks', 'evals/run.mjs',
+  '.githooks', 'evals/run.mjs', 'evals/fixtures',
+  'tooling/test-evals.mjs',
   'harness.version', 'HARNESS-CHANGELOG.md', 'harness-migrations',
 ];
 

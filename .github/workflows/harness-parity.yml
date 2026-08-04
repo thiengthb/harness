@@ -53,6 +53,11 @@ jobs:
       - name: Migration chạy được trên OS này
         run: node tooling/test-migrations.mjs
 
+      # Prompt đi qua stdin và lệnh đi qua shell — `cmd.exe` xử lý `"` và `%` khác `sh`, nên
+      # đây là suite BẮT BUỘC chạy 3 OS, không phải chỉ trên máy DRI.
+      - name: Eval runner (agent giả, không tốn token)
+        run: node tooling/test-evals.mjs
+
       - name: Knowledge lint
         run: node tooling/knowledge/lint.mjs
 

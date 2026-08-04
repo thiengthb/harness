@@ -11,6 +11,48 @@
 
 ---
 
+## 2.7.8 — 2026-08-05
+
+**minor về hành vi, breaking cho `evals.command`.** Runner eval có ~40 dòng **chưa bao giờ
+chạy ở đâu** — đo được: `evals.command` rỗng ở cả bốn repo. Nay có `tooling/test-evals.mjs`
+kiểm nó bằng **agent GIẢ**: tất định, miễn phí, chạy 3 OS. Suite bắt được **ba bug thật** ngay
+lần đầu.
+
+### ① `JSON.stringify` không phải shell escaping — prompt nhiều dòng bị bóp méo IM LẶNG
+
+`{prompt}` được nội suy bằng `JSON.stringify(prompt)` rồi dán vào một lệnh đi qua shell. Dấu
+nháy đôi qua đúng, nhưng **`\n` tới agent dưới dạng HAI ký tự literal** (`\` và `n`) chứ không
+phải một dòng mới. Mọi prompt eval thật đều nhiều dòng ⇒ **mọi prompt đều bị bóp méo**.
+
+Và nó bóp méo im lặng: agent vẫn chạy, vẫn trả kết quả, chỉ là nó đọc một prompt khác với
+prompt trong file task. Điểm eval sai theo hướng **không ai truy được** — nó đọc y hệt
+*"model vừa tụt hạng"*. Một bug computational được che bởi lớp inferential đắt nhất trong repo.
+
+**`{prompt}` bị BỎ. Prompt đi qua STDIN** — không có tầng escaping nào để sai, và là đường duy
+nhất đúng trên cả ba OS (`cmd.exe` xử lý `"` và `%` khác `sh`). Lệnh còn `{prompt}` bị **TỪ
+CHỐI kèm cách sửa**, không chạy tiếp: bóp méo im lặng tệ hơn một lỗi nói ra. `{promptFile}`
+cho tool không đọc được stdin.
+
+### ② Transcript của agent bị NÉM ĐI
+
+`runAgent` bắt toàn bộ output, dùng nó DUY NHẤT để đếm retry, rồi bỏ. Eval đỏ mà không có
+transcript thì người đọc chỉ có một dòng *"task 0003 fail"* và không có cách nào biết agent đã
+làm gì. `features/*.json` đòi `evidence` cho mọi `passes: true` — không lý gì lớp eval, lớp
+ĐẮT nhất và mờ nhất, lại được miễn. Nay `spill()` giữ transcript và runner in đường dẫn.
+
+### ③ `error` được tạo ra rồi bị bỏ đi
+
+`runAgent` trả `{ok:false, error}` cho những ca nó TỪ CHỐI chạy — và runner **không bao giờ in
+`error`**. Task hiện ra là đỏ mà không có lý do, nên người đọc đi tìm ở model trong khi lỗi
+nằm ở cấu hình. Một thông báo lỗi đã trả chi phí để tạo ra mà không ai đọc thì tệ hơn không tạo.
+
+### Suite: 9 case, có mutant
+
+Prompt fixture cố ý chứa nháy đôi, nháy đơn, xuống dòng thật và `%` — bốn thứ hay chết khi đi
+qua shell, và `%` là ca riêng của `cmd.exe`. Case ⑥ là **mutant**: viết sai tên placeholder
+phải làm hợp đồng ① ĐỎ, không làm nó `n/a`. `EVAL_TASKS_DIR` là override CHỈ-TEST, cùng lý do
+với `HARNESS_CONFIG`.
+
 ## 2.7.7 — 2026-08-05
 
 **patch.** `repoRole()` — một nguồn cho câu hỏi *"tôi là template hay repo đã áp?"*.

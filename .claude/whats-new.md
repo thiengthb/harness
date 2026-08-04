@@ -1,4 +1,4 @@
-<!-- version: 2026-08-05-e -->
+<!-- version: 2026-08-05-f -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,15 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-05 — `evals.command`: bỏ `{prompt}`, prompt đi qua stdin (v2.7.8)
+
+**Nếu bạn đã điền `evals.command` có `{prompt}`: runner sẽ TỪ CHỐI chạy** và nói cách sửa.
+Lý do: `JSON.stringify` không phải shell escaping — prompt nhiều dòng tới agent với `\n` là
+hai ký tự literal, **im lặng**, và điểm eval sai theo hướng đọc y hệt *"model tụt hạng"*.
+
+Lệnh mới: `claude -p --max-turns {maxTurns} --permission-mode auto` (prompt qua stdin).
+Runner giờ cũng **giữ transcript** của agent và in đường dẫn — eval đỏ có bằng chứng để đọc.
 
 ## 2026-08-05 — NÂNG CẤP TỪ BẢN CŨ TỪNG ĐỂ REPO HỎNG (v2.7.2)
 

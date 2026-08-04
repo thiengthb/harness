@@ -25,6 +25,10 @@ const checks = [
   { id: 'hooks',    label: 'Hook tests',              cmd: ['tooling/test-hooks.mjs'],        critical: true },
   // Migration là code DUY NHẤT ghi vào repo người khác ⇒ critical, ngang hàng hook tests.
   { id: 'migs',     label: 'Migration tests',         cmd: ['tooling/test-migrations.mjs'],   critical: true },
+  // Runner eval là lớp INFERENTIAL duy nhất trong repo, và nó chỉ chạy khi có người điền
+  // `evals.command` — chưa repo nào từng điền. Suite này kiểm nó bằng agent GIẢ: tất định,
+  // miễn phí, và nó đã bắt được 3 bug thật ở 2.7.8.
+  { id: 'evals',    label: 'Eval runner tests',       cmd: ['tooling/test-evals.mjs'],        critical: false },
   { id: 'coverage', label: 'Template coverage',       cmd: ['tooling/apply-to.mjs', '--audit'], critical: false },
   { id: 'know',     label: 'Knowledge lint',          cmd: ['tooling/knowledge/lint.mjs'],    critical: false },
   { id: 'entropy',  label: 'Entropy scan',            cmd: ['tooling/entropy-scan.mjs'],      critical: false },
