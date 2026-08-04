@@ -180,18 +180,42 @@ export function runConfigured(name, { placeholders = {}, capture = false, cwd = 
   };
 }
 
-/** Chạy lệnh dạng mảng args (an toàn với path có dấu cách). */
-export function run(bin, args = [], { cwd = REPO_ROOT, capture = true, input } = {}) {
+/**
+ * Chạy lệnh dạng mảng args.
+ *
+ * `shell` mặc định `IS_WIN` vì Windows cần shell để resolve **`.cmd`/`.ps1` shim**
+ * của package manager (`npm`, `pnpm`, `yarn` là shim, không phải .exe).
+ *
+ * NHƯNG `shell: true` LÀ MỘT CÁI BẪY, và nó chỉ nổ trên MỘT hệ điều hành:
+ * Node **nối args thành chuỗi mà KHÔNG escape** (chính Node cảnh báo — DEP0190).
+ * Nên một arg có dấu cách bị chẻ thành nhiều arg:
+ *
+ *   git commit-tree <sha> -m "fixture: migration da merge"
+ *     shell:false → 1 tree  ✓
+ *     shell:true  → git thấy `migration` `da` `merge` là 3 tree nữa
+ *                 → "fatal: must give exactly one tree"
+ *
+ * Lớp lỗi này XANH trên Linux/macOS và ĐỎ trên Windows — đúng loại lỗi mà Parity
+ * Contract tồn tại để bắt, và nó đã ẩn trong fixture của `test-hooks.mjs` từ v1.3.0
+ * (bắt được ở CI `parity (windows-latest)`, xem HARNESS-CHANGELOG 1.6.0).
+ */
+export function run(bin, args = [], { cwd = REPO_ROOT, capture = true, input, shell = IS_WIN } = {}) {
   const r = spawnSync(bin, args, {
-    cwd, encoding: 'utf8', input,
-    shell: IS_WIN, // Windows cần shell để resolve .cmd/.ps1 shim
+    cwd, encoding: 'utf8', input, shell,
     stdio: capture ? 'pipe' : 'inherit',
   });
   return { status: r.status ?? 1, stdout: (r.stdout ?? '').trim(), stderr: (r.stderr ?? '').trim() };
 }
 
+/**
+ * `shell: false` LUÔN LUÔN, kể cả trên Windows — `git` là `git.exe`, một executable
+ * thật, không phải shim, nên nó không cần shell. Và đi qua shell thì mọi arg có dấu
+ * cách (message commit, đường dẫn có khoảng trắng — `C:\Users\Nguyen Van A\...`) bị
+ * chẻ im lặng. Đây là chỗ DUY NHẤT trong harness quyết định điều đó; 40+ lệnh git
+ * trong repo thừa hưởng.
+ */
 export function git(args, opts = {}) {
-  return run('git', args, opts);
+  return run('git', args, { ...opts, shell: false });
 }
 
 /** Nhánh hiện tại, hoặc '' nếu không ở trong git repo. */

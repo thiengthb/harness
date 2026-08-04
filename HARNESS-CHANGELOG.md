@@ -15,6 +15,38 @@
 
 ### Tái phân vai harness ⟷ Claude Code native — nửa đầu
 
+#### Sửa — `shell: true` chẻ args trên Windows, và CHỈ trên Windows
+
+`git()` giờ **luôn** chạy `shell: false`. `git` là `git.exe`, một executable thật, không
+phải `.cmd` shim — nó không cần shell, và đi qua shell thì Node **nối args mà KHÔNG
+escape** (chính Node cảnh báo: DEP0190):
+
+```
+git commit-tree <sha> -m "fixture: migration da merge"
+  shell:false → 1 tree  ✓
+  shell:true  → git thấy `migration` `da` `merge` là 3 tree nữa
+              → fatal: must give exactly one tree
+```
+
+Lớp lỗi này **xanh trên Linux/macOS, đỏ trên Windows** — đúng loại lỗi mà Parity
+Contract tồn tại để bắt. Nó đã ẩn trong fixture của `test-hooks.mjs` từ v1.3.0 và chỉ
+lộ ra ở job `parity (windows-latest)`. 40+ lệnh git trong repo thừa hưởng bản sửa này,
+kể cả các đường dẫn Windows có khoảng trắng (`C:\Users\Nguyen Van A\…`).
+
+`run()` giữ mặc định `shell: IS_WIN` (package manager **là** shim) nhưng nhận
+`{ shell: false }` để nơi khác chọn.
+
+#### Sửa — gate kích cỡ PR đếm cả tài liệu, nên nó mất nghĩa hai chiều
+
+CI loại `docs/` · `HARNESS-CHANGELOG.md` · `README.md` · `whats-new.md` ·
+`.claude/learnings/**` · `knowledge/README.md` khỏi phép đếm. Tài liệu là load-bearing
+nhưng **review bằng cách khác**: đọc văn xuôi, không truy vết luồng thực thi. Gộp chúng
+vào một ngưỡng làm ngưỡng sai theo cả hai chiều — một PR 500 dòng ADR bị chặn oan, còn
+300 dòng hook thì lọt vì *"đa số là docs"*.
+
+`AGENTS.md` **cố ý không** được loại: nó nạp vào mọi phiên của mọi người nên nó là chỉ
+thị đang thi hành. Tính theo token × số lần đọc, đó là file đắt nhất repo.
+
 Nền: `docs/adr/0002-tai-phan-vai-native.md`. Nguyên tắc một dòng — **Claude Code sở
 hữu RUNTIME, harness sở hữu CHÍNH SÁCH** — và luật đặt mỗi cơ chế ở **bậc thấp nhất
 mà nó còn làm được việc**.
