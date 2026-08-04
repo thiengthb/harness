@@ -161,6 +161,30 @@ có alias) · fixture `config-automemory-in-repo.json`. Bớt `stop-gate.mjs`.
 *nối lại thứ đang đứt* hoặc *thay thứ đang sai*, không phải *thêm cơ chế*. Mục đầu tiên
 cần xét lại khi đó là chính ADR 0002.
 
+#### Sửa — ngưỡng kích cỡ PR chưa từng được hiệu chỉnh cho repo NÀY
+
+`prWarnLines` 400 → **800** · `prFailLines` 800 → **1500** · `prWarnFiles` 15 → **30**,
+và CI **loại tài liệu khỏi phép đếm** (nhưng **không** loại `AGENTS.md`, vì nó nạp vào
+mọi phiên của mọi người ⇒ nó là chỉ thị đang thi hành, không phải tài liệu).
+
+Phát hiện khi chạy `/pre-merge` cho chính đợt này: đo 6 release harness gần nhất (dòng,
+đã trừ tài liệu) được **206 · 428 · 726 · 817 · 909 · 1299** — mốc fail 800 đã bị
+**3/6 release vượt qua**, và mốc warn 15 file nổ ở **5/6**. Một cảnh báo nổ mọi lần là
+cảnh báo dạy người ta phớt lờ nó. Ngưỡng cũ hiệu chỉnh cho **repo sản phẩm**, nơi PR nhỏ
+co được cửa sổ conflict; ở template thì một thay đổi harness là đa file **bắt buộc** —
+hook + config + test + changelog + migration phải hạ cánh cùng lúc, vì nửa BREAKING
+giữa hai lần merge để `settings.json` trỏ vào hook không tồn tại.
+
+Hiệu chỉnh theo **lịch sử**, không theo diff hôm nay: 1500 = release lớn nhất từng có +
+~15% headroom. Đặt 2000 thì gate không bao giờ nổ. Và nó vẫn nổ đúng lúc: PR gộp cả
+v1.6.0 + v2.0.0 (1811 dòng) **bị chặn**, nên đợt này lên thành **hai PR**, mỗi PR một
+release — đúng luật "một PR một mục đích".
+
+`harness.config.json` là SEED ⇒ project mới thừa hưởng con số này. Thừa hưởng im lặng là
+cách một ngoại lệ có lý do biến thành mặc định không ai nhớ tại sao, nên
+`harness-doctor` nhắc: repo **không phải** template mà có `prFailLines ≥ 1500` thì nên
+hạ về 400/800.
+
 #### Còn đỏ, và biết vì sao
 
 `node evals/run.mjs` → **2/4** (không tụt so với trước đợt này). Hai eval đỏ vì trạng

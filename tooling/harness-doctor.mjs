@@ -89,6 +89,16 @@ if (mcpCount > mcpMax) advice.push(`${mcpCount} MCP server (ngưỡng ${mcpMax})
 
 if (!cfg.budget?.monthlyUsdCap) advice.push('budget.monthlyUsdCap = 0 — không có cap chi tiêu. Xem docs/ECONOMICS.md');
 
+// Ngưỡng kích cỡ PR của REPO TEMPLATE cao hơn của repo sản phẩm, và có lý do (xem
+// $comment_prLines trong harness.config.json). Nhưng `harness.config.json` là SEED —
+// project mới THỪA HƯỞNG con số đó, và thừa hưởng nó im lặng là cách một ngoại lệ có
+// lý do biến thành mặc định không ai nhớ tại sao. Máy nhắc, đừng trông vào việc ai đó đọc.
+if (!IS_TEMPLATE && (cfg.limits?.prFailLines ?? 0) >= 1500) {
+  advice.push(`limits.prFailLines = ${cfg.limits.prFailLines} — đây là ngưỡng của REPO TEMPLATE `
+    + '(nơi mọi thay đổi harness là đa file: hook + config + test + changelog + migration). '
+    + 'Repo sản phẩm nên hạ về 400/800: PR nhỏ là cách co cửa sổ conflict, không phải hình thức.');
+}
+
 // ── Git / phối hợp ───────────────────────────────────────────────────────────
 console.log('\n── GIT & PHỐI HỢP ──');
 const hooksPath = run('git', ['config', 'core.hooksPath']).stdout;
