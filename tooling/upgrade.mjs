@@ -96,7 +96,7 @@ const MECHANISM = [
   'tooling/lib', 'tooling/knowledge', 'tooling/fixtures', 'tooling/generators',
   'tooling/init.mjs', 'tooling/test-hooks.mjs', 'tooling/apply-to.mjs', 'tooling/upgrade.mjs',
   'tooling/fixlog.mjs', 'tooling/coactivity.mjs', 'tooling/harness-size.mjs',
-  'tooling/capo-report.mjs', 'tooling/doctor.mjs', 'tooling/entropy-scan.mjs',
+  'tooling/capo-report.mjs', 'tooling/harness-doctor.mjs', 'tooling/doctor.mjs', 'tooling/entropy-scan.mjs',
   'tooling/check-reservations.mjs', 'tooling/check-feature-integrity.mjs',
   'tooling/wt-clean.mjs', 'tooling/statusline.mjs', 'tooling/precommit-scan.mjs',
   '.githooks', 'evals/run.mjs', 'harness-migrations',
@@ -253,7 +253,7 @@ report('NÂNG CẤP', { ok, warn, fail });
 console.log(`  Bước tiếp theo:
     1. git diff — đọc thay đổi
     2. Xử lý mọi file .new nếu có
-    3. node tooling/doctor.mjs
+    3. node tooling/harness-doctor.mjs
     4. Đọc HARNESS-CHANGELOG.md của template, cập nhật .claude/whats-new.md cho team
 `);
 process.exit(fail.length ? 1 : 0);

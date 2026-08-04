@@ -39,7 +39,7 @@
  */
 import {
   hookInput, toolFilePath, toRepoRel, matchAny, pathsFor,
-  config, git, block, pass, telemetry, currentBranch,
+  config, git, block, pass, telemetry, hookRan, currentBranch,
 } from '../../tooling/lib/harness.mjs';
 
 const rel = toRepoRel(toolFilePath(hookInput()));
@@ -65,10 +65,10 @@ const configured = process.env.HARNESS_INTEGRATION_BRANCH || config().project?.i
 const candidates = configured ? [configured] : ['origin/main', 'origin/master', 'main', 'master'];
 const ref = candidates.find(r => git(['rev-parse', '--verify', '--quiet', `${r}^{commit}`]).status === 0);
 
-if (!ref) pass();                                                   // không có nhánh tích hợp → im
+if (!ref) { hookRan('protect-migrations', 'skip', 'không resolve được nhánh tích hợp'); pass(); }
 
 // Có mặt trong nhánh tích hợp = đã merge.
-if (git(['cat-file', '-e', `${ref}:${rel}`]).status !== 0) pass();   // file mới → cho phép
+if (git(['cat-file', '-e', `${ref}:${rel}`]).status !== 0) { hookRan('protect-migrations', 'pass', `migration mới: ${rel}`); pass(); }
 
 telemetry('gate-fails', ['protect-migrations', rel]);
 block(

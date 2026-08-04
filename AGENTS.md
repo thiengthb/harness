@@ -25,6 +25,9 @@ Cấu hình harness: `harness.config.json` — mọi lệnh, ngưỡng, vùng n�
 | Sinh code từ schema | CHANGEME |
 | Test một file | CHANGEME |
 | Chạy app | CHANGEME |
+| Chạy gate (stop / subagent / preMerge) | `node tooling/gates.mjs --stage <stage>` |
+| Xem gate nào ĐANG THẬT SỰ chạy + độ trễ | `node tooling/gates.mjs --list --timing` |
+| Kiểm sức khoẻ lớp harness | `node tooling/harness-doctor.mjs` |
 
 ## Gotchas
 
@@ -45,7 +48,8 @@ Cấu hình harness: `harness.config.json` — mọi lệnh, ngưỡng, vùng n�
   SessionStart hook in sẵn — **đọc nó**.
 - **Một issue = một nhánh = một worktree.** Không làm 2 issue trong một worktree.
 - Trước khi sửa file trong **vùng nóng** (xem `harness.config.json → paths.hot`):
-  kiểm `gh pr list --state open` và `reservations/`. Có chồng lấn → **báo người, đừng tự quyết**.
+  kiểm `gh pr list --state open`. Có chồng lấn → **báo người, đừng tự quyết**.
+  (Reservation thì KHÔNG cần nhớ: SessionStart in ra, pre-commit chặn.)
 - **KHÔNG sửa**: `.claude/settings.json`, `.claude/hooks/**`, `.mcp.json`, `AGENTS.md`, `harness.config.json`.
   Dùng `/harness-propose`. (Hook sẽ chặn — đó là cố ý.)
 - **KHÔNG sửa** file feature của issue khác. **KHÔNG sửa** `features/_index.json`.
@@ -63,6 +67,22 @@ Cấu hình harness: `harness.config.json` — mọi lệnh, ngưỡng, vùng n�
 - Một feature chỉ DONE khi **mọi platform trong scope** pass. Ngoài scope ghi `"n/a"`, không ghi `true`.
 - Ưu tiên **computational control** (typecheck, lint, test, grep rule) trước **inferential control** (LLM chấm).
   Mỗi lần định nhờ LLM chấm, hỏi trước: có biến thành check tất định được không?
+- **Gate ở `Stop` phải chạy dưới 30 giây. Gate ở `SubagentStop` phải dưới 5 giây.**
+  Đắt hơn thì đẩy xuống CI. Mỗi gate ở `SubagentStop` nhân với tối đa 16 agent song
+  song. Đo: `node tooling/gates.mjs --list --timing`. Đây là chỉ số **"harness đang
+  cản"** duy nhất đo trực tiếp được.
+
+## Hai bộ nhớ, hai vai — một sự thật ở cả hai chỗ là một LỖI
+
+- **Auto-memory** (`~/.claude/projects/*/memory/`): quan sát THÔ, máy-cục-bộ, được
+  phép sai, **không bao giờ** là sự thật của đội, **không bao giờ** commit.
+  Nó nạp 200 dòng đầu `MEMORY.md` MỖI phiên — đó là **chỉ thị thật**. Nếu nó mâu thuẫn
+  với `knowledge/lessons/`, Claude được phép chọn tuỳ ý, và không gì báo cho bạn.
+- **`knowledge/lessons/`**: quyết định ĐÃ QUA GATE (`occurrences ≥ 2` + `evals:`),
+  mang đi được sang repo khác, review trong PR.
+- Auto-memory là tầng **CAPTURE miễn phí** của vòng học: `/harness-retro` bước 1 đọc
+  `MEMORY.md` như một **đầu vào**, không như thẩm quyền. Mục nào xuất hiện ở ≥2 máy
+  → ứng viên promote.
 
 ## Git & PR
 

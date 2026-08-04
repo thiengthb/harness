@@ -1,12 +1,100 @@
 # 2026-W32 — Tái phân vai harness ⟷ Claude Code native (phần CÒN LẠI)
 
-> Nửa đầu đã áp xong, xem `docs/adr/0002-tai-phan-vai-native.md` và `git diff`.
-> Phần dưới đây bị `protect-harness` chặn — nó chạm `paths.harness`.
+> **✅ ĐÃ ÁP XONG — v2.0.0, 2026-08-04.** Xem `HARNESS-CHANGELOG.md §2.0.0`,
+> `docs/adr/0002-tai-phan-vai-native.md`, và `harness-migrations/003-…mjs`.
 >
-> **Cách tiếp tục:** thoát phiên, chạy `HARNESS_DRI=1 claude`, rồi nói
-> *"tiếp tục ADR 0002, phần còn lại nằm ở .claude/learnings/2026-W32"*.
-> Mỗi lần sửa sẽ được ghi vào `.claude/telemetry/harness-edits.log` — cửa thoát
-> này tường minh và audit được, đó là điểm của nó.
+> **Ba mục KHÔNG áp theo spec, vì spec sai** — chi tiết ở §0 ngay dưới:
+> `WorktreeCreate`/`WorktreeRemove` là **provisioner** (cắm vào là làm vỡ
+> `claude --worktree` / rò rỉ worktree) ⇒ bỏ luôn hai cờ `--on-create` và `--one`;
+> `StopFailure` gửi trường `error` và **bỏ qua output** ⇒ phải ghi file cho phiên sau.
+>
+> Giữ file này làm **hồ sơ**: nó ghi cả những chỗ spec sai, và §0 là bằng chứng cho
+> luật *"đo binary đang chạy, đừng chỉ đọc tài liệu"*. Đừng chạy lại nó như một
+> checklist — nó đã được thực hiện.
+>
+> Cách áp lúc đó: `HARNESS_DRI=1` (hoặc `env.HARNESS_DRI` trong
+> `.claude/settings.local.json` — hook đọc env của tiến trình Claude Code, **không**
+> đọc env của shell bạn gõ lệnh). Mỗi lần sửa được ghi vào
+> `.claude/telemetry/harness-edits.log` — cửa thoát tường minh và audit được.
+
+---
+
+## 0. ĐÃ VERIFY VỚI CLI ĐANG CHẠY — và ba chỗ SPEC BÊN DƯỚI SAI
+
+Bảng ở §1c nói *"đã verify tồn tại (fetch `docs/en/hooks`)"*. Tài liệu nói đúng về
+**tên** sự kiện nhưng không nói đủ về **hợp đồng** của hai sự kiện cuối. Lần này đo
+bằng nguồn mạnh hơn tài liệu: **schema hook nhúng trong chính binary CLI**
+(`~/.local/share/claude/versions/2.1.221`, 2026-08-04) — nó là thứ ĐANG CHẠY.
+
+```
+grep -a -A6 -m1 '<Event>:{summary:' <binary>
+```
+
+Bảy sự kiện đều **tồn tại thật**. Nhưng:
+
+| Sự kiện | Trường match | Hợp đồng THẬT (từ binary) |
+|---|---|---|
+| `SubagentStop` | `agent_type` | exit 2 = hiện stderr cho subagent **và cho nó chạy tiếp** ✅ đúng spec |
+| `StopFailure` | `error` — enum 10 giá trị | **fire-and-forget: output VÀ exit code bị BỎ QUA** |
+| `InstructionsLoaded` | `load_reason` (5 giá trị) | *"observability-only, does not support blocking"* ✅ |
+| `ConfigChange` | `source` (5 giá trị) | exit 2 = **chặn** thay đổi; `policy_settings` bị ép `blocked:false` |
+| `Setup` | `trigger` = `init`\|`maintenance` | exit 0 = stdout thành `additionalContext` ✅ |
+| `WorktreeCreate` | *(không có)* | ⛔ **"Stdout should contain the absolute path to the created worktree"** |
+| `WorktreeRemove` | *(không có)* | ⛔ **"Exit code 0 — worktree removed successfully"** |
+
+### Sửa 1 — `WorktreeCreate`/`WorktreeRemove` KHÔNG phải chỗ cắm quan sát
+
+Chúng là **provisioner**, không phải observer. Đọc code trong binary:
+
+```js
+// WorktreeCreate
+let n = r.filter(o => o.succeeded).map(o => parsePath(o.output)).find(o => o.length > 0);
+if (n === undefined) { … throw Error("WorktreeCreate hook failed: hook succeeded but
+                          returned no worktree path (command: echo the path to stdout)") }
+// WorktreeRemove
+let c = false; for (const u of l) if (u.succeeded) c = true;  return c;   // true = ĐÃ XOÁ RỒI
+```
+
+Cắm `check-reservations.mjs --on-create` vào `WorktreeCreate` **làm `claude --worktree`
+vỡ cho cả đội**: hook không in ra đường dẫn ⇒ CC throw, không tạo được worktree nữa.
+Cắm `wt-clean.mjs --one` vào `WorktreeRemove` thì tệ theo cách im lặng hơn: hook exit 0
+⇒ CC tin worktree **đã bị xoá** và bỏ qua bước xoá của chính nó ⇒ **worktree rò rỉ**.
+
+Spec bên dưới có linh cảm đúng (*"hai dòng cuối là bẫy"*) nhưng sai lý do: bẫy không
+phải *"exit 2 chặn"* mà là **"hai sự kiện này ĐỔI CHỦ cơ chế"**. Đây đúng là lớp lỗi
+`knowledge/lessons/0002-guard-ban-nham.md`, lần này ở tầng vendor.
+
+**Quyết định: KHÔNG cắm hai sự kiện đó.** Hệ quả kéo theo:
+- **không** cần cờ `--on-create` cho `check-reservations.mjs`
+- **không** cần cờ `--one` cho `wt-clean.mjs`
+- §4c vẫn xoá được dòng *"kiểm `reservations/`"* khỏi AGENTS.md — nhưng nhờ cơ chế
+  KHÁC đã có sẵn: `session-start.mjs` §5 **đã** in reservation đang hoạt động, và
+  pre-commit **đã** cưỡng chế. Bậc 7 → bậc 3, chỉ là ở một sự kiện khác.
+- ròng **−2 cờ mới** so với spec. Đo, đừng tin — kể cả đo tài liệu của vendor.
+
+### Sửa 2 — `StopFailure`: trường là `error`, và IN RA LÀ CHỮ CHẾT
+
+Input thật: `{ error, error_details, last_assistant_message }` — **không** có `reason`
+hay `error_type`. Đoạn code ở §2 đọc `i?.reason ?? i?.error_type` ⇒ luôn nhận `'?'`.
+
+Nặng hơn: vendor khai rõ **output và exit code của hook này bị bỏ qua**. Nên mọi
+`console.error` ở nhánh đó không tới được mắt ai — một cảnh báo về TIỀN mà không ai
+đọc thì bằng không có cảnh báo. `observe.mjs` vì thế **ghi một mẩu bánh mì** vào
+`.claude/state/last-stop-failure.json`, và `session-start.mjs` in nó MỘT LẦN ở phiên
+sau (chỗ duy nhất được phép in nghi thức, và test của nó đã khai `msg`).
+
+Enum `error`: `rate_limit` `overloaded` `authentication_failed` `oauth_org_not_allowed`
+`billing_error` `invalid_request` `model_not_found` `server_error` `max_output_tokens`
+`unknown`. Chỉ vài giá trị nói về **ví**; gộp cả `server_error` vào cảnh báo hoá đơn là
+cách làm người ta phớt lờ nó. Matcher `*` + phân loại trong hook, đừng lọc ở matcher:
+một báo động về tiền mà im lặng vì matcher hụt là chế độ hỏng tệ nhất của lớp này.
+
+### Sửa 3 — `ConfigChange` gửi `file_path` ở CẤP TRÊN, không trong `tool_input`
+
+`protect-harness.mjs` rút path bằng `toolFilePath()`, chỉ đọc `input.tool_input.*`.
+Cắm nó vào `ConfigChange` mà không sửa ⇒ path rỗng ⇒ `pass()` ngay ⇒ **lớp phòng thủ
+thứ hai là trang trí**. Sửa ở `tooling/lib/harness.mjs` (một chỗ, mọi hook thừa hưởng),
+không sửa trong từng hook.
 
 ---
 

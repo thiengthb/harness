@@ -3,7 +3,7 @@
  * Chặn agent ghi vào file secret, và chặn secret lọt vào nội dung file thường.
  * PreToolUse trên Write|Edit
  */
-import { hookInput, toolFilePath, toolContent, toRepoRel, matchAny, pathsFor, block, pass, telemetry } from '../../tooling/lib/harness.mjs';
+import { hookInput, toolFilePath, toolContent, toRepoRel, matchAny, pathsFor, block, pass, telemetry, hookRan } from '../../tooling/lib/harness.mjs';
 
 const input = hookInput();
 const rel = toRepoRel(toolFilePath(input));
@@ -39,4 +39,5 @@ if (content) {
   }
 }
 
+hookRan('block-secrets', 'pass', rel);
 pass();

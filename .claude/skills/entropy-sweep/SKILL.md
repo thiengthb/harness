@@ -15,9 +15,20 @@ model đổi mà tài liệu thì không. Không ai gửi thông báo khi một 
 Với agent, **mọi text trong repo có thẩm quyền như nhau**. Nó không có trực giác
 "ghi chú này 3 tháng trước, giờ sai rồi". Tài liệu cũ **độc hại hơn** không có tài liệu.
 
-## 1. AGENTS.md và rules
+## 1. AGENTS.md — GIAO CHO `/doctor` NATIVE, đừng làm tay
 
-Với mỗi mục, hỏi hai câu:
+```
+/doctor
+```
+
+Lệnh native của Claude Code làm đúng việc này: nó đề xuất cắt gọn CLAUDE.md/AGENTS.md,
+do vendor bảo trì, và **nó biết nội dung nào suy ra được từ codebase** — thứ mà một
+skill viết tay chỉ đoán. Chạy nó trước, rồi mới đọc phần dưới.
+
+(Không lẫn với `node tooling/harness-doctor.mjs` — cái đó kiểm **lớp harness**:
+gate, hook, telemetry, bài học. Hai nghề khác nhau, và tên có tiền tố để không nhầm.)
+
+Sau khi `/doctor` chạy, với mỗi mục CÒN LẠI hỏi hai câu:
 
 - Claude có suy ra được từ repo/file tree không? → **XOÁ**
 - Nó có xung đột/trùng với skill hoặc rule nào không? → **XOÁ ở một chỗ**
@@ -31,7 +42,7 @@ Rồi:
 - Giữ lại: gotcha, quyết định có ranh giới, tên integration cụ thể, ngưỡng số thật,
   bước build không hiển nhiên
 
-## 2. Rules — kiểm frontmatter
+## 2. Rules — kiểm frontmatter (native KHÔNG biết gì về mấy thứ này)
 
 ```
 node tooling/harness-size.mjs

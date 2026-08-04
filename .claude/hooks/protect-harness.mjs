@@ -19,7 +19,7 @@
  * Cửa thoát này tường minh và audit được. Không có nó, DRI không dùng được agent
  * để bảo trì chính harness — và một harness không bảo trì được sẽ mục.
  */
-import { hookInput, toolFilePath, toRepoRel, matchAny, pathsFor, config, block, pass, telemetry, currentBranch } from '../../tooling/lib/harness.mjs';
+import { hookInput, toolFilePath, toRepoRel, matchAny, pathsFor, config, block, pass, telemetry, hookRan, currentBranch } from '../../tooling/lib/harness.mjs';
 
 const rel = toRepoRel(toolFilePath(hookInput()));
 if (!rel) pass();
@@ -32,6 +32,7 @@ if (!matchAny(rel, pathsFor('harness'))) pass();
 
 if (process.env.HARNESS_DRI === '1') {
   telemetry('harness-edits', [currentBranch(), rel, process.env.DEV_ID || process.env.USER || '?']);
+  hookRan('protect-harness', 'pass', `dri:${rel}`);
   console.error(`⚠️  Sửa harness với quyền DRI: ${rel}`);
   console.error('   Đã ghi .claude/telemetry/harness-edits.log.');
   console.error('   Nhớ: cập nhật .claude/whats-new.md và thêm case vào tooling/test-hooks.mjs nếu đổi hook.');

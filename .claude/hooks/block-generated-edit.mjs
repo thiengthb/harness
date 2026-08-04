@@ -6,7 +6,7 @@
  * file .gen.* (vì đó là chỗ lỗi hiện ra), build sau ghi đè, và bạn mất 40 phút
  * để hiểu tại sao "sửa rồi mà vẫn lỗi".
  */
-import { hookInput, toolFilePath, toRepoRel, matchAny, pathsFor, config, block, pass, telemetry } from '../../tooling/lib/harness.mjs';
+import { hookInput, toolFilePath, toRepoRel, matchAny, pathsFor, config, block, pass, telemetry, hookRan } from '../../tooling/lib/harness.mjs';
 
 const rel = toRepoRel(toolFilePath(hookInput()));
 if (!rel) pass();
@@ -22,4 +22,5 @@ if (matchAny(rel, pathsFor('generated'))) {
   );
 }
 
+hookRan('block-generated-edit', 'pass', rel);
 pass();

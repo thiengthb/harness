@@ -73,7 +73,8 @@ lấp ở tầng thấp hơn.
 | Tiền và quota | **Claude Code** | OTel + `StopFailure` + managed spend limit |
 | Phân phối lớp cơ chế | **Claude Code** | marketplace + pin sha (chỉ khi ≥3 repo) |
 | Phân phối lớp nội dung + migration | **Harness** | `apply-to` + `upgrade` + `harness-migrations` |
-| Nghi thức khởi động / worktree | **CC gọi, Harness quyết** | `Setup`, `WorktreeCreate/Remove` hook |
+| Nghi thức khởi động | **CC gọi, Harness quyết** | `Setup` (init/maintenance) + `SessionStart` hook |
+| **Tạo/xoá worktree** | **Claude Code, TOÀN BỘ** | `WorktreeCreate/Remove` là provisioner — xem §"Năm chỗ TỪ CHỐI" #4, #5 |
 
 ## Bằng chứng — đo TRƯỚC khi sửa (2026-08-04)
 
@@ -92,25 +93,65 @@ Không có bảng này thì mọi thay đổi trong đợt này là phỏng đo�
 | 9 | mutation testing | **0** | A2 xác nhận → 3 mutant đầu tiên |
 | 10 | neo "yêu cầu nguyên văn" | **0** | issue URL là neo; không thêm khối trùng |
 
-**Còn thiếu để hoàn tất Lô 0** (chạy trong một phiên thật, ghi vào đây):
+**Lô 0 — ĐÃ ĐO trong một phiên thật (2026-08-04, Opus 5 · cửa sổ 1M):**
 
-- [ ] `/context` — tokens của memory · skill discovery · MCP tool defs · rules
-- [ ] `EVAL_ISOLATED=1 node evals/run.mjs --baseline`
-- [ ] `EVAL_ISOLATED=1 node evals/run.mjs --bare --baseline` — hiệu hai số = **giá trị đo được của toàn bộ harness**
-- [ ] `node tooling/gates.mjs --list --timing` — độ trễ gate
+- [x] **`/context`** — thuế context của lớp harness:
+
+  | Mục | Tokens | % cửa sổ |
+  |---|---|---|
+  | Memory files (`AGENTS.md` 2.8k · `rules/README` 943 · `danger-zones` 842 · `CLAUDE.md` 14) | **4.6k** | 0.5% |
+  | Custom agents (5) | 396 | 0.04% |
+  | Skill **của project** trong tầng discovery (3: dedupe-scan · research-first · ship-feature) | **~190** | 0.02% |
+  | MCP tool definitions (44 tool) | **0** | 0% |
+  | **Tổng lớp harness** | **≈ 5.2k** | **0.5%** |
+
+  Hai điều số này nói ra, và cả hai đều đổi cách đọc mục tiêu:
+  - **MCP = 0 token.** Tool definition giờ nạp **theo yêu cầu** (deferred), chỉ tốn
+    ~15.6k khi thật sự dùng. Ngưỡng `mcp.maxTools ≤ 20` trong config được đặt khi
+    tool defs ăn context ở MỌI request — **tiền đề đó đã hết hạn**. Ngưỡng nên đọc lại
+    thành "≤20 tool ĐANG NẠP", và đó là việc của đợt sau, không phải sửa vội ở đây.
+  - **9 skill nghi thức đóng góp 0** nhờ `disable-model-invocation` (1.6.0). Tầng
+    discovery của project còn **3**, và chi phí thật của chúng là ~190 token —
+    nhỏ hơn `danger-zones.md`, một file rule duy nhất.
+- [x] `EVAL_ISOLATED=1 node evals/run.mjs --baseline` → **50% (2/4)**, ghi vào
+  `.claude/state/eval-baseline.json`
+- [x] `EVAL_ISOLATED=1 node evals/run.mjs --bare --baseline` → **50% (2/4)**
+- [x] `node tooling/gates.mjs --list --timing` → `stop` **0ms**/30s · `subagent` **0ms**/5s
+
+**Và hai chỗ phải nói là CHƯA ĐO ĐƯỢC, không được làm tròn thành một con số:**
+
+1. **"Giá trị đo được của toàn bộ harness" = `eval` − `eval --bare` = 0pp — nhưng đây
+   là số 0 DO CẤU TRÚC, không phải phát hiện.** `evals.command` rỗng ⇒ không có agent
+   nào chạy ⇒ cả hai lần đo chỉ chạy assertion tất định trên **cùng một trạng thái
+   repo**, nên `--bare` không thể khác. Chỉ project đã khai `evals.command` (một lệnh
+   `claude -p …` thật) đo được chỉ số này. Đây đúng là "trạng thái thứ ba" mà
+   `report()` bắt phải phân biệt — và nếu ghi "harness không tạo ra giá trị đo được"
+   thì đó là một kết luận rút từ một phép đo chưa chạy.
+2. **Mục tiêu "thuế context ↓ ≥30%" KHÔNG so được.** Không ai chạy `/context` TRƯỚC đợt
+   này, nên không có số để trừ. 0.5% thoả mục tiêu tuyệt đối (`< 5%`) gấp 10 lần, nhưng
+   tỉ lệ giảm thì vĩnh viễn không lấy lại được. Bảng trên **là baseline** cho lần sau.
+   Bài học rẻ nhất của cả đợt: *một chỉ số dạng "giảm ≥X%" phải được đo TRƯỚC khi sửa,
+   nếu không nó tự động thành chỉ số không phán quyết được gì.*
 
 ## Bốn chỉ số phán quyết đợt này
 
-| Chỉ số | Đo bằng | Mục tiêu |
-|---|---|---|
-| Thuế context | `/context` | ↓ ≥30%, và < 5% context window |
-| Giá trị đo được của harness | `eval --baseline` − `eval --bare --baseline` | **không đổi hoặc tăng**. Tụt ⇒ vừa cắt nhầm, revert đúng mảnh đó |
-| Độ trễ gate | `gates.mjs --list --timing` | `stop` < 30s · `subagent` < 5s |
-| Kích thước harness | `harness-size.mjs` | **phẳng hoặc ↓** |
+| Chỉ số | Đo bằng | Mục tiêu | ĐO ĐƯỢC 2026-08-04 |
+|---|---|---|---|
+| Thuế context | `/context` | ↓ ≥30%, và < 5% context window | **0.5%** ✅ tuyệt đối · tỉ lệ **chưa so được** (không có số trước) |
+| Giá trị đo được của harness | `eval --baseline` − `eval --bare --baseline` | **không đổi hoặc tăng**. Tụt ⇒ vừa cắt nhầm, revert đúng mảnh đó | **CHƯA ĐO ĐƯỢC** — `evals.command` rỗng, xem §Bằng chứng |
+| Độ trễ gate | `gates.mjs --list --timing` | `stop` < 30s · `subagent` < 5s | **0ms / 0ms** ✅ (n/a: template chưa khai `commands`) |
+| Kích thước harness | `harness-size.mjs` | **phẳng hoặc ↓** | baseline ghi lại hôm nay; phán quyết **2026-11-02** |
 
-## Ba chỗ TỪ CHỐI làm theo tài liệu nguồn, và vì sao
+Ba trong bốn chỉ số hoặc đã đạt hoặc phải đợi. Chỉ số duy nhất **không đo được ở
+template** là chỉ số quan trọng nhất — và nó chỉ mở ra khi một project thật khai
+`evals.command`. Ghi ra để lần sau không ai đọc bảng này như "đã xanh hết".
+
+## Năm chỗ TỪ CHỐI làm theo tài liệu nguồn, và vì sao
 
 Ghi ra vì một đợt rà soát không từ chối gì là một đợt chưa đủ phản biện.
+Hai chỗ cuối chỉ lộ ra khi đo **binary CLI đang chạy** thay vì đọc tài liệu — xem
+§Nguồn. Chúng là hai chỗ suýt làm vỡ việc của cả đội, nên chúng đứng đây, không ở
+phần phụ lục.
 
 1. **KHÔNG xoá `/wt` và `/whats-new`.** Nguồn gọi chúng là "bọc một lệnh". Đọc thật
    thì `/wt` chứa bảng tài nguyên cục bộ (cổng, DB, inotify, simulator, `index.lock`)
@@ -128,7 +169,25 @@ Ghi ra vì một đợt rà soát không từ chối gì là một đợt chưa 
    khi hai lớp lệch nhau. Deny rule không test được bằng spawn hook, nên chỗ nó được
    kiểm là doctor — nếu không, xoá nó đi cũng không ai biết.
 
-3. **KHÔNG dùng `!process.stdout.isTTY` trong `unattended()`.** Nguồn đề xuất công
+3. **KHÔNG cắm gì vào `WorktreeCreate`.** Nó **không phải** điểm mở rộng quan sát —
+   nó là **provisioner**. Hợp đồng của vendor: *"Stdout should contain the absolute
+   path to the created worktree directory."* Hook không in đường dẫn ⇒ CC **throw** ⇒
+   `claude --worktree` **vỡ cho cả đội**. Kế hoạch ban đầu (`check-reservations.mjs
+   --on-create`) sẽ nổ ngay lần đầu ai đó mở worktree.
+
+4. **KHÔNG cắm gì vào `WorktreeRemove`.** Cùng lớp lỗi, hỏng im lặng hơn: hợp đồng là
+   *"Exit code 0 — worktree removed successfully"*. Một script advisory exit 0 làm CC
+   tin worktree **đã được xoá** và **bỏ qua bước xoá của chính nó** ⇒ worktree rò rỉ,
+   và triệu chứng xuất hiện cách nguyên nhân vài ngày.
+
+   Hệ quả của #3 + #4: **không** thêm cờ `--on-create` cho `check-reservations.mjs`,
+   **không** thêm cờ `--one` cho `wt-clean.mjs` (−2 cơ chế so với kế hoạch). Dòng
+   *"kiểm `reservations/`"* trong AGENTS.md vẫn xoá được, nhưng nhờ cơ chế **đã có**:
+   `session-start.mjs` §5 in reservation đang hoạt động, pre-commit cưỡng chế nó.
+   Bậc 7 → bậc 3, chỉ là ở một sự kiện khác. `harness-doctor` có check chặn việc cắm
+   lại — bài học phải nằm trong MÁY, không nằm trong một đoạn văn ai đó sẽ không đọc.
+
+5. **KHÔNG dùng `!process.stdout.isTTY` trong `unattended()`.** Nguồn đề xuất công
    thức đó. Hook **luôn** được spawn với stdio piped → isTTY false ở **mọi** phiên,
    kể cả phiên có người ngồi nhìn. Mọi thứ fail-đóng dựng trên đó thành guard bắn
    nhầm cho cả team — đúng `knowledge/lessons/0002-guard-ban-nham.md`. Chỉ giữ ba
@@ -158,10 +217,37 @@ cho ta (`StopFailure`) thay vì con số không ai đọc.
 | gate `subagent` | khi vendor cho chạy Stop hook cho từng subagent |
 | `unattended()` | khi vendor phơi ra cờ chính thức cho phiên không người |
 | `dcg.mjs` phần còn lại | khi sandbox phủ được **ngữ nghĩa lệnh**, không chỉ filesystem |
+| alias `tooling/doctor.mjs` | **3.0.0** — mốc cứng, đã ghi trong changelog |
+| check "provisioner event" trong doctor | khi vendor tách hai họ sự kiện ở tầng cấu hình |
 | phòng chờ `entropy-scan --stage` | nếu sau 6 tháng chưa MỘT LẦN miễn tội cho file nào → rút 30 ngày xuống 14 |
 | ratchet | nếu sau 60 ngày không mốc nào được hạ → nó đang CHE backlog, bỏ đi |
 
 ## Nguồn
+
+**Nguồn mạnh nhất là binary CLI đang chạy, không phải tài liệu.** Tài liệu nói đúng
+về *tên* sự kiện nhưng không nói đủ về *hợp đồng*. Schema hook nhúng ngay trong CLI —
+nó là thứ ĐANG THI HÀNH, và nó đọc được:
+
+```bash
+grep -a -A6 -m1 'WorktreeCreate:{summary:' ~/.local/share/claude/versions/<ver>
+```
+
+Đo ngày 2026-08-04 trên `2.1.221`. Ba điều chỉ nguồn này nói ra:
+
+| Sự kiện | Điều tài liệu không nói rõ |
+|---|---|
+| `WorktreeCreate` | stdout PHẢI là đường dẫn worktree — đây là provisioner, không phải observer |
+| `WorktreeRemove` | exit 0 = "đã xoá xong" — CC bỏ qua bước xoá của nó |
+| `StopFailure` | *"Fire-and-forget — hook output and exit codes are ignored"*: mọi `console.error` ở đó là **chữ chết**. Trường là `error` (enum 10 giá trị), không phải `reason`/`error_type` |
+
+Hệ quả thiết kế của dòng thứ ba: `observe.mjs` **ghi mẩu bánh mì** vào
+`.claude/state/last-stop-failure.json` và `session-start.mjs` in nó MỘT LẦN ở phiên
+sau. Một cảnh báo về tiền mà không ai đọc thì bằng không có cảnh báo.
+
+Và bài học tổng quát, đắt hơn cả ba dòng trên: **một điểm mở rộng native không mặc
+định là chỗ để quan sát.** Có ba loại — observer (`InstructionsLoaded`), gate
+(`ConfigChange`, `SubagentStop`), và **provisioner** (`WorktreeCreate/Remove`). Cắm
+sai loại thì hỏng không phải ở hook, mà ở cơ chế mà hook vừa giành mất quyền sở hữu.
 
 `code.claude.com/docs/en/{hooks,skills,permissions}` — fetch trực tiếp 2026-08-04.
 Ba điểm tài liệu nguồn nêu mà lần fetch này **sửa lại**:

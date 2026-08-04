@@ -84,12 +84,16 @@
     "prWarnFiles": 15,
     "reservationTtlHours": 8,
     "staleLockMinutes": 5,
-    "docStaleDays": 90
+    "docStaleDays": 90,
+    "$comment_maxSkills": "Đếm theo tầng DISCOVERY, không theo tổng số file: `disable-model-invocation: true` đưa chi phí context của một skill về 0, nên một skill nghi thức không còn cạnh tranh với skill khác. harness-doctor đọc field này.",
+    "maxSkills": 12
   },
 
-  "$comment_gates": "Gate chạy ở Stop hook. Bỏ tên gate khỏi mảng để tắt. gen-clean = chạy `gen` rồi kiểm git diff rỗng.",
+  "$comment_gates": "BA stage, MỘT runner: `node tooling/gates.mjs --stage <stage>`. Bỏ tên gate khỏi mảng để tắt. gen-clean = chạy `gen` rồi kiểm git diff rỗng. NGÂN SÁCH ĐỘ TRỄ — stop < 30 giây · subagent < 5 GIÂY · preMerge không giới hạn. Đắt hơn thì ĐẨY XUỐNG CI: một gate 40 giây ở Stop không bảo vệ thêm gì so với cùng gate đó ở CI, nó chỉ làm MỌI lượt chậm đi 40 giây, kể cả lượt không có gì để bắt. Đo: `--list --timing`.",
   "gates": {
     "stop": ["gen-clean", "typecheck", "test"],
+    "$comment_subagent": "CHỈ gate rẻ nhất. Con số ở đây nhân với tối đa 16 agent song song trong một dynamic workflow — đây là chỗ harness dễ làm GIẢM hiệu suất Claude Code nhất.",
+    "subagent": ["typecheck"],
     "preMerge": ["gen-clean", "typecheck", "lint", "test", "build", "depcruise", "e2e"]
   },
 
@@ -100,12 +104,7 @@
     "maxToolCallsPerRun": 200,
     "monthlyUsdCap": 0,
     "alertAtPercent": 80,
-    "$comment_modelTiering": "Model mạnh đi vào chỗ QUYẾT ĐỊNH (kế hoạch, luật, chấm điểm); model rẻ đi vào chỗ THỰC THI mechanical. Đây là quyết định harness, không phải quyết định tiết kiệm — một quyết định sai nhân lên 1000 file.",
-    "modelTiering": {
-      "decide": "",
-      "execute": "",
-      "classify": ""
-    }
+    "$comment_da_cat_modelTiering": "`modelTiering` bị CẮT ở 2.0.0 — không script nào đọc nó, nên nó là một niềm tin được đóng gói thành cấu hình. Nguyên lý (model mạnh vào chỗ QUYẾT ĐỊNH, model rẻ vào chỗ THỰC THI mechanical) giữ ở docs/ECONOMICS.md; chỗ cưỡng chế THẬT là .claude/settings.json → permissions.ask → `Agent(model:opus)`, nơi có NGƯỜI bấm."
   },
 
   "$comment_mcp": "3–5 server/project. Tool definition ăn context ở MỌI request. Tổng tool phơi ra: mục tiêu ≤ 15–20. CLI luôn rẻ hơn MCP về token — có CLI thì dùng CLI. Chỉ dùng MCP khi cần session bền (browser) hoặc schema có cấu trúc mà CLI không cho.",
@@ -123,6 +122,8 @@
   "knowledge": {
     "packName": "CHANGEME-org-harness-pack",
     "upstream": "",
-    "exportScopes": ["universal", "stack"]
+    "exportScopes": ["universal", "stack"],
+    "$comment_autoMemoryDirectory": "ĐỂ RỖNG là đúng — mặc định của vendor (~/.claude/projects/<repo>/memory/) nằm NGOÀI repo, và đó là chỗ đúng. Auto-memory là quan sát THÔ, máy-cục-bộ, được phép sai; nhưng nó nạp 200 dòng đầu MEMORY.md MỖI phiên nên nó là chỉ thị THẬT. Trỏ nó vào cây repo = biến quan sát chưa kiểm của MỘT người thành chỉ thị cho CẢ ĐỘI. observe.mjs cảnh báo nếu bạn làm thế. Xem AGENTS.md §Hai bộ nhớ và knowledge/README.md.",
+    "autoMemoryDirectory": ""
   }
 }

@@ -321,10 +321,19 @@ export function pass() {
   process.exit(EXIT_OK);
 }
 
-/** Rút file_path từ mọi biến thể tool input (Write/Edit/NotebookEdit). */
+/**
+ * Rút file_path từ mọi biến thể tool input (Write/Edit/NotebookEdit).
+ *
+ * FALLBACK `input.file_path` LÀ BẮT BUỘC, KHÔNG PHẢI PHÒNG XA: các sự kiện vòng đời
+ * KHÔNG có `tool_input` — chúng gửi path ở CẤP TRÊN. `ConfigChange` gửi
+ * `{ source, file_path }`; `InstructionsLoaded` gửi `{ file_path, memory_type, … }`.
+ * Không có dòng này thì cắm `protect-harness.mjs` vào `ConfigChange` cho path RỖNG,
+ * hook `pass()` ngay, và lớp phòng thủ thứ hai là trang trí — im lặng, đúng kiểu
+ * hỏng tệ nhất. Sửa ở MỘT chỗ để mọi hook thừa hưởng, thay vì trong từng hook.
+ */
 export function toolFilePath(input) {
   const ti = input?.tool_input ?? {};
-  return ti.file_path ?? ti.path ?? ti.notebook_path ?? '';
+  return ti.file_path ?? ti.path ?? ti.notebook_path ?? input?.file_path ?? '';
 }
 
 export function toolCommand(input) {
@@ -340,8 +349,34 @@ export function toolContent(input) {
 // Telemetry (cá nhân, gitignore) — nguyên liệu của vòng học
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Trạng thái cục bộ, không commit (`.claude/state/`): "đã xem whats-new version nào",
+ * "phiên trước dừng vì lỗi gì". Khác `telemetry/`: đây là trạng thái ĐỌC-GHI, không
+ * phải log append-only.
+ *
+ * `HARNESS_STATE_DIR` chuyển đích. CHỈ dùng cho TEST, và cũng bắt buộc như dòng dưới:
+ * `test-hooks.mjs` spawn `session-start.mjs` thật, và nếu nó ghi vào state THẬT thì
+ * mỗi lần chạy suite sẽ **ăn mất thông báo `/whats-new` của chính bạn** — cơ chế đó
+ * cố ý chỉ in MỘT LẦN cho mỗi version, nên "đã in rồi" là trạng thái không lấy lại được.
+ */
+export function stateDir() {
+  const d = process.env.HARNESS_STATE_DIR || repoPath('.claude', 'state');
+  try { mkdirSync(d, { recursive: true }); } catch {}
+  return d;
+}
+
+/**
+ * `HARNESS_TELEMETRY_DIR` chuyển đích ghi telemetry. CHỈ dùng cho TEST — và nó là
+ * bắt buộc, không phải tiện nghi.
+ *
+ * `tooling/test-hooks.mjs` spawn hook thật với cwd là repo thật, nên mỗi lần chạy
+ * suite nó ghi hàng chục dòng `gate-fails` vào telemetry THẬT. Sau vài tuần,
+ * "hook này chặn 267 lần" gần như toàn bộ là **suite tự gọi chính nó** — và con số
+ * đó là đầu vào của `/harness-retro` bước 4, chỗ bắt buộc đề xuất CẮT BỎ.
+ * Một bộ đếm bị chính test của nó làm nhiễu là bộ đếm nói dối về hướng nguy hiểm.
+ */
 export function telemetryDir() {
-  const d = repoPath('.claude', 'telemetry');
+  const d = process.env.HARNESS_TELEMETRY_DIR || repoPath('.claude', 'telemetry');
   try { mkdirSync(d, { recursive: true }); } catch {}
   return d;
 }

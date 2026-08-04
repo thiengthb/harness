@@ -56,7 +56,7 @@ jobs:
         run: node tooling/entropy-scan.mjs
 
       - name: Doctor (tổng hợp)
-        run: node tooling/doctor.mjs
+        run: node tooling/harness-doctor.mjs
 
       # init.mjs phải chạy được cả 3 OS. Nó là chỗ duy nhất biết về khác biệt OS.
       - name: Bootstrap
