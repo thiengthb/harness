@@ -1,0 +1,14 @@
+{
+  "$comment_fixture": "FIXTURE của migration 001. NEO: nhóm PreToolUse có matcher khớp /Write/ và KHÔNG có `protect-migrations` — migration phải TỰ ĐĂNG KÝ hook mới vào đúng nhóm đó. Không có file này thì migration đi nhánh `⚠ không có settings.json` và bước đăng ký — bước mà cả bài học v2.8.0 nói về — không bao giờ được kiểm.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          { "type": "command", "command": "node .claude/hooks/block-secrets.mjs" }
+        ]
+      }
+    ]
+  },
+  "permissions": { "deny": ["Read(./.env)"] }
+}

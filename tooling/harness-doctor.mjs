@@ -346,11 +346,52 @@ for (const u of unknownKeys) advice.push(`frontmatter key lạ — ${u} (allowli
 // CHẶN được lệnh ghi file.
 console.log('\n── DANH MỤC HOOK ──');
 const settings = readJson(repoPath('.claude', 'settings.json'), {});
+
+// ── `settings.local.json`: ĐỌC, nhưng không bao giờ làm nó thành gate ────────
+//
+// ĐIỂM MÙ được consumer báo lên 2026-08-05: doctor và entropy-scan chưa từng đọc NỘI DUNG
+// file này (doctor chỉ kiểm nó có bị track không). Hệ quả đo được ở repo đó: hai deny rule
+// sống trong `settings.local.json`, doctor vẫn báo "thiếu" — và bốn hook cắm ở đó thì VÔ HÌNH,
+// nên một canary đăng ký TRÙNG với `settings.json` chạy gate HAI LẦN mà không gì phát hiện.
+// Ở `SubagentStop` con số đó nhân với tối đa 16 agent song song.
+//
+// VÌ SAO KHÔNG BAO GIỜ LÀ GATE. File này là máy-cục-bộ và không commit (Parity Contract).
+// Một check đọc nó cho kết quả KHÁC NHAU trên mỗi máy, và một gate khác nhau trên mỗi máy
+// thì không phải gate — nó là chỗ để tranh luận "trên máy tôi xanh mà". Nên mọi phát hiện từ
+// đây đi vào `advice`, luôn kèm chữ "MÁY NÀY", và KHÔNG bao giờ vào `blockers`.
+const localSettings = readJson(repoPath('.claude', 'settings.local.json'), {});
+const localDeny = localSettings.permissions?.deny ?? [];
+
 const wired = new Map();                                  // file → [event…]
 for (const [event, groups] of Object.entries(settings.hooks ?? {})) {
   for (const g of groups ?? []) for (const h of g.hooks ?? []) {
     const m = String(h.command ?? '').match(/hooks[\/\\]([\w.-]+\.mjs)/);
     if (m) wired.set(m[1], [...(wired.get(m[1]) ?? []), event]);
+  }
+}
+
+// ĐĂNG KÝ TRÙNG: cùng một lệnh, cùng một sự kiện, ở CẢ HAI file. Claude Code hợp nhất hai
+// file chứ không cho file local ghi đè, nên hook chạy HAI LẦN. Chế độ hỏng của nó không phải
+// lỗi — là ngân sách: `AGENTS.md` cho `SubagentStop` đúng 5 giây, và chạy hai lần thì trần
+// thật là 2.5 giây, nhân với tối đa 16 agent song song. Không có gì báo, vì cả hai đăng ký
+// đều hợp lệ.
+{
+  const sig = (ev, cmd) => `${ev} ${String(cmd).trim()}`;
+  const inShared = new Set();
+  for (const [ev, groups] of Object.entries(settings.hooks ?? {})) {
+    for (const g of groups ?? []) for (const h of g.hooks ?? []) inShared.add(sig(ev, h.command));
+  }
+  const dup = [];
+  for (const [ev, groups] of Object.entries(localSettings.hooks ?? {})) {
+    for (const g of groups ?? []) for (const h of g.hooks ?? []) {
+      if (inShared.has(sig(ev, h.command))) dup.push(`${ev} → ${String(h.command).trim()}`);
+    }
+  }
+  if (dup.length) {
+    advice.push(`${dup.length} hook đăng ký TRÙNG ở \`settings.json\` VÀ \`settings.local.json\` (MÁY NÀY) ⇒ chạy HAI LẦN:`
+      + dup.map(d => `\n         · ${d}`).join('')
+      + `\n         Claude Code HỢP NHẤT hai file, không ghi đè. Gỡ khỏi \`settings.local.json\`.`
+      + (dup.some(d => d.startsWith('SubagentStop')) ? ` Ở \`SubagentStop\` ngân sách là 5 GIÂY và nó nhân với tối đa 16 agent song song.` : ''));
   }
 }
 // Bằng chứng hook ĐÃ CHẠY. Ba tình huống sau đọc GIỐNG HỆT NHAU nếu không đếm:
@@ -514,7 +555,20 @@ if (exists(ciPath) && readFileSync(ciPath, 'utf8').includes('HARNESS_ALLOW_SKIPP
 // nên chỗ nó được kiểm là ĐÂY — nếu không, xoá nó đi cũng không ai biết.
 const deny = settings.permissions?.deny ?? [];
 const WANT_DENY = ['Edit(**/*.gen.*)', 'Edit(/features/_index.json)'];
-for (const d of WANT_DENY) if (!deny.includes(d)) advice.push(`thiếu deny rule \`${d}\` — hook tương ứng chỉ khớp Write|Edit, deny rule phủ thêm \`sed -i\`/\`cat >\` trong Bash và hợp nhất vào ranh giới sandbox`);
+for (const d of WANT_DENY) {
+  if (deny.includes(d)) continue;
+  // `settings.local.json` là MÁY-CỤC-BỘ và không commit — nên "thiếu ở settings.json" và
+  // "không tồn tại" là HAI câu khác nhau, và bản trước gộp chúng. Consumer báo lên đúng ca
+  // này 2026-08-05: hai deny rule đang sống trong `settings.local.json`, doctor vẫn nói
+  // "thiếu", và người đọc đã thêm chúng rồi nên học được rằng doctor nói sai.
+  //
+  // Câu đúng cho ca đó KHÔNG phải "đã có, bỏ qua" — mà là một câu KHÁC và tệ hơn theo nghĩa
+  // team: rule đang bảo vệ MỘT máy, cả đội không có nó. Nói được câu đó thì mới sửa được.
+  advice.push(localDeny.includes(d)
+    ? `deny rule \`${d}\` CHỈ có trong \`settings.local.json\` — nó bảo vệ MÁY NÀY, cả đội KHÔNG có nó. `
+      + `File đó không commit (đúng), nên chuyển rule sang \`settings.json\` nếu muốn nó là luật của team.`
+    : `thiếu deny rule \`${d}\` — hook tương ứng chỉ khớp Write|Edit, deny rule phủ thêm \`sed -i\`/\`cat >\` trong Bash và hợp nhất vào ranh giới sandbox`);
+}
 for (const d of deny) if (/^(Write|NotebookEdit|Glob|MultiEdit)\(/.test(d)) advice.push(`deny rule \`${d}\` KHÔNG BAO GIỜ được tra cứu — Claude Code chỉ kiểm file theo \`Edit(path)\` và \`Read(path)\`. Đổi thành \`Edit(...)\``);
 
 // ── Điểm mở rộng native còn TRỐNG ────────────────────────────────────────────
