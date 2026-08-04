@@ -90,7 +90,8 @@ CLAUDE.md                    → @AGENTS.md
 ├── whats-new.md             thông báo đổi harness, hiện MỘT LẦN mỗi version
 ├── hooks/*.mjs              10 hook, Node thuần, chạy 3 OS
 ├── rules/                   rule theo `paths`, có owner + expires-review
-├── skills/                  12 skill (ngưỡng ≤12 — thêm nữa thì phải bỏ bớt)
+├── skills/                  13 skill · trần ≤12 tính trên tầng DISCOVERY (đang 3), không trên tổng
+│                            (`disable-model-invocation: true` đưa chi phí context về 0)
 ├── agents/                  evaluator · design-evaluator · security-reviewer
 │                            architect · researcher
 └── learnings/               ĐỀ XUẤT của agent — một file/người/tuần

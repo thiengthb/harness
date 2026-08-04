@@ -21,7 +21,10 @@
     "build": "",
     "verify": "",
     "e2e": "",
-    "depcruise": ""
+    "depcruise": "",
+    "$comment_a11y_perf": "ĐÚNG HAI field này, không nhiều hơn — vì `features/_TEMPLATE.json` đòi `a11y.evidence` và `perf.evidence`, và trước 2.2.0 KHÔNG có chỗ nào sinh ra chúng. Hai field default-FAIL không có đường hợp pháp nào thành `true` ⇒ người đang gấp điền \"n/a\" cho xong, đúng thói quen mà default-FAIL sinh ra để diệt. KHÔNG thêm `visual`/`coverage`/`seo`: không hợp đồng nào đòi chúng, và một field không ai đọc là một niềm tin được đóng gói thành cấu hình — đó là lý do `budget.modelTiering` bị cắt ở 2.0.0. Muốn TẮT: xoá tên gate khỏi `gates.preMerge`, KHÔNG để lệnh rỗng. \"Đội tôi không làm a11y\" phải là một dòng diff có người duyệt, không phải một field rỗng.",
+    "a11y": "",
+    "perf": ""
   },
 
   "$comment_paths": "Glob theo cú pháp minimatch, đường dẫn POSIX (dùng / kể cả trên Windows).",
@@ -96,7 +99,8 @@
     "stop": ["gen-clean", "typecheck", "test"],
     "$comment_subagent": "CHỈ gate rẻ nhất. Con số ở đây nhân với tối đa 16 agent song song trong một dynamic workflow — đây là chỗ harness dễ làm GIẢM hiệu suất Claude Code nhất.",
     "subagent": ["typecheck"],
-    "preMerge": ["gen-clean", "typecheck", "lint", "test", "build", "depcruise", "e2e"]
+    "$comment_preMerge": "`a11y` và `perf` ở ĐÂY, không ở `stop`: chúng chạy bằng phút, còn ngân sách Stop là 30 GIÂY. Một gate đúng đặt sai tầng độ trễ làm chậm MỌI lượt, kể cả lượt không có gì để bắt.",
+    "preMerge": ["gen-clean", "typecheck", "lint", "test", "build", "depcruise", "e2e", "a11y", "perf"]
   },
 
   "$comment_budget": "LỚP KINH TẾ — lớp DUY NHẤT có thể gây thiệt hại tài chính trực tiếp. Một agent chạy sai 4 giờ lúc 3h sáng phải bị CÁI GÌ ĐÓ dừng lại; nếu câu trả lời là 'tôi thức dậy và thấy' thì bạn chưa có lớp này. Xem docs/ECONOMICS.md.",

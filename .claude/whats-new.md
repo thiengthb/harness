@@ -1,4 +1,4 @@
-<!-- version: 2026-08-04-d -->
+<!-- version: 2026-08-04-e -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,20 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-04 — a11y/perf cuối cùng có dụng cụ đo · skill `verify-ui` (v2.3.0)
+
+1. **`commands.a11y` + `commands.perf`** và hai tên đó trong `gates.preMerge`.
+   `features/*.json` đòi hai bằng chứng đó từ đầu mà không có chỗ nào sinh ra chúng.
+   **Điền, hoặc xoá tên khỏi `gates.preMerge`** — đừng để lệnh rỗng.
+2. **`evidence` phải TRỎ TỚI THỨ CÓ THẬT.** `passes: true` giờ đòi đường dẫn **tồn tại**
+   hoặc URL `http(s)`. `"đã chụp rồi"` sẽ ĐỎ. Và `a11y`/`perf` **giờ mới được kiểm** —
+   trước đó vòng lặp chỉ đi qua `platforms.*`.
+3. **Skill `verify-ui`**: chạy app → chụp **2 viewport** → `docs/evidence/<issue>/` → giao
+   `design-evaluator`. Chạy nó **trước** khi đặt `platforms.web.passes = true`.
+   `disable-model-invocation` nên nó tốn 0 context.
+4. Sửa một điều harness nói sai: trần `maxSkills` tính trên **tầng discovery** (đang 3/12),
+   không trên tổng số skill.
 
 ## 2026-08-04 — `pre-commit` nay bắt Slack token và JWT (v2.2.0)
 

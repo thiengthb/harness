@@ -1,0 +1,44 @@
+{
+  "$comment": "FIXTURE cho migration 005 — trạng thái harness.config.json của một project ĐÍCH ở v2.2.0: có commands.depcruise, có gates.preMerge, CHƯA có a11y/perf. Giữ $comment_* để điều kiện ④ có gì mà đếm.",
+  "version": 1,
+
+  "project": {
+    "id": "acme-web",
+    "dri": "@lan",
+    "integrationBranch": "origin/main",
+    "issuePrefixes": ["ACME"],
+    "platforms": ["core", "web", "api"]
+  },
+
+  "$comment_commands": "Project này đã điền một phần — đúng hình dạng thật, không phải template rỗng.",
+  "commands": {
+    "install": "pnpm i --frozen-lockfile",
+    "gen": "pnpm gen",
+    "typecheck": "pnpm typecheck",
+    "lint": "pnpm lint",
+    "lintFix": "pnpm lint --fix {file}",
+    "test": "pnpm test",
+    "build": "pnpm build",
+    "verify": "pnpm verify",
+    "e2e": "pnpm e2e",
+    "depcruise": "pnpm depcruise",
+    "$comment_storybook": "CỐ Ý để `depcruise` KHÔNG phải field cuối. Bản đầu của migration 005 luôn bỏ dấu phẩy sau `perf` và làm VỠ JSON ở đúng ca này; fixture cũ (depcruise ở cuối) xanh nên không bắt được. Một fixture chỉ chứng minh được đường đi mà nó đi qua — nên ghim ca ĐÃ VỠ, không ghim ca đã xanh.",
+    "storybook": "pnpm sb"
+  },
+
+  "$comment_gates": "BA stage, MỘT runner.",
+  "gates": {
+    "stop": ["gen-clean", "typecheck", "test"],
+    "subagent": ["typecheck"],
+    "preMerge": ["gen-clean", "typecheck", "lint", "test", "build", "depcruise", "e2e"]
+  },
+
+  "$comment_limits": "Ngưỡng của repo SẢN PHẨM, thấp hơn template.",
+  "limits": {
+    "maxSessionsPerPerson": 2,
+    "maxWorktrees": 4,
+    "prWarnLines": 400,
+    "prFailLines": 800,
+    "maxSkills": 12
+  }
+}
