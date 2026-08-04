@@ -2,6 +2,46 @@
 
 > Nếu bạn chỉ làm **một** thứ trong toàn bộ harness này, làm cái này.
 
+## Trạng thái repo TEMPLATE này (áp 2026-08-04, đo bằng API)
+
+Nói ra vì tài liệu này tồn tại từ v1.0 mà `main` **chưa từng được bảo vệ** cho tới
+2026-08-04 — `gh api …/branches/main/protection` trả `404 Branch not protected`. Trong
+suốt thời gian đó, mọi thứ trong harness (8 CI check, ngưỡng kích cỡ PR, parity 3 OS)
+là **tư vấn**: một `git push origin main` bỏ qua sạch. Một tài liệu mô tả cấu hình
+không phải một cấu hình.
+
+```bash
+# Cấu hình ĐANG áp — tái lập được, không phải mô tả
+gh api -X PUT repos/<owner>/<repo>/branches/main/protection --input - <<'JSON'
+{ "required_status_checks": { "strict": true,
+    "contexts": ["guards","verify","e2e","security","no-bash-in-harness",
+                 "parity (ubuntu-latest)","parity (macos-latest)","parity (windows-latest)"] },
+  "enforce_admins": true,
+  "required_pull_request_reviews": null,
+  "restrictions": null,
+  "required_linear_history": true,
+  "allow_force_pushes": false,
+  "allow_deletions": false,
+  "required_conversation_resolution": true }
+JSON
+```
+
+**`enforce_admins: true` là dòng quan trọng nhất, và nó dễ bị bỏ.** Repo một người thì
+collaborator duy nhất **là admin**; để `false` nghĩa là luật miễn trừ đúng người duy
+nhất push được — bảo vệ **không ai**. Bật lên **không** khoá bạn: vì
+`required_pull_request_reviews: null`, bạn vẫn tự merge PR của mình được, chỉ là mọi
+thứ buộc đi qua PR có check xanh. Cần khẩn cấp thì tắt protection — một hành động
+tường minh và có log, không phải một lần lách im lặng.
+
+`required_approvals` và merge queue **chưa bật ở đây**: repo đang có một người, và
+"bắt buộc 1 approve" khi chỉ có một người nghĩa là mỗi lần merge đều phải dùng quyền
+admin để bỏ qua — tức là dạy chính mình rằng gate là thứ để lách. **Bật cả hai ngay
+khi có người thứ hai** (khối cấu hình bên dưới).
+
+> ⚠️ **`--dry-run` KHÔNG kiểm được luật này.** `git push --dry-run` không chạy
+> pre-receive hook của GitHub, nên nó báo "thành công" cho một push mà server sẽ từ
+> chối. Kiểm bằng API (`gh api …/branches/main/protection`), đừng kiểm bằng dry-run.
+
 ## Vì sao merge queue là cơ chế quan trọng nhất
 
 ```

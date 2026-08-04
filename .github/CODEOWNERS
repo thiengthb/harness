@@ -1,33 +1,47 @@
 # CODEOWNERS — hàng phòng ngự chính chống conflict harness (loại 3)
 #
-# Thay @dri, @tech-lead, @backend-team… bằng handle thật.
-# Không có file này, .claude/ sẽ thành bãi chiến trường và không ai chịu trách nhiệm.
+# THAY MỌI HANDLE BẰNG HANDLE THẬT CỦA ĐỘI BẠN, và kiểm bằng máy, đừng kiểm bằng mắt:
+#
+#     gh api users/<handle> --jq .login          # handle có tồn tại?
+#     gh api repos/<owner>/<repo>/collaborators --jq '.[].login'   # có quyền PUSH?
+#
+# HAI ĐIỀU KIỆN, KHÔNG PHẢI MỘT. Một dòng CODEOWNERS chỉ có hiệu lực khi handle
+# TỒN TẠI **VÀ** có quyền push. Thiếu điều kiện nào GitHub cũng **bỏ qua IM LẶNG** —
+# PR của bạn hiện "không yêu cầu review nào", và bạn tưởng mình được bảo vệ.
+#
+# Placeholder `@thiengthb`/`@tech-lead` nguy hiểm hơn một handle bịa: đo ngày 2026-08-04 thì
+# `dri` và `Tech-lead` là NGƯỜI THẬT trên GitHub — người lạ. Nếu một ngày họ được thêm
+# làm collaborator, review harness của bạn sẽ được gửi cho họ. `harness-doctor` cảnh báo
+# file này còn placeholder; cảnh báo đó nói "không tồn tại", thực tế là "tồn tại nhưng
+# không phải người bạn nghĩ".
+#
+# Repo template này dùng @thiengthb vì đó là collaborator duy nhất có quyền push.
 
 # ── Harness của team: đổi phải qua DRI ───────────────────────────────────────
-/.claude/settings.json      @dri
-/.claude/hooks/             @dri
-/.mcp.json                  @dri
-/CLAUDE.md                  @dri
-/AGENTS.md                  @dri @tech-lead
-/harness.config.json        @dri
-/tooling/                   @dri
-/.githooks/                 @dri
-/.gitattributes             @dri
+/.claude/settings.json      @thiengthb
+/.claude/hooks/             @thiengthb
+/.mcp.json                  @thiengthb
+/CLAUDE.md                  @thiengthb
+/AGENTS.md                  @thiengthb
+/harness.config.json        @thiengthb
+/tooling/                   @thiengthb
+/.githooks/                 @thiengthb
+/.gitattributes             @thiengthb
 
 # ── Rule, skill, agent: nhẹ hơn, nhưng vẫn phải có người xem ─────────────────
-/.claude/rules/             @dri @tech-lead
-/.claude/skills/            @dri @tech-lead
-/.claude/agents/            @dri @tech-lead
+/.claude/rules/             @thiengthb
+/.claude/skills/            @thiengthb
+/.claude/agents/            @thiengthb
 
 # ── Trí tuệ tích luỹ: DRI gác cổng promote ───────────────────────────────────
-/knowledge/lessons/         @dri
-/knowledge/index.json       @dri
-/evals/                     @dri @tech-lead
+/knowledge/lessons/         @thiengthb
+/knowledge/index.json       @thiengthb
+/evals/                     @thiengthb
 
 # ── Hợp đồng quy trình ───────────────────────────────────────────────────────
-/docs/DOR-DOD.md            @dri @tech-lead
-/docs/adr/                  @dri @tech-lead
-/features/_index.json       @dri
+/docs/DOR-DOD.md            @thiengthb
+/docs/adr/                  @thiengthb
+/features/_index.json       @thiengthb
 
 # ── Package: owner theo path ─────────────────────────────────────────────────
 # CHÚ Ý dòng contracts: yêu cầu CẢ HAI team approve.

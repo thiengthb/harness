@@ -74,10 +74,23 @@ if (!cmds.length) {
   }
 }
 
-const co = readJson(repoPath('.github', 'CODEOWNERS'));
+// CHỈ đọc DÒNG LUẬT, không đọc cả file. Quét cả file thì một comment GIẢI THÍCH về
+// placeholder cũng bị tính là dùng placeholder — cùng lớp lỗi với `fmKeys()` bên dưới:
+// văn xuôi NHẮC tới một thứ không phải là KHAI nó. Check tự bắn nhầm là check bị tắt.
 const coText = exists(repoPath('.github', 'CODEOWNERS')) ? readFileSync(repoPath('.github', 'CODEOWNERS'), 'utf8') : '';
-if (coText.includes('@dri') || coText.includes('@tech-lead')) {
-  blocker('.github/CODEOWNERS còn handle placeholder — GitHub BỎ QUA IM LẶNG handle không tồn tại, bạn tưởng mình được bảo vệ');
+const PLACEHOLDER = /^@(dri|tech-lead|[a-z]+-team|owner|team)$/i;
+const coOwners = new Set(
+  coText.split(/\r?\n/)
+    .map(l => l.replace(/#.*$/, '').trim())          // bỏ comment, kể cả comment cuối dòng
+    .filter(Boolean)
+    .flatMap(l => l.split(/\s+/).slice(1)),          // cột 1 là path, còn lại là owner
+);
+const coPlaceholders = [...coOwners].filter(o => PLACEHOLDER.test(o));
+if (coPlaceholders.length) {
+  blocker(`.github/CODEOWNERS còn handle placeholder (${coPlaceholders.join(' ')}) — HAI điều kiện, không phải một: `
+    + 'handle phải TỒN TẠI **và** có quyền PUSH. Thiếu cái nào GitHub cũng BỎ QUA IM LẶNG, '
+    + 'PR hiện "không yêu cầu review nào" và bạn tưởng mình được bảo vệ. '
+    + 'Kiểm: `gh api users/<handle> --jq .login` và `gh api repos/<owner>/<repo>/collaborators --jq \'.[].login\'`');
 }
 
 if (!exists(repoPath('.mcp.json')) && exists(repoPath('.mcp.json.example'))) {
