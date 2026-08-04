@@ -65,7 +65,7 @@ Không phải BREAKING — không cần làm gì. Muốn nhận bản sửa:
 
 ## 2026-08-03 — Nâng cấp harness giờ AN TOÀN, và một lệnh kiểm tất cả
 
-1. **`node tooling/doctor.mjs`** — lệnh DUY NHẤT bạn cần nhớ. Nó gọi mọi kiểm tra
+1. **`node tooling/doctor.mjs`** *(đổi tên thành `tooling/harness-doctor.mjs` ở v2.0.0)* — lệnh DUY NHẤT bạn cần nhớ. Nó gọi mọi kiểm tra
    khác và tổng hợp thành một bảng có hành động.
 2. **Nâng cấp harness không còn ghi đè mù**: `node tooling/upgrade.mjs <template>`.
    File bạn đã sửa được GIỮ NGUYÊN, bản template ghi ra `.new`. Xem `docs/MIGRATION.md`.

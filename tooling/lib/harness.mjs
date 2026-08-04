@@ -264,7 +264,7 @@ export function reportScope() {
  *
  * Ba giả định đã hết hạn: background agent tự commit + push + mở draft PR;
  * scheduled task và webhook mở session không ai đọc. Dùng ở ba chỗ:
- *   · stop-gate  — phiên không người thì KHÔNG fail-open, kể cả khi gate lỗi
+ *   · gates.mjs  — phiên không người thì KHÔNG fail-open, kể cả khi gate bị BỎ QUA
  *   · budget     — nâng mức cảnh báo, vì không ai thấy để dừng tay
  *   · session-start — đừng in nghi thức cho phiên không có người đọc
  *

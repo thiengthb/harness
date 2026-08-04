@@ -212,6 +212,53 @@ Phát hiện khi mở PR cho chính đợt này, cả hai đo bằng API chứ k
    Cùng lớp lỗi với `fmKeys()`: *văn xuôi NHẮC tới một thứ không phải là KHAI nó* — và một
    check tự bắn nhầm là một check sẽ bị tắt.
 
+#### Thêm — `tooling/test-migrations.mjs`: migration cuối cùng cũng có test
+
+`grep harness-migrations` trong `test-hooks.mjs`, `evals/`, `.github/workflows/` trước
+2.0.0 trả về **rỗng**. Ba migration đã ship mà **không một dòng test** — trong khi đó là
+code **duy nhất ghi vào `harness.config.json` và `.claude/settings.json` của repo KHÁC**,
+trên máy người khác, thường lúc họ đang gấp muốn nâng cấp cho xong.
+
+Chế độ hỏng đáng sợ không phải crash (crash thì `upgrade.mjs` bắt và báo FAIL) mà là
+**chạy thành công và làm sai** — phát hiện ở phiên sau, khi mọi hook im lặng vì
+`config()` fail-open trả default rỗng.
+
+Hợp đồng **bốn điều kiện** áp cho mọi migration, không cần viết assert riêng:
+① không throw · ② JSON còn parse được · ③ **idempotent** (lần hai không đổi gì) ·
+④ không mất `$comment_*`.
+
+Migration có fixture (`tooling/fixtures/migration-<version>/`) thì chạy đường đi THẬT
+CŨ→MỚI; không có fixture thì vẫn chịu hợp đồng trên bản sao cây hiện tại, nơi nó **phải
+là no-op**. `001` và `002` hiện ở nhánh yếu đó và **suite NÓI RA điều đó** (`WARN`), thay
+vì im lặng tính là pass.
+
+Kèm **mutant có sẵn**: đổi mọi regex lazy `[\s\S]*?` thành greedy. Nó chứng minh hợp đồng
+②④ đỏ được ở **mọi lần chạy CI**, không phải một lần lúc viết. Chạy cả trong
+`harness-parity.yml` (3 OS) vì migration gọi `git rm` và chạm đường dẫn — đúng chỗ lớp
+lỗi chỉ-đỏ-trên-Windows sống.
+
+Và một ghi chú thẳng thắn trong header file đó: **bản đầu của nó nói sai.** Nó bảo ④ gác
+`JSON.parse`-rồi-`stringify`, nhưng `$comment_*` là **key JSON thật** nên round-trip giữ
+nguyên chúng. Mutant dựng theo giả thuyết sai đó **sống sót** — và một mutant sống sót vì
+test neo sai là **lỗi của TEST**. Cái ④ thật sự gác là **regex ăn quá nhiều**, vì migration
+buộc vá TEXT (stringify sẽ phá format thủ công project đã sửa).
+
+#### Sửa — bốn chỗ tự kiểm lại sau khi rà soát plan
+
+- **`evals/tasks/0001` chỉ gác 3 lệnh** (`test-hooks` · `--audit` · `knowledge/lint`) — không
+  gác `harness-doctor`, `gates.mjs`, `test-migrations`. Nay **6 lệnh**. Một cơ chế không có
+  gate là một cơ chế không ai biết đã đứt.
+- **`knowledge/lessons/0003`** `occurrences: 3 → 6`. Đợt này sinh thêm **3 ca cùng lớp**
+  (*"self-test giả định repo của nó"*): `--audit` đỏ-giả trong worktree · ngưỡng PR của repo
+  sản phẩm áp lên template · check CODEOWNERS quét cả file. Không ghi lại thì bài học lặp
+  nhiều nhất của đợt là bài học duy nhất không được thu.
+- **`docs/ECONOMICS.md`** nói `budget.modelTiering` *"đã bị cắt"* từ **v1.6.0**, nhưng field
+  chỉ bị cắt ở **v2.0.0** — merge v1.6.0 rồi dừng lại là ship một tài liệu khẳng định việc
+  chưa xảy ra. Nay nêu rõ version + trỏ migration 003.
+- **Ba tham chiếu chết**: `unattended()` trong `lib/harness.mjs` còn nói *"· stop-gate"* ·
+  header `gates.mjs` còn ghi *"← .claude/hooks/stop-gate.mjs"* · mục `whats-new` cũ còn dạy
+  `node tooling/doctor.mjs` (nay ghi kèm tên mới).
+
 #### Còn đỏ, và biết vì sao
 
 `node evals/run.mjs` → **2/4** (không tụt so với trước đợt này). Hai eval đỏ vì trạng

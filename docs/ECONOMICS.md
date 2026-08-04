@@ -54,8 +54,9 @@ Nguyên lý: **model mạnh nhất đi vào chỗ QUYẾT ĐỊNH, model rẻ đ
 mechanical.**
 
 **Bảng trên là NGUYÊN LÝ, không phải cấu hình.** `budget.modelTiering` từng tồn tại
-trong `harness.config.json` và **không script nào đọc nó** — một field ma trông như
-đang cưỡng chế điều gì đó. Nó đã bị cắt. Chỗ cưỡng chế được là `permissions`:
+trong `harness.config.json` và **không script nào đọc nó** — một field ma trông như đang
+cưỡng chế điều gì đó. Nó bị cắt ở **2.0.0** (xem `HARNESS-CHANGELOG.md`; migration 003 dọn
+hộ project đã áp template). Chỗ cưỡng chế được là `permissions`:
 
 ```jsonc
 // .claude/settings.json → permissions

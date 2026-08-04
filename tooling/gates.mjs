@@ -2,7 +2,7 @@
 /**
  * MỘT runner cho MỌI gate.  Ba nơi gọi, một định nghĩa.
  *
- *   node tooling/gates.mjs --stage stop        ← .claude/hooks/stop-gate.mjs
+ *   node tooling/gates.mjs --stage stop        ← Stop hook (gọi THẲNG, không qua hook trung gian)
  *   node tooling/gates.mjs --stage subagent    ← SubagentStop hook
  *   node tooling/gates.mjs --stage preMerge    ← /pre-merge VÀ ci.yml, cùng một lệnh
  *   node tooling/gates.mjs --list              ← "gate nào đang THẬT SỰ chạy?" — 30 giây

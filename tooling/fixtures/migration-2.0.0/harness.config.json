@@ -1,0 +1,62 @@
+{
+  "$comment": "FIXTURE cho tooling/test-migrations.mjs — trạng thái harness.config.json của MỘT PROJECT ĐÍCH ở v1.6.0, tức là đầu vào THẬT của migration 003. KHÔNG phải config của repo nào.",
+  "$comment_toi_gian": "Cố ý TỐI GIẢN: chỉ giữ những gì migration 003 chạm, cộng đủ `$comment_*` để chứng minh nó không xoá chúng. NEO mà migration grep: `\"stop\"` (chèn subagent), `\"docStaleDays\"` (chèn maxSkills), `\"exportScopes\"` (chèn autoMemoryDirectory), `$comment_modelTiering` + `modelTiering` (cắt). Đổi các neo đó là làm fixture mất tác dụng — test vẫn xanh, nhưng xanh vô nghĩa.",
+  "version": 1,
+  "project": {
+    "id": "fixture-project-dich",
+    "dri": "@fixture",
+    "integrationBranch": "origin/main",
+    "issuePrefixes": ["FIX"],
+    "platforms": ["core", "web"]
+  },
+  "commands": { "gen": "echo gen", "typecheck": "echo tc", "test": "echo test" },
+  "$comment_paths": "Comment này PHẢI còn sau migration — nó là LÝ DO, không phải trang trí.",
+  "paths": {
+    "generated": ["**/*.gen.*"],
+    "migrations": ["**/migrations/**"],
+    "secrets": ["**/.env", "!**/.env.example"],
+    "harness": [".claude/settings.json", ".claude/hooks/**", "harness.config.json"],
+    "hot": ["packages/contracts/**"],
+    "lintable": ["**/*.ts"],
+    "publicSurface": ["packages/contracts/**"]
+  },
+  "$comment_limits": "Con số của project đích. Migration chỉ được THÊM maxSkills, không đụng cái nào khác.",
+  "limits": {
+    "maxSessionsPerPerson": 3,
+    "maxWorktrees": 6,
+    "prWarnLines": 400,
+    "prFailLines": 800,
+    "prWarnFiles": 15,
+    "reservationTtlHours": 8,
+    "staleLockMinutes": 5,
+    "docStaleDays": 90
+  },
+  "$comment_gates": "Gate chạy ở Stop hook. Bỏ tên gate khỏi mảng để tắt.",
+  "gates": {
+    "stop": ["gen-clean", "typecheck", "test"],
+    "preMerge": ["gen-clean", "typecheck", "test", "build"]
+  },
+  "$comment_budget": "LỚP KINH TẾ của project đích.",
+  "budget": {
+    "maxTurnsPerRun": 25,
+    "maxWallClockMinutes": 90,
+    "maxToolCallsPerRun": 200,
+    "monthlyUsdCap": 50,
+    "alertAtPercent": 80,
+    "$comment_modelTiering": "Model mạnh đi vào chỗ QUYẾT ĐỊNH; model rẻ đi vào chỗ THỰC THI mechanical.",
+    "modelTiering": {
+      "decide": "opus",
+      "execute": "sonnet",
+      "classify": "haiku"
+    }
+  },
+  "$comment_mcp": "3–5 server/project.",
+  "mcp": { "maxServers": 5, "maxTools": 20 },
+  "evals": { "command": "" },
+  "$comment_knowledge": "Cơ chế mang trí tuệ qua project khác.",
+  "knowledge": {
+    "packName": "fixture-pack",
+    "upstream": "",
+    "exportScopes": ["universal", "stack"]
+  }
+}
