@@ -8,8 +8,15 @@ status: active
 owner: "@dri"
 added: 2026-08-04
 expires-review: 2027-02-04
-occurrences: 8
+occurrences: 10
+seen-in:
+  - harness
+  - sakubun
+  - sakubun-test
+  - warehouse
 evidence:
+  - "[warehouse] 2026-08-03, ĐỘC LẬP: `tooling/test-hooks.mjs` bám vào `harness.config.json` mặc định — điền `commands.*` làm 3 case FAIL, và `protect-migrations` dùng fixture `db/migrations` nên VỠ khi project thu hẹp `paths.migrations` về thư mục migration có thật. Template phát hiện lại đúng biến thể đó ngày **2026-08-05** và tự gọi là 'lần thứ tư' — hai ngày sau, trong khi bằng chứng đã nằm trên đĩa. Đây là chi phí ĐO ĐƯỢC của việc chiều LÊN không chạy: nếu pack của warehouse đi lên hôm 08-03, ngưỡng '2 lần độc lập' đã đạt và bản sửa đã hạ cánh sớm hơn hai ngày."
+  - "[sakubun-test] 2026-08-03, ĐỘC LẬP: hai mục riêng — `post-edit-lint` case giả định `lintFix` rỗng nên 'đỏ oan ngay sau khi cấu hình project', và `apply-to --audit` chạy ở project đã nhận harness thì 'luôn đỏ, doctor báo CHẶN sai'. Cùng hai ca mà sakubun ghi độc lập cùng ngày."
   - "harness v1.4.0 áp lên project `sakubun`: `tooling/test-hooks.mjs` 49/52 pass. Cả 3 case đỏ đều assert trạng thái CHƯA cấu hình — `stop-gate · gate chưa cấu hình lệnh`, `post-edit-lint · lintFix chưa khai`, `block-secrets · .env.example`. Điền `commands` (việc SỐ 1 mà README yêu cầu) là điều kiện làm chúng đỏ."
   - "Cùng lớp: `apply-to.mjs --audit` đối chiếu HARNESS/SEED với cây file của TEMPLATE, nhưng `doctor.mjs` và `harness-parity.yml` chạy nó ở MỌI project đích — sakubun nhận 'thiếu 351 file', 351 file đó là source của chính nó."
   - "Cùng lớp: `post-edit-lint` case hardcode `file_path: 'src/a.ts'`. sakubun dùng layout app/components/lib, không có `src/`, nên `eslint --fix src/a.ts` → 'No files matching the pattern' → exit 2 → hook chặn ĐÚNG như thiết kế. Test sai, không phải hook sai."
