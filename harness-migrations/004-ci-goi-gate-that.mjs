@@ -25,10 +25,14 @@
  * nhiều thì migration im lặng làm hỏng file.
  */
 
+import { CI_ESCAPE_HATCH } from '../tooling/lib/harness.mjs';
+
 export const version = '2.1.0';
 export const description = 'ci.yml gọi gate THẬT; xoá cửa thoát HARNESS_ALLOW_SKIPPED_GATES ở project đích';
 
-const HATCH = /\n {4}env:\n(?: {6}#[^\n]*\n)* {6}HARNESS_ALLOW_SKIPPED_GATES: '1'\n/;
+// Khuôn regex ở `tooling/lib/harness.mjs → CI_ESCAPE_HATCH` — MỘT nguồn cho cả ba nơi
+// xử lý cửa thoát này (apply-to lúc copy · migration này · harness-doctor lúc kiểm).
+const HATCH = CI_ESCAPE_HATCH;
 
 /**
  * Kết quả mong đợi, khai cho `test-migrations.mjs` điều kiện ⑤.

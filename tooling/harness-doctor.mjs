@@ -185,6 +185,20 @@ if (mf) console.log(`  harness version: ${mf.templateVersion} (áp ${String(mf.u
 else if (localVer) console.log(`  harness version: ${localVer} (chưa có manifest — nâng cấp lần tới sẽ không phát hiện được file bạn đã sửa)`);
 else advice.push('không có .claude/harness-manifest.json — chạy upgrade.mjs một lần để tạo, nếu không nâng cấp sau này sẽ ghi đè mù');
 
+// Đã áp template (có manifest) nhưng CHƯA phỏng vấn lần nào. Đây là trạng thái sinh ra
+// mọi mục CHANGEME và mọi `commands` rỗng bên dưới — nói nguyên nhân MỘT lần thì hơn là
+// để người đọc suy ngược từ 8 dòng triệu chứng.
+if (mf && !mf.profile) {
+  blocker('đã áp template nhưng CHƯA chạy `node tooling/setup.mjs` — nó đọc repo này (package.json/'
+    + 'pyproject/go.mod/lockfile) rồi đề xuất `commands` kèm BẰNG CHỨNG, và từ chối kết thúc khi '
+    + '`commands.verify` còn rỗng. Mọi dòng CHANGEME/lệnh rỗng bên dưới là triệu chứng của một nguyên nhân này.');
+}
+if (mf?.profile?.allowedEmptyVerify) {
+  blocker('setup.mjs đã chạy với `--allow-empty-verify` — project này KHÔNG có gate verify, và điều đó '
+    + 'nằm trong manifest chứ không biến mất. Còn là trạng thái tạm thì được; còn sau tuần đầu thì '
+    + 'harness ở đây là trang trí và BẠN vẫn là verification loop.');
+}
+
 // ── Bề mặt vendor: frontmatter skill + rule ──────────────────────────────────
 //
 // VÌ SAO CHECK NÀY BÁO CÁO CHỨ KHÔNG FAIL: doctor có caller phụ thuộc exit 0,

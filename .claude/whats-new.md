@@ -1,4 +1,4 @@
-<!-- version: 2026-08-05-a -->
+<!-- version: 2026-08-05-b -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,18 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-05 — Phỏng vấn thay cho "nhớ điền config" (v2.6.0)
+
+1. **`node tooling/setup.mjs --apply`** — chạy MỘT LẦN sau khi áp template. Nó đọc repo
+   (package.json/pyproject/go.mod + lockfile), đề xuất `commands.*` **kèm bằng chứng**, hỏi
+   phần không đọc được, ghi config + `docs/adr/0001-*`. Nó **từ chối kết thúc** khi
+   `commands.verify` còn rỗng. Xem trước: `--detect` (không ghi gì).
+2. **Nó không cài gì và không bịa lệnh nào.** Không thấy thì để rỗng và nói ra.
+3. **Nếu bạn đã áp harness trước 2.6.0:** `tooling/gates.mjs` của bạn CHƯA BAO GIỜ được cập
+   nhật qua `upgrade` (nó thiếu trong danh sách lớp cơ chế). Chạy `upgrade` một lần nữa —
+   lần này nó tới.
+4. `apply-to` nay gỡ `HARNESS_ALLOW_SKIPPED_GATES` khỏi `ci.yml` của project đích.
 
 ## 2026-08-05 — Áp template có ba lỗ im lặng, đã bịt (v2.5.0)
 

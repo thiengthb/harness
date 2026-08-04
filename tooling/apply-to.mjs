@@ -13,7 +13,7 @@
 import { readdirSync, statSync, mkdirSync, cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, resolve, relative, sep } from 'node:path';
-import { REPO_ROOT, report, run, REQUIRED_IGNORE, REQUIRED_ATTRIBUTES, REQUIRED_UNIGNORE, missingLines } from './lib/harness.mjs';
+import { REPO_ROOT, report, run, REQUIRED_IGNORE, REQUIRED_ATTRIBUTES, REQUIRED_UNIGNORE, missingLines, CI_ESCAPE_HATCH, MECHANISM_PATHS } from './lib/harness.mjs';
 
 const args = process.argv.slice(2);
 const target = args.find(a => !a.startsWith('--'));
@@ -43,19 +43,7 @@ if (!AUDIT) {
 // BA phép, không phải hai. `SEED` (copy-nếu-chưa-có) là phép SAI cho `.gitignore` và
 // `.gitattributes`: project thật nào cũng đã có chúng ⇒ dòng của harness không bao giờ
 // tới đúng nhóm project mà harness nhắm tới. Xem `REQUIRED_IGNORE` trong lib/harness.mjs.
-const HARNESS = [
-  '.claude/hooks', '.claude/skills', '.claude/agents',
-  'tooling/lib', 'tooling/knowledge', 'tooling/fixtures',
-  'tooling/init.mjs', 'tooling/test-hooks.mjs', 'tooling/test-migrations.mjs',
-  'tooling/apply-to.mjs', 'tooling/gates.mjs',
-  'tooling/fixlog.mjs', 'tooling/coactivity.mjs', 'tooling/harness-size.mjs',
-  'tooling/capo-report.mjs', 'tooling/harness-doctor.mjs', 'tooling/doctor.mjs', 'tooling/entropy-scan.mjs',
-  'tooling/upgrade.mjs',
-  'tooling/check-reservations.mjs', 'tooling/check-feature-integrity.mjs',
-  'tooling/wt-clean.mjs', 'tooling/statusline.mjs', 'tooling/precommit-scan.mjs',
-  '.githooks', 'evals/run.mjs',
-  'harness.version', 'HARNESS-CHANGELOG.md', 'harness-migrations',
-];
+const HARNESS = MECHANISM_PATHS;
 const SEED = [
   'AGENTS.md', 'CLAUDE.md', 'harness.config.json',
   // `.gitmessage` KHÔNG ở MERGE: nó là văn xuôi (khuôn commit message), không phải danh
@@ -239,6 +227,18 @@ for (const p of [...created, ...updated]) {
 }
 for (const m of merges) applyMerge(m);
 
+// Cửa thoát CI là của TEMPLATE, không của project. Nó đúng ở đây (commands rỗng là
+// placeholder) và sai ở đó (gate bị bỏ qua vẫn cho tick XANH). Trước 2.6.0 chỉ `upgrade`
+// xử lý nó qua migration 004, nên project áp MỚI nhận cửa thoát VÀ một dòng CHẶN của
+// harness-doctor ngay phút đầu — công cụ tự tạo lỗi rồi tự báo lỗi đó.
+const ciDest = join(DEST, '.github', 'workflows', 'ci.yml');
+let hatchRemoved = false;
+if (existsSync(ciDest)) {
+  const before = readFileSync(ciDest, 'utf8');
+  const after = before.replace(CI_ESCAPE_HATCH, '\n');
+  if (after !== before) { writeFileSync(ciDest, after, 'utf8'); hatchRemoved = true; }
+}
+
 // Tạo thư mục rỗng cần thiết
 for (const d of ['.claude/learnings', 'knowledge/lessons', 'reservations', 'docs/progress', 'evals/tasks']) {
   mkdirSync(join(DEST, d), { recursive: true });
@@ -258,7 +258,15 @@ for (const rel of HARNESS) {
 }
 const manifestPath = join(DEST, '.claude', 'harness-manifest.json');
 mkdirSync(join(manifestPath, '..'), { recursive: true });
+// HỢP NHẤT, không thay thế. Manifest là hồ sơ TÍCH LUỸ của project: ngoài hash file, nó
+// giữ `profile` do `setup.mjs` ghi (stack, platform, deploy, những gì KHÔNG đọc được).
+// Ghi đè cả object làm `profile` bốc hơi ở mỗi lần `--update`, và triệu chứng là
+// `harness-doctor` báo "chưa chạy setup" cho một project đã chạy setup — một lời buộc tội
+// sai, đúng loại làm người ta ngừng tin bảng chẩn đoán. Gặp thật khi thêm profile ở 2.6.0.
+let prevManifest = {};
+try { prevManifest = JSON.parse(readFileSync(manifestPath, 'utf8')); } catch {}
 writeFileSync(manifestPath, JSON.stringify({
+  ...prevManifest,
   templateVersion: version,
   appliedAt: new Date().toISOString(),
   source: REPO_ROOT,
@@ -277,6 +285,7 @@ for (const p of created) {
 
 const ok = [
   `${created.length} file tạo mới`,
+  ...(hatchRemoved ? ['ci.yml: đã xoá cửa thoát HARNESS_ALLOW_SKIPPED_GATES (nó chỉ đúng ở repo template) → gate bị BỎ QUA sẽ làm CI ĐỎ ở đây'] : []),
   ...(updated.length ? [`${updated.length} file cập nhật`] : []),
   ...merges.map(m => m.action === 'create' ? `${m.f}: tạo mới`
     : m.missing.length ? `${m.f}: thêm ${m.missing.length} dòng bắt buộc (${m.missing.join(' · ')})`
@@ -293,13 +302,16 @@ report('ÁP HARNESS', { ok, warn });
 
 console.log(`  Bước tiếp theo trong ${DEST}:
 
-    1. $EDITOR harness.config.json     ← project.id, dri, và commands.*  ★ VIỆC SỐ 1
+    1. node tooling/setup.mjs --apply  ★ VIỆC SỐ 1 — đọc repo này, đề xuất commands
+                                        kèm bằng chứng, và TỪ CHỐI kết thúc khi
+                                        commands.verify còn rỗng
     2. node tooling/init.mjs
     3. $EDITOR AGENTS.md               ← chỉ 3 mục: Project · Lệnh · Gotchas
     4. $EDITOR .github/CODEOWNERS      ← handle thật
     5. Bật merge queue + branch protection (docs/BRANCH-PROTECTION.md)
 
   Không có commands.verify thì gate không tồn tại và harness này chỉ là trang trí.
+  Xem trước những gì setup phát hiện được, không ghi gì: node tooling/setup.mjs --detect
 
   Nạp trí tuệ từ repo cũ:
     node tooling/knowledge/import.mjs <đường-dẫn>/.harness-pack
