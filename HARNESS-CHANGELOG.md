@@ -11,6 +11,56 @@
 
 ---
 
+## 2.7.0 — 2026-08-05
+
+**minor.** Không cần migration. Áp và nâng cấp **không cần bản harness trên máy**; chiều
+LÊN của vòng học chạy được giữa hai máy khác nhau.
+
+### `npx github:thiengthb/harness init`
+
+`package.json` ở gốc tồn tại **chỉ** để lệnh này chạy được: không dependency, không publish,
+**không có field `version`** (`harness.version` là nguồn duy nhất — hai chỗ ghi version là
+hai chỗ để chúng lệch nhau). Nó **không** được ship sang project đích: repo nào cũng có
+`package.json` của riêng nó, và một cái rỗng nằm trong repo Go là rác gây nhầm.
+
+`tooling/cli.mjs` cố ý mỏng — nó gọi `apply-to.mjs`, cùng đường đi mà người có repo local
+vẫn dùng. Hai đường vào với hai logic thì đường ít chạy hơn sẽ hỏng mà không ai biết.
+
+### `upgrade.mjs <URL> --ref <tag>` — nếu thiếu, bootstrap từ xa là cái bẫy
+
+Bootstrap từ xa mà không dạy `upgrade` cùng trick thì mọi project **mắc kẹt vĩnh viễn ở
+version khai sinh**: `upgrade` đòi một thư mục template local mà project đó chưa bao giờ có,
+và `manifest.source` ghi một đường dẫn tạm đã bị xoá. Nay manifest ghi `url@ref` + `sourceSha`.
+
+**Từ xa thì `--ref` là bắt buộc** (exit 1 nếu thiếu, cửa thoát `--allow-unpinned`). Và
+`--ref main` — kỹ thuật là "có pin" nhưng thực chất là mục tiêu di động — bị **cảnh báo kèm
+sha hiện tại**, không chặn: hai project nâng cấp cách nhau một ngày sẽ nhận hai bản khác
+nhau trong khi manifest của chúng ghi cùng một `source`.
+
+### Chiều LÊN chạy được giữa hai máy
+
+`import.mjs` nhận URL từ lâu; `upstream.mjs` thì **chỉ nhận đường dẫn filesystem** — nghĩa
+là trí tuệ đi XUỐNG được mà không đi LÊN được, và đó đúng là chiều mà `knowledge/README.md`
+gọi là *"chiều làm template tốt lên"*. Nay nó clone template (vào `.harness-pack/`, đã nằm
+trong `REQUIRED_IGNORE`), ghi pack vào đó, rồi **IN RA** ba lệnh push + `gh pr create`.
+
+Nó **không push và không mở PR** — cố ý. Ghi vào template là đường supply-chain vào MỌI
+project khác; cổng đó phải có NGƯỜI, và review PR chính là cổng đó.
+
+### Cảnh báo "quên gửi lên" — đối xứng với cảnh báo đã có
+
+`entropy-scan` nhắc khi pack nạp về chờ duyệt >30 ngày. Chiều ngược lại **không có gì
+nhắc**, và nó là chiều bị bỏ quên hơn hẳn: pack chờ duyệt thì NHÌN THẤY được (nó nằm trong
+repo), còn "chưa gửi lên" thì **không có triệu chứng nào ở repo này cả** — hậu quả rơi vào
+project TIẾP THEO của bạn, khởi động từ đúng số bài học seed dù repo này đã học 12 thứ.
+
+Hai chi tiết khiến nó không nói dối: nó chỉ chạy ở repo TIÊU THỤ (template LÀ upstream, nhắc
+nó gửi lên là vô nghĩa — và một cảnh báo nổ mọi lần dạy người ta bỏ qua cả bảng), và lần
+chạy RỖNG **không đóng dấu "đã gửi"** — nếu không, cái đồng hồ 30 ngày tự reset bằng việc
+không làm gì.
+
+---
+
 ## 2.6.0 — 2026-08-05
 
 **minor.** Không cần migration. `tooling/setup.mjs` — phỏng vấn một lần sau khi áp template.

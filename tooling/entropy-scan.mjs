@@ -13,7 +13,7 @@
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { join, extname } from 'node:path';
 import { parseFrontmatter } from './lib/frontmatter.mjs';
-import { repoPath, config, limit, report, git, matchAny, pathsFor } from './lib/harness.mjs';
+import { repoPath, config, limit, report, git, matchAny, pathsFor, readJson, stateDir } from './lib/harness.mjs';
 
 const ok = [], warn = [], fail = [];
 const cfg = config();
@@ -152,6 +152,32 @@ if (existsSync(INC)) {
     if (days > 30) {
       warn.push(`knowledge/incoming/${pack}: ${files.length} bài học chờ duyệt ${days} ngày — quyết đi: node tooling/knowledge/accept.mjs --list`);
     }
+  }
+}
+
+// ── 7d. Bài học mang đi được mà CHƯA BAO GIỜ gửi lên template ────────────────
+// Đối xứng với 7c, và là chiều bị bỏ quên hơn hẳn: pack chờ duyệt thì NHÌN THẤY được
+// (nó nằm trong repo), còn "chưa gửi lên" thì KHÔNG có triệu chứng nào ở đây cả. Hậu quả
+// rơi vào project TIẾP THEO của bạn — nó khởi động từ đúng số bài học seed của template,
+// dù repo này đã học được 12 thứ. Trí tuệ tích ở LÁ, không bao giờ về GỐC.
+// CHỈ ở repo TIÊU THỤ. Repo template LÀ upstream — nhắc nó "gửi lên" là vô nghĩa, và một
+// cảnh báo vô nghĩa nổ mọi lần dạy người ta bỏ qua cả bảng. Tín hiệu: manifest chỉ tồn tại
+// ở đích (apply-to/upgrade ghi ra), cùng tín hiệu mà --audit và harness-doctor đã dùng.
+const IS_CONSUMER = existsSync(repoPath('.claude', 'harness-manifest.json'));
+const upLast = readJson(join(stateDir(), 'upstream-last.json'));
+const portable = !IS_CONSUMER ? [] : existsSync(repoPath('knowledge', 'lessons'))
+  ? readdirSync(repoPath('knowledge', 'lessons'))
+      .filter(f => f.endsWith('.md') && !f.startsWith('_'))
+      .filter(f => /^scope:\s*(universal|stack:)/m.test(readFileSync(repoPath('knowledge', 'lessons', f), 'utf8')))
+  : [];
+if (portable.length) {
+  const days = upLast?.at ? Math.round((Date.now() - Date.parse(upLast.at)) / 86400000) : null;
+  if (days === null) {
+    warn.push(`${portable.length} bài học mang đi được nhưng CHƯA BAO GIỜ gửi lên template — `
+      + `project sau của bạn sẽ khởi động lại từ số 0. Chạy: node tooling/knowledge/upstream.mjs`);
+  } else if (days > 30) {
+    warn.push(`${days} ngày chưa gửi bài học lên template (${portable.length} bài mang đi được) — `
+      + `node tooling/knowledge/upstream.mjs`);
   }
 }
 

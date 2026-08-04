@@ -20,28 +20,74 @@
  * những thứ mà copy file không làm được (đổi tên field trong config, chuyển
  * cấu trúc thư mục).
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, readdirSync, statSync, renameSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, readdirSync, statSync, renameSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve, sep, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { REPO_ROOT, repoPath, readJson, writeJson, report, run, MECHANISM_PATHS } from './lib/harness.mjs';
 
 const args = process.argv.slice(2);
-const src = args.find(a => !a.startsWith('--'));
+const argOf = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : null; };
+const src = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--ref');
 const APPLY = args.includes('--apply');
 const FORCE = args.includes('--force-overwrite');
+const REF = argOf('--ref');
+const ALLOW_UNPINNED = args.includes('--allow-unpinned');
 
 if (!src) {
   console.error(`Cách dùng:
   node tooling/upgrade.mjs <đường-dẫn-template>            xem trước
   node tooling/upgrade.mjs <đường-dẫn-template> --apply
+  node tooling/upgrade.mjs <URL-git> --ref v2.6.0 --apply  lấy template TỪ XA
 
-Template có thể là thư mục local hoặc một checkout của repo harness.
+Template có thể là thư mục local, hoặc URL git (https:// hoặc git@) kèm --ref.
 LUÔN xem trước rồi mới --apply.`);
   process.exit(1);
 }
 
-const TPL = resolve(src);
+/**
+ * Template TỪ XA — nếu không có đường này, một project được dựng bằng bootstrap từ xa
+ * **mắc kẹt vĩnh viễn ở version khai sinh**: `upgrade` đòi một thư mục template local mà
+ * project đó chưa bao giờ có, và `manifest.source` ghi một đường dẫn tạm đã bị xoá.
+ *
+ * PIN THEO TAG/SHA, KHÔNG BAO GIỜ THEO `main` — cùng luật mà `knowledge/README.md` đã đặt
+ * cho pack, cùng lý do và ở đây hậu quả lớn hơn: một commit sai trên `main` sẽ được kéo về
+ * ĐỒNG THỜI bởi mọi project, và nó ghi vào lớp CƠ CHẾ (hook, gate, migration) chứ không
+ * phải vào tài liệu.
+ */
+let TPL, remote = null;
+if (/^(https?:\/\/|git@)/.test(src)) {
+  if (!REF && !ALLOW_UNPINNED) {
+    console.error(`\n⛔ Lấy template từ xa mà KHÔNG pin version.\n`
+      + `  Thêm --ref <tag|sha>. Không pin nghĩa là bạn kéo về bất cứ thứ gì đang nằm trên nhánh\n`
+      + `  mặc định lúc này — và một commit sai ở đó sẽ vào MỌI project của bạn cùng lúc, ở lớp\n`
+      + `  cơ chế (hook, gate, migration). Cùng luật với pack: knowledge/README.md.\n`
+      + `  Thật sự muốn: --allow-unpinned.\n`);
+    process.exit(1);
+  }
+  const tmp = join(tmpdir(), `harness-tpl-${process.pid}`);
+  rmSync(tmp, { recursive: true, force: true });
+  const clone = run('git', ['clone', '--depth', '1', ...(REF ? ['--branch', REF] : []), src, tmp], { cwd: tmpdir() });
+  if (clone.status !== 0) {
+    console.error(`\n⛔ Không clone được ${src}${REF ? ` @ ${REF}` : ''}\n${clone.stderr}`);
+    process.exit(1);
+  }
+  TPL = tmp;
+  remote = { url: src, ref: REF ?? '(không pin)', sha: run('git', ['rev-parse', 'HEAD'], { cwd: tmp }).stdout.trim() };
+  console.log(`\n  template: ${src} @ ${remote.ref}  (${remote.sha.slice(0, 8)})`);
+  // `--ref main` ĐI QUA cửa kiểm ở trên nhưng KHÔNG phải là pin: nhánh di chuyển, nên hai
+  // project nâng cấp cách nhau một ngày nhận hai bản khác nhau trong khi manifest của
+  // chúng ghi cùng một `source`. Cảnh báo, không chặn — sha vẫn được ghi lại nên vẫn
+  // truy được về sau.
+  if (/^(main|master|HEAD)$/.test(String(REF))) {
+    console.log(`  ⚠️  \`--ref ${REF}\` là NHÁNH, không phải mốc. Hôm nay nó là ${remote.sha.slice(0, 8)};`
+      + ` ngày mai là thứ khác.\n      Dùng tag version (\`--ref v${readFileSync(join(tmp, 'harness.version'), 'utf8').trim()}\`) hoặc sha đầy đủ.`);
+  }
+  process.on('exit', () => { try { rmSync(tmp, { recursive: true, force: true }); } catch {} });
+} else {
+  TPL = resolve(src);
+}
 if (!existsSync(join(TPL, 'harness.version'))) {
   console.error(`Không phải thư mục template harness: ${TPL}\n(thiếu harness.version)`);
   process.exit(1);
@@ -247,7 +293,10 @@ writeJson(repoPath('.claude', 'harness-manifest.json'), {
   templateVersion: tplVersion,
   upgradedAt: new Date().toISOString(),
   previousVersion: curVersion,
-  source: TPL,
+  // Đường dẫn tạm của một clone sắp bị xoá KHÔNG phải là nguồn. Ghi URL + ref + sha thì
+  // lần nâng cấp sau (và người đọc manifest 3 tháng nữa) mới biết bản này từ đâu ra.
+  source: remote ? `${remote.url}@${remote.ref}` : TPL,
+  ...(remote ? { sourceSha: remote.sha } : {}),
   files,
 });
 if (existsSync(repoPath('harness.version'))) writeFileSync(repoPath('harness.version'), tplVersion + '\n');
