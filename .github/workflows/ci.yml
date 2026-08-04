@@ -77,40 +77,84 @@ jobs:
         run: |
           # Lockfile là OUTPUT của một solver. Merge văn bản hai output không cho
           # ra output hợp lệ. Cài frozen sẽ bắt lockfile đã bị merge tay.
-          echo "CHANGEME: <install> --frozen-lockfile"
+          #
+          # TỰ KÍCH HOẠT: không có lockfile thì đây là `n/a` và nói ra như thế. CÓ
+          # lockfile mà bước này chưa điền thì ĐỎ — một bước "kiểm lockfile" xanh trên
+          # một repo có lockfile mà không chạy gì là câu nói dối tốn kém nhất ở đây.
+          if ls package-lock.json pnpm-lock.yaml yarn.lock >/dev/null 2>&1; then
+            echo "::error::Có lockfile nhưng bước này chưa điền. Thay bằng: <install> --frozen-lockfile"
+            exit 1
+          fi
+          echo "n/a — repo này không có lockfile. ĐÂY KHÔNG PHẢI 'lockfile toàn vẹn'."
 
+  # MỘT runner cho mọi gate. `/pre-merge`, Stop hook và job này gọi CÙNG một lệnh, nên
+  # ba nơi không thể lệch nhau — đó là lý do `gates.mjs` tồn tại.
+  #
+  # Trước 2.1.0 job này là `echo "CHANGEME"`, tức là LUÔN XANH. Ghép với
+  # docs/BRANCH-PROTECTION.md (dạy đặt các check thành `required`) thì kết quả là một
+  # dấu tick xanh gác một cửa không có ai đứng — tệ hơn không có CI, vì không có CI thì
+  # người ta BIẾT là không có.
   verify:
     runs-on: ubuntu-latest
+    env:
+      # ── CỬA THOÁT, CHỈ ĐÚNG CHO REPO TEMPLATE ────────────────────────────────
+      # Ở template, `commands` rỗng là placeholder ĐÚNG — không có stack nào để chạy.
+      # Không có dòng này thì gate bỏ qua + phiên không người ⇒ FAIL ĐÓNG, và CI của
+      # template đỏ vĩnh viễn. Một cái gác đỏ ngày đầu là một cái gác sẽ bị tắt.
+      #
+      # REPO TIÊU THỤ PHẢI XOÁ DÒNG NÀY. Giữ lại = gate bị bỏ qua vẫn xanh.
+      # `harness-doctor` báo CHẶN nếu repo có `.claude/harness-manifest.json` mà dòng
+      # này còn — cửa thoát nào cũng phải có người canh, nếu không nó thành vĩnh viễn.
+      HARNESS_ALLOW_SKIPPED_GATES: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      # - run: CHANGEME install
-      # - run: CHANGEME gen && git diff --exit-code   # ← quên chạy gen là fail
-      # - run: CHANGEME typecheck                      # ← TOÀN REPO
-      # - run: CHANGEME lint
-      # - run: CHANGEME test
-      # - run: CHANGEME build
-      # - run: CHANGEME depcruise
-      - run: echo "CHANGEME — điền lệnh từ harness.config.json → gates.preMerge"
+      # Gate KHÔNG tự cài dependency — cài là việc của project, và nó phải frozen.
+      # - run: CHANGEME install --frozen-lockfile
+      - name: Gate preMerge (gen-clean · typecheck · lint · test · build · depcruise · e2e)
+        run: node tooling/gates.mjs --stage preMerge
 
-  e2e:
-    runs-on: ubuntu-latest
-    # if: chỉ chạy khi path liên quan đổi (affected)
-    steps:
-      - uses: actions/checkout@v4
-      - run: echo "CHANGEME — E2E cho mọi platform trong scope"
+  # KHÔNG có job `e2e` riêng: `e2e` là một GATE nằm trong `gates.preMerge`, nên nó chạy
+  # ở job `verify` cùng mọi gate khác. Một job riêng chỉ để gọi cùng một runner là bản
+  # sao thứ hai của danh sách gate — đúng lớp lỗi mà `gates.mjs` được viết ra để diệt.
+  # Cần E2E chạy song song vì nó chậm? Chẻ ở tầng `commands.e2e` của project, không chẻ
+  # ở đây — và cập nhật required checks trong branch protection cho khớp.
 
   security:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        # fetch-depth: 0 — bước dưới chỉ quét file ở HEAD nên không cần, NHƯNG một
+        # scanner chuyên dụng (gitleaks/trufflehog) cần lịch sử: secret đã bị xoá khỏi
+        # HEAD vẫn còn trong commit cũ. Giữ để bật thêm tầng đó không phải sửa hai chỗ.
         with: { fetch-depth: 0 }
-      - name: Quét secret
+
+      - name: Quét secret — mọi file được track
+        # Đây là lưới an toàn CUỐI. Tầng nhanh hơn: .claude/hooks/block-secrets.mjs (~ms)
+        # và .githooks/pre-commit (~s) — luật là đặt check ở tầng NHANH NHẤT bắt được nó.
+        #
+        # `--all` tồn tại vì ở CI không có gì `staged`: bản chỉ-staged exit 0 NGAY, tức
+        # là một lưới an toàn luôn xanh vì nó không bao giờ có gì để xem.
+        run: node tooling/precommit-scan.mjs --all
+
+      - name: SCA — dependency có CVE (tất định, thay cho phán đoán)
         run: |
-          # Thay bằng gitleaks/trufflehog. Đây là lưới an toàn cuối —
-          # tầng nhanh hơn là .claude/hooks/block-secrets.mjs (~ms) và
-          # .githooks/pre-commit (~s). Đặt check ở tầng NHANH NHẤT bắt được nó.
-          echo "CHANGEME: gitleaks detect --no-git -v"
+          # COMPUTATIONAL trước INFERENTIAL: "dependency này có CVE không" là câu hỏi
+          # tất định, `security-reviewer` (một agent) không cần được hỏi.
+          # Cùng luật tự-kích-hoạt như bước lockfile: không bao giờ xanh im lặng.
+          if [ -f package-lock.json ]; then
+            npm audit --audit-level=high
+          elif ls pnpm-lock.yaml yarn.lock >/dev/null 2>&1; then
+            echo "::error::Có lockfile nhưng chưa điền lệnh audit (pnpm audit · yarn npm audit)."
+            exit 1
+          else
+            echo "n/a — không có lockfile JS ⇒ không có dependency để quét."
+            echo "Stack khác: pip-audit · cargo audit · govulncheck · osv-scanner."
+            echo "ĐÂY KHÔNG PHẢI 'không có lỗ hổng' — đây là 'chưa đo'."
+          fi
+
+      # SAST bật SAU SCA, không trước: nó inferential hơn và dương tính giả nhiều hơn,
+      # và một check hay kêu oan là check bị tắt.
       # - name: SAST
       #   run: semgrep ci

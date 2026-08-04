@@ -11,6 +11,84 @@
 
 ---
 
+## 2.1.0 — 2026-08-04
+
+**minor, nhưng CÓ VIỆC PHẢI LÀM TAY** (xem `harness-migrations/004`).
+
+### CI không còn xanh giả
+
+Ba chỗ trong `ci.yml` là `echo "CHANGEME"` và vì thế **luôn xanh**: job `verify`, job
+`e2e`, bước "Quét secret". Ghép với `docs/BRANCH-PROTECTION.md` — tài liệu dạy đặt các
+check thành `required` — kết quả là **những dấu tick xanh gác một cửa không có ai đứng.**
+Đó không phải thiếu gate; đó là một tuyên bố sai, và nó tệ hơn không có CI vì không có
+CI thì người ta BIẾT là không có.
+
+Không có cơ chế nào mới được viết. `gates.mjs` đã fail-**đóng** khi phiên không có người
+**và** gate bị bỏ qua (3 nhánh đều có test từ 2.0.0), và header của nó đã ghi
+`--stage preMerge ← /pre-merge VÀ ci.yml, cùng một lệnh` — CI chỉ chưa bao giờ gọi.
+
+- `verify` → `node tooling/gates.mjs --stage preMerge`. MỘT runner cho `/pre-merge`,
+  Stop hook và CI, nên ba nơi không thể lệch nhau.
+- **Job `e2e` bị XOÁ.** `e2e` là một GATE trong `gates.preMerge` nên nó chạy trong
+  `verify`. Một job riêng chỉ để gọi cùng runner là bản sao thứ hai của danh sách gate.
+  ⚠️ **Phải bỏ `e2e` khỏi required status checks**, nếu không mọi PR treo mãi ở
+  *"Expected — waiting for status"*.
+- `security` → `node tooling/precommit-scan.mjs --all` (thật) + SCA tất định
+  (`npm audit` khi có lockfile). Bước "Lockfile toàn vẹn" và SCA đều **tự kích hoạt**:
+  không có lockfile ⇒ nói `n/a` ra miệng; CÓ lockfile mà chưa điền lệnh ⇒ **ĐỎ**.
+
+### `precommit-scan.mjs --all`
+
+Bản chỉ-`staged` `exit 0` NGAY khi không có gì staged — và ở CI thì không bao giờ có.
+`--all` quét mọi file được track (`git ls-files`). Test khẳng định **số file đã xem khớp
+`git ls-files`**, không khẳng định "exit 0": một lưới an toàn luôn xanh vì không bao giờ
+có gì để xem thì không phải lưới.
+
+### Cửa thoát có người canh
+
+`ci.yml` của template đặt `HARNESS_ALLOW_SKIPPED_GATES: '1'` ở job `verify` — đúng cho
+template (`commands` rỗng là placeholder; không có nó thì CI template đỏ vĩnh viễn, và
+một cái gác đỏ ngày đầu là một cái gác sẽ bị tắt). **Ở repo tiêu thụ nó là một cái lỗ.**
+Hai lớp xử lý: migration 004 **xoá** nó khi nâng cấp, và `harness-doctor` báo **CHẶN**
+nếu thấy nó cùng với `.claude/harness-manifest.json`.
+
+### `harness-doctor` biết hai thứ mới
+
+- **Con số máy đếm được mà người gõ tay trong README** — hook · skill · số test. Đo
+  2026-08-04: README ghi *"9 hook"* (thật 10) và *"28 test"* (thật 70). Số test so theo
+  **sàn** (`≥70`), vì chỉ trong một phiên nó đi 28 → 70 → 71 và một check nổ mỗi lần
+  thêm một test là check dạy người ta ngừng đọc; chiều bị chặn là chiều **nói quá**.
+- **Cửa thoát trong `ci.yml`** (ở trên).
+
+### `test-migrations`: hợp đồng có SÀN, và hai lỗ trong chính nó
+
+Migration 004 là cái đầu tiên chạm file **không phải JSON**, và nó phơi ra hai lỗi trong
+suite — cả hai đều là *"nhìn PHẠM VI trước khi nhìn logic"*, lần thứ 7 và 8 của
+`knowledge/lessons/0003`:
+
+1. `snapshot()` đi theo **danh sách path cứng**, nên `③ idempotent` của 004 xanh **rỗng**
+   — nó chưa từng nhìn file mà migration sửa. Nay `walk('.')` toàn cây.
+2. Engine mutant quyết định trên **source đầy đủ**, nên một comment giải thích *"cố ý
+   KHÔNG dùng lazy"* bị đọc thành code ⇒ báo `MUTANT SỐNG SÓT` về một migration ĐÚNG.
+   Nay quyết định trên bản đã bỏ comment. **Neo vào code, đừng neo vào comment.**
+
+Và một điều kiện mới, **⑤ kết quả mong đợi do migration tự khai** (`export const expect`).
+Bản đầu của ⑤ là heuristic đo BYTE (*"không file nào teo hơn nửa"*); tôi thử nó bằng chế
+độ hỏng thật — regex ăn tới cuối file — và **nó không bắt được** (đoạn bị ăn ~40%). Giữ
+một check vừa thất bại phép thử của chính nó là giữ đồ trang trí, nên nó bị **bỏ**, không
+được nới ngưỡng. Bài học: **một hợp đồng tổng quát có sàn** — chỗ duy nhất biết "vá đúng
+nghĩa là gì với file này" là migration.
+
+### Cần làm khi nâng cấp
+
+1. `node tooling/upgrade.mjs <template> --apply` (migration 004 xoá cửa thoát).
+2. **Bỏ `e2e` khỏi required status checks** — khối `gh api` tái lập được ở
+   `docs/BRANCH-PROTECTION.md`.
+3. Điền `harness.config.json → commands` cho tới khi `gates.mjs --stage preMerge` xanh
+   THẬT. Mỗi lệnh còn rỗng giờ làm **CI ĐỎ** thay vì im lặng.
+
+---
+
 ## 2.0.0 — 2026-08-04
 
 ### Tái phân vai harness ⟷ Claude Code native — nửa sau

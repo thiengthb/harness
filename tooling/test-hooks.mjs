@@ -367,6 +367,31 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   else ok.push(`observe.mjs${' '.repeat(17)} lỗi kỹ thuật KHÔNG làm giật mình phiên sau`);
 }
 
+// ─── precommit-scan --all: lưới an toàn CUỐI ở CI ────────────────────────────
+// Bản chỉ-`staged` `exit 0` NGAY khi không có gì staged — và ở CI thì không bao giờ có.
+// Nên thứ phải assert KHÔNG phải "nó exit 0" (nó luôn exit 0), mà là **nó đã xem một số
+// file khác 0**. Không có khẳng định đó thì một ngày `git ls-files` trả về ít hơn (sparse
+// checkout, submodule, đổi cwd) và lưới an toàn cuối lặng lẽ quay về làm `echo` — trong
+// khi job `security` vẫn xanh. So với SỐ THẬT, không so với một hằng số: một ngưỡng gõ
+// tay ở đây chính là con số viết tay mà `harness-doctor` vừa được dạy để không tin.
+{
+  const tracked = git(['ls-files']).stdout.split('\n').filter(Boolean).length;
+  const r = spawnSync(process.execPath, [repoPath('tooling', 'precommit-scan.mjs'), '--all'], {
+    encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, ...TEST_ENV },
+  });
+  const out = (r.stdout ?? '') + (r.stderr ?? '');
+  const m = out.match(/(\d+) file được track/);
+  if (r.status !== 0) {
+    fail.push(`precommit-scan --all  →  exit=${r.status}, mong đợi 0\n         ${out.split('\n').find(Boolean) ?? ''}`);
+  } else if (!m) {
+    fail.push('precommit-scan --all  →  KHÔNG báo số file đã xem: không phân biệt được "sạch" với "chưa xem gì"');
+  } else if (Number(m[1]) !== tracked) {
+    fail.push(`precommit-scan --all  →  xem ${m[1]} file nhưng git ls-files có ${tracked}`);
+  } else {
+    ok.push(`precommit-scan.mjs${' '.repeat(10)} --all xem đủ ${tracked} file được track (không phải 0)`);
+  }
+}
+
 // ─── ③④ MUTANT ───────────────────────────────────────────────────────────────
 // Mỗi mutant tiêu vào PHẠM VI của check trước, không phải logic của nó.
 const MUTANTS = [

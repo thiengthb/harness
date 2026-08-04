@@ -300,10 +300,14 @@ if (readmeTxt) {
   // không phải tổng: theo luật ba giá trị đó là "chưa đo được", không phải một số
   // nhỏ hơn — so một con số thật với một con số phần sẽ báo lệch ở nơi không lệch.
   const testCount = hooksRun?.status === 'pass' ? (hooksRun.out.match(/^\s*PASS\b/gm) ?? []).length : null;
+  // `floor` cho số TEST, khớp CHÍNH XÁC cho số hook/skill. Lý do đo được: chỉ trong
+  // phiên này số test đi 28 → 70 → 71, và một check nổ mỗi lần thêm một test là check
+  // dạy người ta ngừng đọc. Số hook/skill là CẤU TRÚC (thêm một cái là một quyết định),
+  // số test chỉ tăng — nên với nó, cái đáng chặn là chiều NÓI QUÁ, không phải chiều tụt hậu.
   const CLAIMS = [
     { re: /(\d+)\s+hook\b/,        real: onDisk.length, what: 'hook' },
     { re: /(\d+)\s+skill\b/,       real: skillTotal,    what: 'skill' },
-    { re: /(\d+)\s+test cho hook/, real: testCount,     what: 'test cho hook' },
+    { re: /(\d+)\s+test cho hook/, real: testCount,     what: 'test cho hook', floor: true },
   ];
   const parts = [];
   for (const c of CLAIMS) {
@@ -313,12 +317,39 @@ if (readmeTxt) {
     // phải nhìn thấy được, không phải một check tự tắt mà không ai hay.
     if (!m) { parts.push(`${c.what}: không khai`); continue; }
     if (c.real === null) { parts.push(`${c.what}: ${m[1]} vs ? chưa đo`); continue; }
-    if (Number(m[1]) === c.real) { parts.push(`${c.what}: ${m[1]} ✓`); continue; }
-    parts.push(`${c.what}: ${m[1]} ≠ ${c.real}`);
-    advice.push(`README.md ghi "${m[0].trim()}" nhưng đo được ${c.real} — con số máy đếm được thì đừng gõ tay. `
+    const claimed = Number(m[1]);
+    if (c.floor ? claimed <= c.real : claimed === c.real) {
+      parts.push(`${c.what}: ${m[1]}${c.floor && claimed < c.real ? `≤${c.real}` : ''} ✓`);
+      continue;
+    }
+    parts.push(`${c.what}: ${m[1]} ${c.floor ? '>' : '≠'} ${c.real}`);
+    advice.push(`README.md ghi "${m[0].trim()}" nhưng đo được ${c.real} — `
+      + (c.floor ? 'README NÓI QUÁ so với thực tế. ' : 'con số máy đếm được thì đừng gõ tay. ')
       + `Đây là tài liệu VÀO-CỬA: một con số sai ở đây dạy người mới rằng tài liệu này không đáng tin`);
   }
   console.log(`  README, số máy đếm được:     ${parts.join(' · ')}`);
+}
+
+// ── Cửa thoát trong CI: ai canh nó? ──────────────────────────────────────────
+// `ci.yml` job `verify` đặt HARNESS_ALLOW_SKIPPED_GATES=1 vì ở REPO TEMPLATE, `commands`
+// rỗng là placeholder đúng và không có dòng đó thì CI template đỏ vĩnh viễn.
+//
+// Ở REPO TIÊU THỤ, cùng dòng đó nghĩa là: gate bị bỏ qua vẫn cho ra tick XANH. Đó là
+// đúng hình dạng lỗi mà cả job `verify` vừa được sửa để diệt — cửa thoát không có người
+// canh thì thành vĩnh viễn, và nó vĩnh viễn ở đúng chỗ nguy hiểm nhất.
+//
+// Tín hiệu dùng `.claude/harness-manifest.json` (chỉ `apply-to`/`upgrade` ghi ra ở ĐÍCH,
+// không bao giờ có ở template). Lỗ đã biết: repo copy tay không có manifest sẽ đọc thành
+// template — doctor vốn đã khuyên chạy `upgrade.mjs` một lần chính vì lý do này.
+const ciPath = repoPath('.github', 'workflows', 'ci.yml');
+if (exists(ciPath) && readFileSync(ciPath, 'utf8').includes('HARNESS_ALLOW_SKIPPED_GATES')) {
+  if (exists(repoPath('.claude', 'harness-manifest.json'))) {
+    blockers.push('.github/workflows/ci.yml còn `HARNESS_ALLOW_SKIPPED_GATES: 1` nhưng đây là repo TIÊU THỤ '
+      + '(có .claude/harness-manifest.json) — gate bị bỏ qua vẫn cho tick XANH. XOÁ dòng env đó khỏi job `verify`, '
+      + 'rồi điền harness.config.json → commands cho tới khi gate xanh THẬT');
+  } else {
+    console.log('  cửa thoát CI:                HARNESS_ALLOW_SKIPPED_GATES có mặt — ĐÚNG ở template (chưa có manifest)');
+  }
 }
 
 // Deny rule là lớp 2 cho hai hook glob-tĩnh. Deny rule KHÔNG test được bằng spawn hook,

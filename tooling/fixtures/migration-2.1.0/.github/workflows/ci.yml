@@ -1,0 +1,40 @@
+name: ci
+
+# FIXTURE cho migration 004 — trạng thái của một project ĐÍCH ngay SAU khi `upgrade.mjs`
+# copy `ci.yml` bản 2.1.0 vào và TRƯỚC khi migration chạy. Nó mang theo cửa thoát của
+# template, và đó chính là thứ migration phải xoá.
+#
+# Giữ đúng THỤT LỀ của bản thật: regex của migration neo vào `env:` ở 4 space và các
+# dòng comment ở 6 space. Đổi thụt lề ở đây mà test vẫn xanh nghĩa là regex quá lỏng.
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches: [main]
+
+jobs:
+  guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Hook tests
+        run: node tooling/test-hooks.mjs
+
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      # ── CỬA THOÁT, CHỈ ĐÚNG CHO REPO TEMPLATE ────────────────────────────────
+      # REPO TIÊU THỤ PHẢI XOÁ DÒNG NÀY.
+      HARNESS_ALLOW_SKIPPED_GATES: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Gate preMerge
+        run: node tooling/gates.mjs --stage preMerge
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Quét secret — mọi file được track
+        run: node tooling/precommit-scan.mjs --all
