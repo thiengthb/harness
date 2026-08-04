@@ -11,6 +11,32 @@
 
 ---
 
+## 2.8.1 — 2026-08-05
+
+**patch.** Sàn `RATCHET` của `test-hooks` cộng cả case **bỏ qua có chủ ý**.
+
+`2.8.0` thêm sàn 76 và một case chỉ chạy ở repo template (kiểm đường phân phối của sự kiện
+hook). Ở project đích, case đó đúng là không chạy ⇒ tổng 75 < sàn 76 ⇒ **FAIL, exit 1 ở cả ba
+repo tiêu thụ**, ngay trong lần phát hành.
+
+Đây là `knowledge/lessons/0003` — *self-test của template assert thứ chỉ đúng trong repo
+template* — và nó xảy ra **bên trong bản vá viết ra để chống đúng lớp lỗi đó**. Bằng chứng thứ
+11 của bài học đó, và là bằng chứng mạnh nhất: biết luật, viết luật ra ở dòng ngay trên, vẫn
+vi phạm.
+
+Bài học cụ thể hơn luật cũ: **một sàn phải cộng ĐỦ BA giá trị** — *đã chạy* + *bỏ qua có chủ
+ý*. Không cộng thì `n/a` bị gộp vào `0`, đúng phép gộp mà `AGENTS.md` cấm ở mọi nơi khác. Cách
+sửa là một biến `skipped` tường minh, **không** phải một hằng số thứ hai cho mỗi vai (hai hằng
+số thì cả hai đều phải nhớ nâng, và cái ít chạy hơn sẽ trôi).
+
+Kiểm ở **cả hai vai** trước khi phát hành, không chỉ ở template:
+
+```
+                       template → 76/76, sàn 76, exit 0
+bản sao có manifest → consumer →  75/75 · 1 n/a, sàn 76, exit 0
+nâng sàn lên 78                 →  ĐỎ ở cả hai vai (sàn vẫn còn răng)
+```
+
 ## 2.8.0 — 2026-08-05
 
 **minor.** Sự kiện hook mới **tới được** repo đã áp template. Trước bản này thì không.

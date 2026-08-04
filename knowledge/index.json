@@ -45,7 +45,7 @@
       "representation": "test",
       "status": "active",
       "added": "2026-08-04",
-      "occurrences": 10,
+      "occurrences": 11,
       "artifacts": [
         "tooling/lib/harness.mjs — config() đọc HARNESS_CONFIG",
         "tooling/test-migrations.mjs — snapshot() đi toàn cây; quyết định mutant trên bản bỏ comment; điều kiện ⑤ do migration tự khai `expect`",

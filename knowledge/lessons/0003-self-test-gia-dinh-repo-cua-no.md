@@ -8,13 +8,14 @@ status: active
 owner: "@dri"
 added: 2026-08-04
 expires-review: 2027-02-04
-occurrences: 10
+occurrences: 11
 seen-in:
   - harness
   - sakubun
   - sakubun-test
   - warehouse
 evidence:
+  - "2026-08-05 (v2.8.0 → 2.8.1), BẰNG CHỨNG MẠNH NHẤT: sàn `RATCHET` mới của `test-hooks.mjs` đếm cả một case CHỈ chạy ở repo template (kiểm đường phân phối sự kiện hook). Ở project đích case đó đúng là không chạy ⇒ tổng 75 < sàn 76 ⇒ FAIL, exit 1 ở CẢ BA repo tiêu thụ, ngay trong lần phát hành. Nó xảy ra BÊN TRONG bản vá viết ra để chống đúng lớp lỗi này, và dòng comment ngay trên chỗ sai đã trích chính bài học này. Kết luận: biết luật KHÔNG đủ — điều kiện `Cách kiểm là đã hết` phải chạy ở HAI VAI, và cách rẻ nhất là một bản sao có `.claude/harness-manifest.json` giả (repoRole() → consumer). Luật cụ thể rút thêm: một SÀN phải cộng đủ ba giá trị (đã chạy + bỏ qua có chủ ý), nếu không `n/a` bị gộp vào `0`."
   - "[warehouse] 2026-08-03, ĐỘC LẬP: `tooling/test-hooks.mjs` bám vào `harness.config.json` mặc định — điền `commands.*` làm 3 case FAIL, và `protect-migrations` dùng fixture `db/migrations` nên VỠ khi project thu hẹp `paths.migrations` về thư mục migration có thật. Template phát hiện lại đúng biến thể đó ngày **2026-08-05** và tự gọi là 'lần thứ tư' — hai ngày sau, trong khi bằng chứng đã nằm trên đĩa. Đây là chi phí ĐO ĐƯỢC của việc chiều LÊN không chạy: nếu pack của warehouse đi lên hôm 08-03, ngưỡng '2 lần độc lập' đã đạt và bản sửa đã hạ cánh sớm hơn hai ngày."
   - "[sakubun-test] 2026-08-03, ĐỘC LẬP: hai mục riêng — `post-edit-lint` case giả định `lintFix` rỗng nên 'đỏ oan ngay sau khi cấu hình project', và `apply-to --audit` chạy ở project đã nhận harness thì 'luôn đỏ, doctor báo CHẶN sai'. Cùng hai ca mà sakubun ghi độc lập cùng ngày."
   - "harness v1.4.0 áp lên project `sakubun`: `tooling/test-hooks.mjs` 49/52 pass. Cả 3 case đỏ đều assert trạng thái CHƯA cấu hình — `stop-gate · gate chưa cấu hình lệnh`, `post-edit-lint · lintFix chưa khai`, `block-secrets · .env.example`. Điền `commands` (việc SỐ 1 mà README yêu cầu) là điều kiện làm chúng đỏ."
@@ -82,3 +83,18 @@ node tooling/apply-to.mjs --audit  # trên project đích → bỏ qua, không p
 ```
 
 Cả hai phải xanh **mà không phải sửa gì trong `harness.config.json`**.
+
+### Và phải chạy ở HAI VAI, không chỉ ở template
+
+Điều kiện trên chỉ có giá trị nếu bạn **thật sự chạy nó ở vai kia**. Bằng chứng 2026-08-05:
+biết luật, viết luật ra ở dòng comment ngay trên chỗ sai, vẫn vi phạm — vì suite được chạy ở
+template rồi coi là xong. Không cần một project thật; một bản sao là đủ, và mất 5 giây:
+
+```
+cp -r <template> /tmp/role-test && cd /tmp/role-test
+echo '{"templateVersion":"x","files":{}}' > .claude/harness-manifest.json   # ⇒ repoRole() = consumer
+node tooling/test-hooks.mjs      # PHẢI exit 0 ở đây, không chỉ ở template
+```
+
+Sau đó **nâng sàn/ngưỡng lên một bậc** và khẳng định nó ĐỎ ở cả hai vai — một sàn không còn
+răng thì xanh ở mọi vai, và đó là dạng xanh rỗng khó thấy nhất.
