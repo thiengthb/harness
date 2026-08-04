@@ -11,6 +11,24 @@
 
 ---
 
+## 2.4.1 — 2026-08-04
+
+**patch.** Đổi tên metric ở 2.4.0 bỏ **mồ côi** lịch sử của nó.
+
+`skills (số)` → `skills (tổng thư mục)` là **cùng một phép đo**, chỉ đổi nhãn. Nhưng
+`harness-size` so baseline theo tên, nên trên mọi máy đã có baseline, metric đó thành
+*"chưa có mốc"* **vĩnh viễn** — và cách duy nhất để dọn (`--baseline`) sẽ **xoá luôn** tín
+hiệu phình đang có. Tức là phải chọn giữa một `n/a` mãi mãi và mất bằng chứng.
+
+Nay có `BASELINE_ALIASES`. Đã thử **cả hai chiều**: alias giữ được lịch sử (delta 0, không
+còn `n/a`), và khi thêm một skill thật thì nó báo `skills (tổng thư mục): +1` — nên nó đang
+**so**, không phải đang bỏ qua im lặng.
+
+`skills (discovery)` **cố ý không có alias**: nó là phép đo MỚI, `n/a` của nó là `n/a` thật.
+Đừng gán cho một metric một lịch sử nó không có.
+
+---
+
 ## 2.4.0 — 2026-08-04
 
 **minor.** Không cần migration. Xoá skill `/whats-new` — nội dung chuyển vào
