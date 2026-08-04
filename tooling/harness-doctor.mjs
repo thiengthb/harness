@@ -16,7 +16,7 @@
  * Chạy: sau khi áp template · sau khi nâng cấp · mỗi 2 tuần · khi thấy "agent hôm nay lạ".
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES } from './lib/harness.mjs';
+import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole } from './lib/harness.mjs';
 
 const QUICK = process.argv.includes('--quick');
 const cfg = config();
@@ -56,12 +56,19 @@ const blockers = [], advice = [];
 
 // Repo TEMPLATE thì CHANGEME và commands rỗng là ĐÚNG — đó là placeholder.
 // Project THẬT thì cùng trạng thái đó nghĩa là gate không tồn tại.
-const IS_TEMPLATE = exists(repoPath('HARNESS-CHANGELOG.md'))
-  && exists(repoPath('tooling', 'apply-to.mjs'))
-  && !exists(repoPath('.claude', 'harness-manifest.json'));
+const ROLE = repoRole();
+const IS_TEMPLATE = ROLE === 'template';
 const blocker = m => (IS_TEMPLATE ? advice : blockers).push(m);
 
 if (IS_TEMPLATE) console.log('  ℹ  Đây là REPO TEMPLATE — placeholder CHANGEME là đúng, không phải lỗi.');
+// Trạng thái thứ BA phải được NÓI RA, không được âm thầm gộp vào một trong hai kia. Không có
+// manifest và cũng không có changelog nghĩa là harness tới đây bằng đường không ai theo dõi
+// được — và `upgrade` sau này sẽ ghi đè MÙ vì nó không có hash nào để so.
+if (ROLE === 'unknown') {
+  blockers.push('không xác định được VAI của repo này: không có `.claude/harness-manifest.json` (dấu của repo đã áp) '
+    + 'và cũng không có `HARNESS-CHANGELOG.md` (dấu của repo template). Harness tới đây bằng đường không ai theo dõi được — '
+    + 'nâng cấp sau này sẽ ghi đè MÙ vì không có hash nào để so. Sửa: `node <template>/tooling/apply-to.mjs . --apply --update` một lần để tạo manifest.');
+}
 
 if (String(cfg.project?.id).includes('CHANGEME')) blocker('harness.config.json → project.id vẫn là CHANGEME');
 if (String(cfg.project?.dri || '').includes('CHANGEME')) blocker('harness.config.json → project.dri chưa điền');
