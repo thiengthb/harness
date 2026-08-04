@@ -23,6 +23,32 @@ export const description = 'Stop hook gọi thẳng gates.mjs, xoá stop-gate.mj
 export async function up(ctx) {
   const done = [], todo = [];
 
+  // ── 0. ĐẢM BẢO CÁI ĐÍCH TỒN TẠI trước khi trỏ vào nó ──────────────────────
+  //
+  // Migration này đổi Stop hook thành `node tooling/gates.mjs`. Nó GIẢ ĐỊNH file đó đã
+  // được bước copy của `upgrade.mjs` mang tới. Giả định đó SAI, và sai theo cách chỉ lộ ra
+  // ở repo thật (đo trên `warehouse`, 2026-08-05):
+  //
+  //   `upgrade.mjs` luôn chạy bằng BẢN CŨ CỦA CHÍNH NÓ — bản nằm trong project. Danh sách
+  //   file cơ chế nằm TRONG script đó, nên mọi file `tooling/*.mjs` ra đời SAU version của
+  //   project là vô hình với nó. Thư mục (`.claude/hooks`, `tooling/lib`) thì không sao vì
+  //   chúng được duyệt đệ quy; file khai theo TÊN thì đóng băng ở version cũ.
+  //
+  // Kết quả: nâng v1.4.0 → v2.7.1 xong, `settings.json` trỏ vào `tooling/gates.mjs` KHÔNG
+  // TỒN TẠI. Repo không phải "cũ" — nó HỎNG: mọi sự kiện Stop ném ERR_MODULE_NOT_FOUND.
+  // Nâng cấp làm repo tệ hơn trước khi nâng là chế độ hỏng tệ nhất của một hệ migration.
+  //
+  // Migration chạy từ TEMPLATE (upgrade import chúng từ TPL), nên `ctx.copyFromTemplate`
+  // KHÔNG bị giới hạn đó và vá được ngay tại đây.
+  //
+  // LUẬT RÚT RA: **migration nào trỏ một con trỏ vào một file thì phải TỰ ĐẢM BẢO file đó
+  // tồn tại.** Không giả định bước copy đã làm hộ.
+  for (const dep of ['tooling/gates.mjs', 'tooling/harness-doctor.mjs']) {
+    try {
+      if (ctx.copyFromTemplate?.(dep)) done.push(`✓ mang \`${dep}\` sang (bước copy của upgrade cũ không biết file này)`);
+    } catch { todo.push(`không lấy được \`${dep}\` từ template — copy tay, nếu không Stop hook trỏ vào hư không`); }
+  }
+
   // ── 1. Stop hook trỏ vào runner ────────────────────────────────────────────
   const sp = ctx.repoPath('.claude', 'settings.json');
   if (ctx.existsSync(sp)) {

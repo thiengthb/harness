@@ -30,6 +30,7 @@ export const expect = {
 const HARNESS_ADRS = ['0001-harness-baseline.md', '0002-tai-phan-vai-native.md'];
 
 export async function up(ctx) {
+  const todo = [];
   // ── ① đường biên commit / không-commit ────────────────────────────────────
   // `!.claude/` chỉ thêm khi ĐO THẤY git đang chôn một file harness — nó đảo một quyết
   // định tường minh của project nên nó phải có bằng chứng. Và nó phải là `!.claude/`:
@@ -65,10 +66,38 @@ export async function up(ctx) {
   }
 
   // ── ② số ADR ──────────────────────────────────────────────────────────────
+  //
+  // KHÔNG gọi thẳng `ctx.moveFile`. Migration chạy với `ctx` do **`upgrade.mjs` của
+  // PROJECT** dựng — bản CŨ, bản đang nằm trong repo đó — chứ không phải bản của template.
+  // `moveFile` ra đời ở 2.5.0, nên ở một project đang ở v1.4.0 nó là `undefined`, và
+  // migration này ném `ctx.moveFile is not a function`. Đo thật trên `warehouse` khi nâng
+  // v1.4.0 → v2.7.1.
+  //
+  // LUẬT: **migration chỉ được dùng năng lực `ctx` đã tồn tại ở version CŨ NHẤT còn hỗ
+  // trợ, hoặc phải tự dò.** Đây là mặt đối xứng của luật ở migration 003: ở đó là "đừng
+  // giả định FILE đã có", ở đây là "đừng giả định API đã có".
+  const move = (from, to) => {
+    if (typeof ctx.moveFile === 'function') return ctx.moveFile(from, to);
+    if (!ctx.existsSync(ctx.repoPath(from)) || ctx.existsSync(ctx.repoPath(to))) return false;
+    // Đường lùi chỉ dùng năng lực có từ v1.4.0. `git mv` một mình KHÔNG đủ: nó fail khi
+    // thư mục đích chưa tồn tại, và `ctx` cũ không có mkdir. `copyFromTemplate` thì CÓ tạo
+    // thư mục — và đích ở đây đúng là một file template ship sẵn, nên lấy bản template là
+    // đúng chứ không phải giải pháp tình thế.
+    if (!ctx.copyFromTemplate(to)) {
+      todo.push(`không lấy được \`${to}\` từ template — dời \`${from}\` sang đó bằng tay.`);
+      return false;
+    }
+    const r = ctx.run('git', ['rm', '-q', '-f', from]);
+    if (r?.status === 0) return true;
+    todo.push(`đã tạo \`${to}\` nhưng KHÔNG xoá được \`${from}\` (git rm fail). Xoá tay — `
+      + `để cả hai thì ADR của lớp harness vẫn chiếm số 0001/0002 của SẢN PHẨM.`);
+    return false;
+  };
   let moved = 0;
   for (const name of HARNESS_ADRS) {
-    if (ctx.moveFile(`docs/adr/${name}`, `docs/adr/harness/${name}`)) moved++;
+    if (move(`docs/adr/${name}`, `docs/adr/harness/${name}`)) moved++;
   }
   if (moved) ctx.log(`dời ${moved} ADR của lớp harness sang docs/adr/harness/ — số 0001 giờ thuộc về SẢN PHẨM`);
   else ctx.log('docs/adr/: không có ADR nào của harness cần dời');
+  for (const t of todo) ctx.log(`⚠ CẦN NGƯỜI: ${t}`);
 }
