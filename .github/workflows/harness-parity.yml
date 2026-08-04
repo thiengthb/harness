@@ -4,19 +4,29 @@ name: harness-parity
 # Không có workflow này, "harness của team" thực chất là "harness của người dùng macOS".
 # Hook fail trên một OS = hook bị revert.
 
+# `harness-migrations/**` PHẢI có trong danh sách này. Job `Migration chạy được trên OS
+# này` tồn tại chính vì migration ghi vào repo của người khác, trên máy của họ, trên cả ba
+# OS — nhưng bộ lọc `paths` lại KHÔNG kể thư mục migration, nên một PR chỉ sửa migration
+# không kích hoạt job đó.
+#
+# Và hậu quả nặng hơn cả việc bỏ sót kiểm tra: các job này là REQUIRED CHECK. Workflow
+# không chạy ⇒ GitHub treo PR ở "Expected — waiting for status" VĨNH VIỄN. Đo 2026-08-05:
+# PR v2.7.5 (chỉ sửa migration + changelog) bị chặn đúng như vậy.
 on:
   pull_request:
     paths:
       - '.claude/**'
       - 'tooling/**'
       - 'evals/**'
+      - 'harness-migrations/**'
       - 'harness.config.json'
+      - 'harness.version'
       - '.gitattributes'
       - '.githooks/**'
       - '.github/workflows/harness-parity.yml'
   push:
     branches: [main]
-    paths: ['.claude/**', 'tooling/**', 'harness.config.json']
+    paths: ['.claude/**', 'tooling/**', 'harness-migrations/**', 'harness.config.json']
 
 jobs:
   parity:
