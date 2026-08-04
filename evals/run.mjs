@@ -17,7 +17,7 @@ import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { parseFrontmatter } from '../tooling/lib/frontmatter.mjs';
-import { repoPath, readJson, writeJson, report, git, config } from '../tooling/lib/harness.mjs';
+import { repoPath, readJson, writeJson, report, git, config, spill } from '../tooling/lib/harness.mjs';
 
 const argv = process.argv.slice(2);
 const has = f => argv.includes(f);
@@ -27,7 +27,13 @@ const BARE = has('--bare');
 const DRY = has('--dry');
 const ONLY = val('--task', '');
 
-const DIR = repoPath('evals', 'tasks');
+/**
+ * `EVAL_TASKS_DIR` chuyển thư mục task. CHỈ dùng cho TEST, cùng lý do như `HARNESS_CONFIG`
+ * và `HARNESS_STATE_DIR`: `tooling/test-evals.mjs` cần một task TỐI THIỂU để kiểm `runAgent()`
+ * (thay placeholder, cắt wall-clock, đếm retry). Chạy trên task THẬT thì suite sẽ kéo theo cả
+ * `harness-doctor` của task 0001 — chậm, và nó đo thứ khác.
+ */
+const DIR = process.env.EVAL_TASKS_DIR || repoPath('evals', 'tasks');
 if (!existsSync(DIR)) { console.error('Không có evals/tasks/'); process.exit(1); }
 
 const tasks = readdirSync(DIR)
@@ -83,10 +89,10 @@ function runAssertions(body) {
  * Chạy agent trên một task.
  *
  * Khai lệnh ở `harness.config.json → evals.command`, ví dụ:
- *   "claude -p {prompt} --max-turns {maxTurns} --permission-mode auto --output-format json"
+ *   "claude -p --max-turns {maxTurns} --permission-mode auto --output-format json"
  *
- * Placeholder: {prompt} {maxTurns} {maxMinutes} {id}
- * {prompt} được JSON-quote nên an toàn với dấu nháy và xuống dòng.
+ * PROMPT ĐI QUA STDIN. Placeholder còn lại: {maxTurns} {maxMinutes} {id} {promptFile}.
+ * `{prompt}` đã bị BỎ ở 2.7.8 — xem lý do trong thân hàm.
  *
  * Chưa khai `evals.command` → trả null, runner chỉ chạy assertion trên trạng thái
  * hiện tại. Cố ý: gọi agent TỐN TIỀN, phải là hành động chủ động.
@@ -101,8 +107,31 @@ function runAgent(task) {
   const maxTurns = task.maxTurns ?? config().budget?.maxTurnsPerRun ?? 25;
   const maxMinutes = task.maxMinutes ?? config().budget?.maxWallClockMinutes ?? 30;
 
+  // ── PROMPT ĐI QUA STDIN, KHÔNG QUA DÒNG LỆNH ──────────────────────────────
+  //
+  // Bản đầu nội suy `{prompt}` bằng `JSON.stringify(prompt)`. **JSON escaping không phải
+  // shell escaping.** Đo 2026-08-05 bằng agent giả: dấu nháy đôi thì qua đúng, nhưng `\n`
+  // tới agent dưới dạng HAI KÝ TỰ literal (`\` và `n`) chứ không phải một dòng mới. Mọi
+  // prompt eval thật đều nhiều dòng ⇒ mọi prompt đều bị bóp méo.
+  //
+  // Và nó bóp méo IM LẶNG: agent vẫn chạy, vẫn trả kết quả, chỉ là nó đọc một prompt khác
+  // với prompt trong file task. Điểm eval sai theo hướng không ai truy được — nó đọc y hệt
+  // "model tụt hạng". Một lớp inferential control gác bằng một bug computational.
+  //
+  // stdin không có tầng escaping nào để sai, và nó là đường DUY NHẤT đúng trên cả ba OS
+  // (`cmd.exe` xử lý `"` và `%` khác `sh` — xem Parity Contract). `{promptFile}` cho tool
+  // không đọc được stdin.
+  if (String(tpl).includes('{prompt}')) {
+    return { ok: false, error: 'evals.command còn `{prompt}` — placeholder đó đã bị BỎ ở 2.7.8 vì '
+      + 'JSON escaping làm prompt nhiều dòng bị bóp méo im lặng. Prompt nay đi qua STDIN: bỏ `{prompt}` '
+      + 'khỏi lệnh (ví dụ `claude -p --max-turns {maxTurns}`), hoặc dùng `{promptFile}` nếu tool của bạn không đọc stdin.' };
+  }
+
+  const promptFile = String(tpl).includes('{promptFile}')
+    ? spill(`eval-prompt-${task.id}`, prompt) : null;
+
   const cmd = String(tpl)
-    .replaceAll('{prompt}', JSON.stringify(prompt))
+    .replaceAll('{promptFile}', promptFile ? JSON.stringify(promptFile) : '')
     .replaceAll('{maxTurns}', String(maxTurns))
     .replaceAll('{maxMinutes}', String(maxMinutes))
     .replaceAll('{id}', String(task.id));
@@ -110,6 +139,7 @@ function runAgent(task) {
   const t0 = Date.now();
   const r = spawnSync(cmd, {
     shell: true, encoding: 'utf8', cwd: repoPath(''),
+    input: prompt,                         // prompt qua stdin: không có tầng escaping nào để sai
     timeout: maxMinutes * 60_000,          // wall-clock cap — guardrail BẮT BUỘC
     maxBuffer: 64 * 1024 * 1024,
   });
@@ -121,11 +151,19 @@ function runAgent(task) {
   for (const l of lines) { const k = l.trim(); if (k.length > 30) seen.set(k, (seen.get(k) || 0) + 1); }
   const retries = Math.max(0, ...[...seen.values()], 0) - 1;
 
+  // GIỮ TRANSCRIPT. Bản đầu bắt toàn bộ output rồi dùng nó DUY NHẤT để đếm retry, xong ném
+  // đi. Với một lớp inferential control, đó là ném đi chính bằng chứng: eval đỏ mà không có
+  // transcript thì người đọc chỉ có một dòng "task 0003 fail" và không có cách nào biết agent
+  // đã làm gì. `features/*.json` đòi `evidence` cho mọi `passes: true` — không lý gì lớp eval,
+  // lớp ĐẮT nhất và mờ nhất, lại được miễn.
+  const transcript = spill(`eval-${task.id}`, (r.stdout || '') + '\n--- stderr ---\n' + (r.stderr || ''));
+
   return {
     ok: (r.status ?? 1) === 0,
     timedOut: r.signal === 'SIGTERM',
     minutes: Number(minutes.toFixed(1)),
     retries,
+    transcript,
     error: r.error?.message,
   };
 }
@@ -145,11 +183,17 @@ for (const t of tasks) {
   } else {
     if (agent.timedOut) warn.push(`${label}: CHẠM WALL-CLOCK CAP (${t.maxMinutes || '?'} phút) — bị cắt`);
     if (agent.retries >= 3) warn.push(`${label}: ${agent.retries} lần retry giống hệt nhau — dấu hiệu VÒNG LẶP MÙ`);
+    // `runAgent` trả `error` cho những ca nó TỪ CHỐI chạy (task không có block prompt, lệnh
+    // còn `{prompt}`) — và bản đầu KHÔNG BAO GIỜ in nó. Task hiện ra là đỏ mà không có lý do,
+    // nên người đọc đi tìm ở model trong khi lỗi nằm ở cấu hình. Một thông báo lỗi được tạo
+    // ra rồi bị bỏ đi thì tệ hơn không tạo ra: chi phí đã trả, giá trị thì không.
+    if (agent.error) fail.push(`${label}: ${agent.error}`);
   }
 
   const passed = asserts.failed.length === 0 && (!agent || agent.ok);
   results.push({ id: t.id, kind: t.kind, type: t.type, passed, failedAssertions: asserts.failed, agent });
-  (passed ? ok : fail).push(`${label}${agent ? ` (${agent.minutes}p)` : ''}${asserts.failed.length ? ` → fail: ${asserts.failed[0]}` : ''}`);
+  (passed ? ok : fail).push(`${label}${agent ? ` (${agent.minutes}p)` : ''}${asserts.failed.length ? ` → fail: ${asserts.failed[0]}` : ''}`
+    + (agent?.transcript ? ` · transcript: ${agent.transcript}` : ''));
 }
 
 if (DRY) { report('EVAL (dry)', { ok, warn }); process.exit(0); }

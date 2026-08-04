@@ -119,7 +119,7 @@
     "maxTools": 20
   },
 
-  "$comment_evals": "Nối eval với agent. Để rỗng = chỉ chạy assertion tất định, KHÔNG gọi agent (gọi agent tốn tiền, phải là hành động chủ động). Placeholder: {prompt} {maxTurns} {maxMinutes} {id}. Ví dụ: \"claude -p {prompt} --max-turns {maxTurns} --permission-mode auto\"",
+  "$comment_evals": "Nối eval với agent. Để rỗng = chỉ chạy assertion tất định, KHÔNG gọi agent (gọi agent tốn tiền, phải là hành động chủ động). PROMPT ĐI QUA STDIN — placeholder {prompt} bị BỎ ở 2.7.8 vì JSON escaping không phải shell escaping: prompt nhiều dòng tới agent với \\n là hai ký tự literal, im lặng, và điểm eval sai theo hướng đọc y hệt 'model tụt hạng'. Placeholder còn lại: {maxTurns} {maxMinutes} {id} {promptFile}. Ví dụ: \"claude -p --max-turns {maxTurns} --permission-mode auto\". Runner được kiểm bằng agent GIẢ ở tooling/test-evals.mjs (tất định, không tốn token).",
   "evals": {
     "command": ""
   },
