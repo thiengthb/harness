@@ -146,6 +146,22 @@ for (const l of lessons) {
   }
 }
 
+// ── 2b. FIXLOG — nguyên liệu THÔ của bước 1, và là thứ DUY NHẤT thường có sẵn ────
+// Đo 2026-08-05 trên ba repo tiêu thụ thật: 17 mục fixlog, 6 bài học — nhưng cả 6 bài đều
+// là bài SEED của template, nên kênh đi lên tải được ĐÚNG SỐ KHÔNG. Lý do: bước DISTILL →
+// PROMOTE là nghi thức thủ công, và nó chưa từng chạy ở repo nào.
+//
+// Hậu quả đo được, không phải giả thuyết: `warehouse` và `sakubun-test` ghi fixlog về
+// "test-hooks bám vào harness.config.json mặc định" ngày 2026-08-03; template phát hiện lại
+// đúng lớp lỗi đó ngày 2026-08-05 và gọi nó là "lần thứ tư". Hai ngày, hai repo, và bằng
+// chứng đã nằm sẵn trên đĩa.
+//
+// Nên fixlog đi lên dưới dạng NGUYÊN LIỆU, không phải bài học: không có gì được nhận tự
+// động, DRI vẫn distill. Cái đổi là DRI có thứ để đọc thay vì một pack rỗng.
+const fixlogPath = repoPath('.claude', 'telemetry', 'manual-fixes.log');
+const fixlogLines = exists(fixlogPath)
+  ? readFileSync(fixlogPath, 'utf8').split('\n').filter(Boolean) : [];
+
 // ── 3. Diff cơ chế so với manifest ───────────────────────────────────────────
 const mf = readJson(repoPath('.claude', 'harness-manifest.json'));
 const modified = [];
@@ -169,7 +185,7 @@ for (const l of lessons) {
   }
 }
 
-if (!lessons.length && !modified.length) {
+if (!lessons.length && !modified.length && !fixlogLines.length) {
   fail.push('Không có gì để đóng góp: 0 bài học mang đi được và 0 file cơ chế đã sửa.');
   fail.push('Đây có thể là ĐÚNG (project còn mới), hoặc là dấu hiệu vòng học chưa chạy:');
   fail.push('  node tooling/fixlog.mjs --top   ·   /harness-retro   ·   /knowledge-promote');
@@ -181,6 +197,24 @@ if (!lessons.length && !modified.length) {
 
 const DEST = join(TPL, 'knowledge', 'incoming', projectId);
 
+// VA CHẠM PROVENANCE. `upstream` ghi vào `incoming/<project.id>/` và bước ghi bắt đầu bằng
+// `rmSync(DEST)`. Hai repo khác nhau cùng `project.id` ⇒ repo thứ hai XOÁ đóng góp của repo
+// thứ nhất, không một lời nào. Gặp thật: `sakubun` và `sakubun-test` đều khai
+// `project.id = "sakubun"` (config bị copy sang), nên chúng cùng trỏ vào một thư mục.
+//
+// Một kênh cung ứng làm MẤT đóng góp mà không báo thì tệ hơn không có kênh: bên gửi tin là
+// đã gửi. Nên: từ chối, không đoán tên thay người.
+const prevPack = readJson(join(DEST, 'pack.json'));
+if (prevPack && prevPack.sourcePath && prevPack.sourcePath !== repoPath('')) {
+  console.error(`\n⛔ VA CHẠM: \`knowledge/incoming/${projectId}/\` đã có đóng góp từ MỘT REPO KHÁC\n`
+    + `     repo đó:  ${prevPack.sourcePath}\n`
+    + `     repo này: ${repoPath('')}\n\n`
+    + `  Ghi tiếp sẽ XOÁ đóng góp kia. Hai repo đang dùng chung \`project.id = "${projectId}"\`.\n`
+    + `  Sửa: đổi \`project.id\` trong harness.config.json của MỘT trong hai repo cho khác nhau.\n`
+    + `  (Nó cũng là khoá của telemetry và reservation — trùng id thì hai repo lẫn dữ liệu của nhau.)\n`);
+  process.exit(1);
+}
+
 console.log(`\n=== ĐÓNG GÓP NGƯỢC LÊN TEMPLATE ===`);
 console.log(`  từ:   ${projectId} @ ${sourceCommit}`);
 console.log(`  tới:  ${DEST}\n`);
@@ -189,6 +223,7 @@ console.log(`  ${mergeable.length} bài học template ĐÃ CÓ nhưng bạn có
 if (nothingNew.length) console.log(`  ${nothingNew.length} bỏ qua (template đã có, không có gì mới)`);
 console.log(`  ${evalFiles.size} eval task kèm theo (gate)`);
 console.log(`  ${artifacts.size} artifact`);
+console.log(`  ${fixlogLines.length} mục fixlog THÔ (nguyên liệu distill, không phải bài học)`);
 console.log(`  ${modified.length} file cơ chế project đã sửa → ứng viên cải tiến template`);
 if (modified.length) for (const m of modified) console.log(`     ${m}`);
 
@@ -224,10 +259,28 @@ for (const rel of modified) {
   diffs.push({ rel, lines: (d.stdout.match(/^[+-][^+-]/gm) || []).length });
 }
 
+if (fixlogLines.length) {
+  writeFileSync(join(DEST, 'fixlog.md'), `# fixlog THÔ từ ${projectId}
+
+> **Đây KHÔNG phải bài học.** Đây là nguyên liệu bước 1 (CAPTURE): mỗi dòng là một lần
+> NGƯỜI phải sửa tay việc agent làm. Chưa qua distill, chưa qua gate, được phép sai, và có
+> thể đặc thù project này.
+>
+> Việc của người đọc: tìm mục nào xuất hiện ở **≥2 repo độc lập** — đó là ứng viên promote.
+> Mục chỉ thấy một lần là ngẫu nhiên. Xem \`knowledge/README.md §Điều kiện để PROMOTE\`.
+
+${fixlogLines.length} mục · repo \`${projectId}\` @ \`${sourceCommit}\`
+
+${fixlogLines.map(l => { const p = l.split('|'); return `- \`${(p[0] || '').slice(0, 10)}\` ${p.slice(3).join('|')}`; }).join('\n')}
+`, 'utf8');
+}
+
 writeFileSync(join(DEST, 'pack.json'), JSON.stringify({
   pack: `upstream-${projectId}`,
   direction: 'upstream',
   sourceProject: projectId,
+  sourcePath: repoPath(''),
+  fixlogEntries: fixlogLines.length,
   sourceCommit,
   sourceHarnessVersion: exists(repoPath('harness.version'))
     ? readFileSync(repoPath('harness.version'), 'utf8').trim() : null,
@@ -290,12 +343,26 @@ Mỗi file dưới đây là **một trong hai thứ**, và bạn phải phân l
 ${diffs.length ? diffs.map(d => `- [ ] \`${d.rel}\`${d.note ? ` — ${d.note}` : ` — ~${d.lines} dòng đổi`}
       diff: \`mechanism-diffs/${d.rel}.diff\``).join('\n') : '_(không có — project chưa sửa file cơ chế nào. Đây là dấu hiệu TỐT.)_'}
 
+## fixlog THÔ (${fixlogLines.length})
+
+${fixlogLines.length ? `Chưa qua distill. Đọc \`fixlog.md\`, và tìm **mục lặp lại ở repo khác** — đó là
+ứng viên promote, không phải mục nghe hay nhất.
+
+- [ ] Có mục nào đã thấy ở một repo khác? → đủ ngưỡng "2 lần độc lập", promote
+- [ ] Có mục nào là bug của TEMPLATE (không phải của project)? → sửa ở template, không cần bài học
+- [ ] Còn lại → gửi trả về ${projectId}: distill ở đó, nơi còn nhớ ngữ cảnh` : '_(không có)_'}
+
 ## Artifact (${artifacts.size})
 
 ${[...artifacts].map(a => `- [ ] \`${a}\` — ĐỌC CODE trước khi copy. Hook chạy với đầy quyền của bạn.`).join('\n') || '_(không có)_'}
 `, 'utf8');
 
-ok.push(`${lessons.length} bài học + ${evalFiles.size} gate + ${artifacts.size} artifact + ${diffs.length} diff cơ chế`);
+ok.push(`${lessons.length} bài học + ${evalFiles.size} gate + ${artifacts.size} artifact + ${diffs.length} diff cơ chế + ${fixlogLines.length} mục fixlog thô`);
+if (fixlogLines.length && !lessons.length) {
+  warn.push(`${fixlogLines.length} mục fixlog nhưng 0 bài học đã promote — bước DISTILL của repo này chưa chạy. `
+    + `Fixlog đi lên dưới dạng NGUYÊN LIỆU để DRI đọc, nhưng nơi đúng để distill là ở ĐÂY, `
+    + `nơi còn nhớ ngữ cảnh: /harness-retro rồi /knowledge-promote.`);
+}
 ok.push(`→ ${DEST}`);
 ok.push(`ĐỌC TIẾP ở template: knowledge/incoming/${projectId}/CONTRIB.md`);
 warn.push('Không có gì được áp dụng tự động. Đây là cố ý.');

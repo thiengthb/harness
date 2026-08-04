@@ -11,6 +11,50 @@
 
 ---
 
+## 2.7.2 — 2026-08-05
+
+**patch, nhưng là bản vá QUAN TRỌNG NHẤT của 2.x.** Nâng cấp từ version cũ để lại repo
+**HỎNG**, không phải "cũ". Phát hiện bằng cách chạy thật trên `warehouse` (v1.4.0 → v2.7.1),
+không phải bằng đọc code.
+
+### Nghịch lý bootstrap: `upgrade.mjs` luôn chạy bằng BẢN CŨ CỦA CHÍNH NÓ
+
+Danh sách file cơ chế nằm **trong** script đang bị thay thế. Thư mục (`.claude/hooks`,
+`tooling/lib`) được duyệt đệ quy nên không sao; **file khai theo TÊN thì đóng băng ở version
+của project**. Mọi `tooling/*.mjs` ra đời sau đó **không bao giờ tới được** — `gates.mjs`
+(2.0.0), `harness-doctor.mjs` (2.0.0), `setup.mjs` (2.6.0).
+
+Ghép với migration `003` — cái đổi Stop hook thành `node tooling/gates.mjs` — kết quả là
+`.claude/settings.json` trỏ vào file **không tồn tại**. Đo trên `warehouse`: sau khi nâng,
+mọi sự kiện Stop ném `ERR_MODULE_NOT_FOUND`. **Nâng cấp làm repo tệ hơn trước khi nâng** là
+chế độ hỏng tệ nhất một hệ migration có thể có.
+
+Ba lớp vá, cố ý chồng nhau:
+
+1. **Migration `003` tự đảm bảo cái đích tồn tại** (`copyFromTemplate` cho `gates.mjs` và
+   `harness-doctor.mjs`). Migration chạy từ TEMPLATE nên nó không bị giới hạn của script cũ
+   — đây là lớp vá duy nhất có tác dụng với repo đang ở version cũ **ngay hôm nay**.
+   **LUẬT: migration nào trỏ một con trỏ vào một file thì phải TỰ đảm bảo file đó tồn tại.**
+2. **`upgrade.mjs` chạy lại bằng chính bản MỚI** (`HARNESS_UPGRADE_PHASE2` chặn lặp) sau khi
+   bước copy đã thay nó. Vá cho mọi file tương lai — nhưng chỉ có tác dụng từ lần nâng SAU.
+3. **Kiểm toàn vẹn sau nâng cấp**: mọi `node <file>.mjs` mà `settings.json` gọi phải tồn
+   tại, không thì FAIL kèm lệnh sửa. Bắt cả LỚP lỗi, không riêng ca đã biết.
+
+### Mặt đối xứng: migration cũng không được giả định API của `ctx`
+
+`ctx` do **`upgrade.mjs` của PROJECT** dựng, không phải của template. `ctx.moveFile` thêm ở
+2.5.0 ⇒ ở repo v1.4.0 nó là `undefined`, và migration `006` ném `is not a function` giữa
+chừng. Nay nó tự dò và có đường lùi chỉ dùng năng lực có từ v1.4.0.
+
+Đường lùi đầu tiên tôi viết cũng sai — `git mv` fail khi thư mục đích chưa tồn tại, đúng
+điều comment của chính nó nói mà code không làm. Chỉ lộ ra ở lần chạy thật thứ hai.
+
+### `run()` nhận `env`
+
+Nó vốn **im lặng bỏ qua** tham số đó. Nơi gọi tin rằng biến đã được đặt — và một cờ
+chống-lặp không được đặt thì thành vòng lặp vô hạn. Thêm theo kiểu DENYLIST
+(`{...process.env, ...env}`), không allowlist: allowlist từng làm rớt `PATHEXT` (xem 1.6.0).
+
 ## 2.7.1 — 2026-08-05
 
 **patch.** Hai cảnh báo **đỏ-do-cấu-trúc** ở project đích — cả hai đều nổ vì HOÀN CẢNH chứ

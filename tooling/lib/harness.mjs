@@ -199,9 +199,16 @@ export function runConfigured(name, { placeholders = {}, capture = false, cwd = 
  * Contract tồn tại để bắt, và nó đã ẩn trong fixture của `test-hooks.mjs` từ v1.3.0
  * (bắt được ở CI `parity (windows-latest)`, xem HARNESS-CHANGELOG 1.6.0).
  */
-export function run(bin, args = [], { cwd = REPO_ROOT, capture = true, input, shell = IS_WIN } = {}) {
+/**
+ * `env` là THÊM VÀO `process.env`, không thay thế nó — denylist, không allowlist. Một
+ * allowlist ở đây từng làm rớt `PATHEXT` và giết mọi lần chạy trên Windows (xem
+ * HARNESS-CHANGELOG 1.6.0). Bỏ qua `env` mà cứ nhận tham số là chế độ hỏng tệ hơn: nơi gọi
+ * tin rằng biến đã được đặt — và một cờ chống-lặp không được đặt thì thành vòng lặp vô hạn.
+ */
+export function run(bin, args = [], { cwd = REPO_ROOT, capture = true, input, shell = IS_WIN, env } = {}) {
   const r = spawnSync(bin, args, {
     cwd, encoding: 'utf8', input, shell,
+    ...(env ? { env: { ...process.env, ...env } } : {}),
     stdio: capture ? 'pipe' : 'inherit',
   });
   return { status: r.status ?? 1, stdout: (r.stdout ?? '').trim(), stderr: (r.stderr ?? '').trim() };

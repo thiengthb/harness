@@ -1,4 +1,4 @@
-<!-- version: 2026-08-05-d -->
+<!-- version: 2026-08-05-e -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,21 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-05 — NÂNG CẤP TỪ BẢN CŨ TỪNG ĐỂ REPO HỎNG (v2.7.2)
+
+**Đã nâng từ v1.x lên 2.x trước hôm nay? Kiểm ngay:**
+
+```
+node -e "console.log(require('fs').existsSync('tooling/gates.mjs'))"   # phải là true
+```
+
+`false` nghĩa là `settings.json` đang trỏ Stop hook vào một file KHÔNG TỒN TẠI — mọi sự
+kiện Stop ném lỗi. Sửa: `node <template>/tooling/apply-to.mjs . --apply --update`, hoặc
+nâng cấp lại (migration `003` nay tự mang file đó sang).
+
+Nguyên nhân: `upgrade.mjs` luôn chạy bằng **bản cũ của chính nó**, và danh sách file cơ chế
+nằm trong đó — nên mọi `tooling/*.mjs` ra đời sau version của bạn là vô hình với nó.
 
 ## 2026-08-05 — Hai cảnh báo đỏ-do-hoàn-cảnh đã tắt (v2.7.1)
 

@@ -239,6 +239,27 @@ for (const f of conflict) {
   }
 }
 
+// ── PHA 2: chạy lại bằng CHÍNH BẢN MỚI của script này ────────────────────────
+// Danh sách file cơ chế nằm TRONG script này, và script đang chạy luôn là bản CŨ (bản nằm
+// trong project). Nên mọi file `tooling/*.mjs` ra đời sau version của project là VÔ HÌNH
+// với nó — thư mục thì được duyệt đệ quy nên không sao, file khai theo TÊN thì đóng băng.
+//
+// Đo trên `warehouse` 2026-08-05: nâng v1.4.0 → v2.7.1 xong vẫn THIẾU `tooling/gates.mjs`,
+// `tooling/setup.mjs`, `tooling/harness-doctor.mjs` — và `settings.json` thì đã được
+// migration trỏ vào `gates.mjs`. Repo không cũ, repo HỎNG.
+//
+// Bước copy ở trên vừa thay chính file này. Chạy lại một lần bằng bản mới: nó có danh sách
+// mới, thấy các file kia, và mang chúng sang. Migration idempotent theo hợp đồng (điều kiện
+// ③ của test-migrations) nên chạy lại là an toàn. `HARNESS_UPGRADE_PHASE2` chặn vòng lặp.
+if (!process.env.HARNESS_UPGRADE_PHASE2 && (add.includes('tooling/upgrade.mjs') || safe.includes('tooling/upgrade.mjs'))) {
+  console.log(`\n  ↻ Bản \`tooling/upgrade.mjs\` vừa được cập nhật. Chạy lại bằng bản MỚI để nó`
+    + ` mang nốt những file mà danh sách CŨ không biết đến.\n`);
+  const r = run('node', [repoPath('tooling', 'upgrade.mjs'), ...args], {
+    cwd: REPO_ROOT, capture: false, env: { HARNESS_UPGRADE_PHASE2: '1' },
+  });
+  process.exit(r.status ?? 0);
+}
+
 for (const m of migrations) {
   try {
     await m.up({ repoPath, readJson, writeJson, readFileSync, writeFileSync, existsSync, run,
@@ -299,6 +320,22 @@ writeJson(repoPath('.claude', 'harness-manifest.json'), {
   ...(remote ? { sourceSha: remote.sha } : {}),
   files,
 });
+// ── KIỂM TOÀN VẸN: con trỏ nào trong settings.json trỏ vào hư không? ─────────
+// Bắt cả LỚP lỗi, không riêng ca đã biết: sau nâng cấp, mọi `node <đường-dẫn>` mà
+// `.claude/settings.json` gọi phải tồn tại. Một hook không tồn tại KHÔNG báo lỗi lúc cấu
+// hình — nó ném ERR_MODULE_NOT_FOUND ở giữa phiên làm việc của người dùng, hoặc tệ hơn,
+// im lặng không chặn gì. Đây là kiểm rẻ nhất có thể có cho "nâng cấp làm repo hỏng".
+const settingsRaw = existsSync(repoPath('.claude', 'settings.json'))
+  ? readFileSync(repoPath('.claude', 'settings.json'), 'utf8') : '';
+const dangling = [...settingsRaw.matchAll(/node\s+([\w./-]+\.mjs)/g)]
+  .map(m => m[1]).filter((v, i, a) => a.indexOf(v) === i)
+  .filter(rel => !existsSync(repoPath(...rel.split('/'))));
+if (dangling.length) {
+  fail.push(`.claude/settings.json gọi ${dangling.length} file KHÔNG TỒN TẠI: ${dangling.join(' · ')}`);
+  fail.push('  Nâng cấp đã để repo ở trạng thái HỎNG (hook ném lỗi giữa phiên, hoặc im lặng không chặn gì).');
+  fail.push(`  Sửa: node ${join(TPL, 'tooling', 'apply-to.mjs')} ${REPO_ROOT} --apply --update`);
+}
+
 if (existsSync(repoPath('harness.version'))) writeFileSync(repoPath('harness.version'), tplVersion + '\n');
 ok.push(`manifest → ${tplVersion}`);
 
