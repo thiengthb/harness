@@ -18,7 +18,7 @@
  */
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, extname } from 'node:path';
-import { repoPath, readJson, writeJson, report, exists } from './lib/harness.mjs';
+import { repoPath, readJson, writeJson, report, exists, worktreeInfo, REPO_ROOT } from './lib/harness.mjs';
 
 function walk(dir, filter = () => true) {
   if (!existsSync(dir)) return [];
@@ -65,14 +65,44 @@ for (const [k, v] of Object.entries(metrics)) {
   else ok.push(`${k}: ${v}`);
 }
 
-// So với baseline
+// ── RATCHET: mốc khai báo CÔNG KHAI, có ngày, có người khai ──────────────────
+//
+// Một cái gác ĐỎ NGAY NGÀY ĐẦU là một cái gác sẽ bị TẮT. Nó không dạy ai điều gì —
+// nó dạy người ta cách tắt gate. Nên: chốt mức HÔM NAY làm mốc, chỉ nổ khi số TĂNG,
+// và hạ mốc trong CÙNG COMMIT với mỗi lần sửa.
+//
+// Backlog nằm CÔNG KHAI ở đây, có ngày, không giấu. Đây không phải file sinh tự động:
+// hạ một mốc phải là một dòng diff mà DRI nhìn thấy.
+//
+// ĐIỀU KIỆN THOÁT: một mốc về 0 → xoá dòng đó, đổi thành gate cứng.
+// HẬU QUẢ CAM KẾT TRƯỚC: sau 60 ngày mà KHÔNG mốc nào được hạ trong một commit nào,
+// ratchet đang CHE một backlog thay vì tiêu nó — bỏ nó đi, đừng gia hạn.
+const BASELINES = {
+  'hooks-without-mutant': { n: 7, since: '2026-08-04', by: '@dri', why: 'dcg · block-secrets · protect-harness đã có mutant bị giết; 7 hook còn lại chưa' },
+};
+// KHÔNG khai mốc cho thứ file này không tự đo. Một mốc không có phép đo đi kèm là
+// một field ma — nó trông như đang gác, và không ai phát hiện ra là không.
+// (`rules-without-paths` được đo ở harness-doctor, nơi nó có ngưỡng riêng.)
+
+// So với baseline — VÀ CHỈ SO KHI CÙNG MỘT CÂY.
 const basePath = repoPath('.claude', 'state', 'harness-size-baseline.json');
+const wt = worktreeInfo();
+const treeId = wt.isWorktree ? `worktree:${REPO_ROOT}` : 'main-tree';
+const na = [], unknown = [];
+
 if (process.argv.includes('--baseline')) {
-  writeJson(basePath, { at: new Date().toISOString(), metrics });
-  ok.push(`đã ghi baseline → ${basePath}`);
+  writeJson(basePath, { at: new Date().toISOString(), tree: treeId, metrics });
+  ok.push(`đã ghi baseline (${treeId}) → ${basePath}`);
 } else {
   const base = readJson(basePath);
-  if (base) {
+  if (!base) {
+    unknown.push('chưa có baseline — chạy với --baseline để ghi. Không có mốc thì "phình hay co" là CHƯA ĐO ĐƯỢC, không phải "không đổi"');
+  } else if ((base.tree ?? 'main-tree') !== treeId) {
+    // Đây là chỗ N1 cắn: sparsePaths làm worktree THIẾU FILE CÓ CHỦ Ý. So với mốc
+    // lấy ở cây chính sẽ báo "harness đang co" trong khi không có gì co.
+    unknown.push(`baseline đo ở \`${base.tree ?? 'main-tree'}\`, đang chạy ở \`${treeId}\` — TỪ CHỐI so. `
+      + `sparsePaths làm file vắng mặt hợp lệ; so hai cây khác nhau cho ra một con số sai mà trông đúng.`);
+  } else {
     const deltas = Object.entries(metrics)
       .map(([k, v]) => [k, v - (base.metrics[k] ?? 0)])
       .filter(([, d]) => d !== 0)
@@ -82,11 +112,27 @@ if (process.argv.includes('--baseline')) {
       (grew > deltas.length / 2 ? warn : ok).push(`so với baseline (${base.at.slice(0, 10)}): ${deltas.join(', ')}`);
       if (grew > deltas.length / 2) warn.push('Harness đang PHÌNH. Mỗi thay đổi promote phải kèm một đề xuất CẮT BỎ.');
     } else ok.push('không đổi so với baseline');
-  } else {
-    ok.push('chưa có baseline — chạy với --baseline để ghi');
   }
 }
 
-report('HARNESS SIZE', { ok, warn });
+// Ratchet: đo thật, so với mốc khai báo.
+const hookFiles = existsSync(repoPath('.claude', 'hooks'))
+  ? readdirSync(repoPath('.claude', 'hooks')).filter(f => f.endsWith('.mjs')) : [];
+const testSrc = existsSync(repoPath('tooling', 'test-hooks.mjs'))
+  ? readFileSync(repoPath('tooling', 'test-hooks.mjs'), 'utf8') : '';
+// Đếm TRONG khối `const MUTANTS = [...]`, không phải cả file. Bản đầu neo vào
+// `mutate(<file>` — nhưng mutant được KHAI trong mảng và mutate() nhận biến, nên
+// check đếm 0 mãi mãi. Lại là PHẠM VI, không phải logic: chỗ cần nhìn trước tiên.
+const mutantBlock = testSrc.match(/const MUTANTS = \[([\s\S]*?)\n\];/)?.[1] ?? '';
+const noMutant = hookFiles.filter(f => !mutantBlock.includes(`'${f}'`)).length;
+for (const [key, measured] of [['hooks-without-mutant', noMutant]]) {
+  const b = BASELINES[key];
+  if (!b) continue;
+  if (measured > b.n) warn.push(`RATCHET VƯỢT MỐC — ${key}: ${measured} > ${b.n} (khai ${b.since} bởi ${b.by}). Số này chỉ được phép GIẢM.`);
+  else if (measured < b.n) warn.push(`RATCHET: ${key} đã xuống ${measured} (mốc ${b.n}) — HẠ MỐC trong CÙNG commit này, nếu không backlog sẽ bị che.`);
+  else ok.push(`ratchet ${key}: ${measured} = mốc (${b.why})`);
+}
+
+report('HARNESS SIZE', { ok, warn, na, unknown });
 console.log('  Xu hướng tốt = PHẲNG HOẶC GIẢM. Xem knowledge/README.md.\n');
 process.exit(0);

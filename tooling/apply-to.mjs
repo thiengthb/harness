@@ -41,7 +41,7 @@ if (!AUDIT) {
 const HARNESS = [
   '.claude/hooks', '.claude/skills', '.claude/agents',
   'tooling/lib', 'tooling/knowledge', 'tooling/fixtures',
-  'tooling/init.mjs', 'tooling/test-hooks.mjs', 'tooling/apply-to.mjs',
+  'tooling/init.mjs', 'tooling/test-hooks.mjs', 'tooling/apply-to.mjs', 'tooling/gates.mjs',
   'tooling/fixlog.mjs', 'tooling/coactivity.mjs', 'tooling/harness-size.mjs',
   'tooling/capo-report.mjs', 'tooling/doctor.mjs', 'tooling/entropy-scan.mjs',
   'tooling/upgrade.mjs',
@@ -65,6 +65,7 @@ const SEED = [
   'docs/ANTI-PATTERNS.md', 'docs/ARCHITECTURE.md', 'docs/ECONOMICS.md',
   'docs/MULTI-PROJECT.md', 'docs/RECOVERY.md', 'docs/TEAM.md', 'docs/DESIGN.md',
   'docs/adr/_TEMPLATE.md', 'docs/adr/0001-harness-baseline.md',
+  'docs/adr/0002-tai-phan-vai-native.md',
   'docs/progress/_TEMPLATE.md', 'docs/progress/_TEAM.md',
   'docs/rubrics/_TEMPLATE.md', 'docs/specs/_TEMPLATE.md', 'docs/runbooks/README.md',
   'tooling/generators/README.md',

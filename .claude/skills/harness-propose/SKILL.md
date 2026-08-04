@@ -3,7 +3,8 @@ name: harness-propose
 description: Đề xuất một thay đổi harness (rule, skill, hook, test, generator).
   Dùng khi bạn thấy agent làm sai cùng một thứ nhiều lần, khi bị một hook chặn mà
   bạn nghĩ hook sai, hoặc khi muốn thêm một luật cho team.
-allowed-tools: [Read, Write, Grep, Glob, Bash]
+allowed-tools: [Read, Write, Edit, Grep, Glob, Bash]
+disable-model-invocation: true
 ---
 
 # Đề xuất thay đổi harness

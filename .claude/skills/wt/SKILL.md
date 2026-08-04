@@ -3,6 +3,8 @@ name: wt
 description: Liệt kê, kiểm và dọn worktree của repo này. Dùng khi bắt đầu ngày làm
   việc, khi không rõ mình đang ở đâu, hoặc khi máy chậm/hết ổ cứng.
 allowed-tools: [Bash, Read]
+disallowed-tools: Write Edit
+disable-model-invocation: true
 ---
 
 # Quản worktree

@@ -3,6 +3,7 @@ name: handoff
 description: Kết thúc session sạch và để lại trạng thái cho người/session tiếp theo.
   Dùng khi hết session, hết giờ, trước khi /clear, hoặc khi chuyển sang task khác.
 allowed-tools: [Bash, Read, Write, Edit, Glob, Grep]
+disable-model-invocation: true
 ---
 
 # Handoff

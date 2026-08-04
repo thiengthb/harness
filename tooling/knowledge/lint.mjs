@@ -37,7 +37,7 @@ const files = readdirSync(DIR).filter(f => f.endsWith('.md') && !f.startsWith('_
 const seenIds = new Map();
 
 for (const f of files) {
-  const { data } = parseFrontmatter(readFileSync(join(DIR, f), 'utf8'));
+  const { data, body } = parseFrontmatter(readFileSync(join(DIR, f), 'utf8'));
   const tag = `${f}`;
 
   const missing = REQUIRED.filter(k => data[k] === undefined || data[k] === '' || data[k] === null);
@@ -57,6 +57,22 @@ for (const f of files) {
     if (Array.isArray(data['seen-in']) && data['seen-in'].length >= 2) {
       warn.push(`${tag}:   ↑ nhưng đã thấy ở ${data['seen-in'].length} repo độc lập — gộp bằng chứng: node tooling/knowledge/accept.mjs <ref> --merge ${data.id}`);
     }
+  }
+
+  // Một bài học được ghi xuống LẦN THỨ HAI đã tự chứng minh rằng việc ghi xuống
+  // KHÔNG CÓ TÁC DỤNG. Lần thứ hai nó phải có một cái gác — hook nếu có chỗ ghi
+  // file để bắt, detector nếu bằng chứng chỉ hiện ra khi nhìn cả repo hoặc nhìn
+  // qua thời gian — HOẶC thân bài phải nói THÀNH LỜI vì sao không thể có gác.
+  // Lựa chọn thứ ba hợp lệ, nhưng không được là mặc định: câu trả lời cho "làm sao
+  // đừng lặp lại" mà luôn là "ghi xuống và nhớ kỹ hơn" thì chính những bài học đó
+  // là bằng chứng cách ấy không đủ.
+  //
+  // ĐIỀU KIỆN THOÁT: khi tỉ lệ bài học `active` có `artifacts` vượt 80%, hạ xuống info.
+  const noMechanism = !(Array.isArray(data.artifacts) && data.artifacts.length);
+  const explains = /không thể có (cơ chế|gác)|vì sao không có (cơ chế|gác)/i.test(body ?? '');
+  if (data.status === 'active' && occ >= 2 && noMechanism && !explains) {
+    warn.push(`${tag}: occurrences=${occ} nhưng \`artifacts\` RỖNG — ghi xuống lần thứ hai đã tự chứng minh ghi xuống không đủ. `
+      + `Phải có cơ chế (hook/detector/test), HOẶC viết vào thân bài vì sao KHÔNG thể có cơ chế nào bắt được.`);
   }
 
   // Gate phải đi kèm bài học, nếu không "bước 3 không được bỏ" chính là bước

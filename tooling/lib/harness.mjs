@@ -200,6 +200,64 @@ export function currentBranch() {
   return r.status === 0 ? r.stdout : '';
 }
 
+/**
+ * Cây này là worktree hay cây chính? → { known, isWorktree, commonDir, mainRoot }
+ *
+ * ĐẶT Ở ĐÂY, không để mỗi công cụ tự suy ra. Trạng thái BÌNH THƯỜNG của một phiên
+ * harness là ở TRONG worktree — `/claim` bắt buộc "một issue = một nhánh = một
+ * worktree". Nhưng mọi công cụ đo đều đo *cây hiện tại*, và trong worktree:
+ *   · `worktree.sparsePaths` làm file vắng mặt HỢP LỆ → "harness đang co" là sai
+ *   · reservation của người khác nằm trên NHÁNH của họ → "không chồng lấn" là sai
+ * Để năm công cụ tự suy ra thì cả năm đều sai, và cái thứ năm sai vào đúng ngày
+ * cơ chế worktree được ship.
+ */
+export function worktreeInfo() {
+  const common = git(['rev-parse', '--git-common-dir']).stdout;
+  const gitDir = git(['rev-parse', '--git-dir']).stdout;
+  if (!common || !gitDir) return { known: false, isWorktree: false, mainRoot: REPO_ROOT };
+  const isWorktree = resolve(REPO_ROOT, common) !== resolve(REPO_ROOT, gitDir);
+  return {
+    known: true,
+    isWorktree,
+    commonDir: common,
+    mainRoot: isWorktree ? dirname(resolve(REPO_ROOT, common)) : REPO_ROOT,
+  };
+}
+
+/**
+ * Mọi báo cáo phải NÓI RA nó đang đo cây nào. Một con số không nói mình đo ở đâu
+ * là một con số sẽ bị so với con số đo ở chỗ khác.
+ */
+export function reportScope() {
+  const wt = worktreeInfo();
+  if (!wt.isWorktree) return null;
+  return `⚠ đang đo trong WORKTREE (cây chính: ${wt.mainRoot}). File có thể vắng mặt HỢP LỆ `
+       + `do sparsePaths hoặc do nằm trên nhánh khác — đừng so số này với mốc lấy ở cây chính.`;
+}
+
+/**
+ * Phiên này có người ngồi xem không?
+ *
+ * Ba giả định đã hết hạn: background agent tự commit + push + mở draft PR;
+ * scheduled task và webhook mở session không ai đọc. Dùng ở ba chỗ:
+ *   · stop-gate  — phiên không người thì KHÔNG fail-open, kể cả khi gate lỗi
+ *   · budget     — nâng mức cảnh báo, vì không ai thấy để dừng tay
+ *   · session-start — đừng in nghi thức cho phiên không có người đọc
+ *
+ * KHÔNG DÙNG `!process.stdout.isTTY`. Đây là cái bẫy: hook LUÔN được spawn với
+ * stdio piped, nên isTTY là false ở MỌI phiên bình thường — kể cả phiên có người
+ * đang ngồi nhìn. Một `unattended()` dựa vào isTTY sẽ báo "không có người" cho cả
+ * team, mọi lúc, và mọi thứ fail-đóng dựng trên nó thành một guard bắn nhầm.
+ * Xem knowledge/lessons/0002-guard-ban-nham.md — đây đúng là lớp lỗi đó.
+ * Chỉ ba tín hiệu dưới đây là đọc được TỪ BÊN TRONG một hook.
+ *
+ * ĐIỀU KIỆN THOÁT: khi vendor phơi ra một cờ chính thức cho phiên không người.
+ */
+export const unattended = () =>
+  !!process.env.CI
+  || process.env.CLAUDE_CODE_UNATTENDED === '1'
+  || process.env.CLAUDE_CODE_ENTRYPOINT === 'sdk-cli';
+
 /** Suy ra mã issue từ tên nhánh: feat/ABC-142-slug → ABC-142 */
 export function issueFromBranch(branch = currentBranch()) {
   const prefixes = config().project?.issuePrefixes ?? [];
@@ -264,12 +322,37 @@ export function telemetryDir() {
   return d;
 }
 
-/** Ghi một dòng vào log telemetry. `kind` = tên file không đuôi. */
+/**
+ * Ghi một dòng vào log telemetry. `kind` = tên file không đuôi.
+ *
+ * BẤT BIẾN: việc ghi chép KHÔNG BAO GIỜ được đổi kết quả của hook. Log không ghi
+ * được, đĩa đầy, thư mục biến mất — không cái nào được đổi exit code, vì exit code
+ * là toàn bộ hợp đồng giữa hook và harness. Đó là lý do có `try {} catch {}` rỗng.
+ */
 export function telemetry(kind, fields) {
   try {
     const line = [new Date().toISOString(), config().project?.id ?? '-', ...fields.map(f => String(f).replace(/[|\n\r]/g, ' '))].join('|');
     appendFileSync(join(telemetryDir(), `${kind}.log`), line + '\n', 'utf8');
   } catch {}
+}
+
+/**
+ * Ghi "hook này ĐÃ CHẠY" — kể cả khi nó cho qua.
+ *
+ * VÌ SAO CẦN: một hook KHÔNG phải một lần gọi công cụ, nên không có gì trong
+ * transcript nhìn thấy nó chạy. Không có bộ đếm này thì ba tình huống sau đọc
+ * GIỐNG HỆT NHAU — cả ba đều là "log rỗng":
+ *   · hook chạy suốt tuần, không bắt gì   (đang làm việc TỐT)
+ *   · hook chưa từng nổ vì không được cắm  (mã chết)
+ *   · hook crash im lặng mỗi lần           (hỏng)
+ * Và đây đúng là dữ liệu `/harness-retro` bước 4 cần khi nó bắt buộc đề xuất cắt
+ * bỏ. Câu trả lời im lặng nghiêng về "cắt đi" — tức là nghiêng về hướng nguy hiểm.
+ *
+ * `outcome`: 'pass' | 'block' | 'skip'.
+ * Khi render, hook KHÔNG có đường exit 2 phải hiện `n/a`, KHÔNG phải `0`.
+ */
+export function hookRan(name, outcome = 'pass', detail = '') {
+  telemetry('hook-runs', [name, outcome, detail]);
 }
 
 /** Ghi output dài ra file tạm và trả đường dẫn — GIỮ CONTEXT SẠCH. */
@@ -300,13 +383,35 @@ export function exists(p) {
   return existsSync(p);
 }
 
-/** In báo cáo NGẮN, có hành động. Dùng cho mọi script trong tooling/. */
-export function report(title, { ok = [], warn = [], fail = [] }) {
+/**
+ * In báo cáo NGẮN, có hành động. Dùng cho mọi script trong tooling/.
+ *
+ * NĂM RỔ, KHÔNG PHẢI BA. Ba giá trị dưới đây KHÔNG BAO GIỜ được gộp:
+ *
+ *   ok/warn/fail — ĐÃ ĐO, và đây là kết quả.
+ *   na           — KHÔNG ÁP DỤNG, vĩnh viễn: bằng không DO CẤU TRÚC. Một hook không
+ *                  có đường exit 2 thì `fired` không thể nhúc nhích — số 0 ở đó không
+ *                  phải bằng chứng nó vô dụng.
+ *   unknown      — CHƯA ĐO ĐƯỢC: chưa có dữ liệu. Khác `0`, vốn khẳng định phép đo
+ *                  ĐÃ chạy và không thấy gì.
+ *
+ * Gộp bất kỳ hai cái nào là cách một thay đổi schema biến thành một đề xuất XOÁ.
+ * Và luật đi kèm: một tổng kết có `unknown` thì KHÔNG được gọi là "xanh" —
+ * "harness không chạy" là TRẠNG THÁI THỨ BA, không phải pass, không phải fail.
+ */
+export function report(title, { ok = [], warn = [], fail = [], na = [], unknown = [] }) {
   console.log(`\n=== ${title} ===`);
+  // Mọi báo cáo nói ra nó đo ở CÂY NÀO — một chỗ, mọi công cụ thừa hưởng.
+  const scope = reportScope();
+  if (scope) console.log('  ' + scope);
   for (const m of ok) console.log('  OK   ' + m);
   for (const m of warn) console.log('  WARN ' + m);
   for (const m of fail) console.log('  FAIL ' + m);
-  if (!ok.length && !warn.length && !fail.length) console.log('  (không có gì để báo cáo)');
+  for (const m of na) console.log('  n/a  ' + m);
+  for (const m of unknown) console.log('  ?    ' + m);
+  if (na.length) console.log(`  → ${na.length} mục KHÔNG ÁP DỤNG: bằng không do cấu trúc, không phải phát hiện.`);
+  if (unknown.length) console.log(`  → ${unknown.length} mục CHƯA ĐO ĐƯỢC: đây KHÔNG phải 0. Báo cáo này chưa được gọi là xanh.`);
+  if (!ok.length && !warn.length && !fail.length && !na.length && !unknown.length) console.log('  (không có gì để báo cáo)');
   console.log('');
   return fail.length === 0;
 }

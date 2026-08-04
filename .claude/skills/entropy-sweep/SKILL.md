@@ -3,6 +3,8 @@ name: entropy-sweep
 description: Quét tài liệu và harness tìm thứ đã lỗi thời. Dùng 2 tuần một lần,
   sau refactor lớn, hoặc khi đổi model.
 allowed-tools: [Read, Grep, Glob, Bash]
+disallowed-tools: Write Edit
+disable-model-invocation: true
 ---
 
 # Entropy sweep

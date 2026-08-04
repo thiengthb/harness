@@ -3,6 +3,7 @@ name: knowledge-promote
 description: Chuyển một bài học từ đề xuất thành tài sản bền, mang đi được sang
   project khác. Dùng khi DRI đã duyệt một mục trong .claude/learnings/.
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
+disable-model-invocation: true
 ---
 
 # Promote một bài học

@@ -2,7 +2,9 @@
 name: harness-retro
 description: Đọc telemetry tuần qua và đề xuất thay đổi harness. Dùng cuối tuần
   (thứ Sáu), sau một sự cố, hoặc sau khi đổi model.
-allowed-tools: [Read, Grep, Glob, Bash, Write]
+allowed-tools: [Read, Grep, Glob, Bash]
+disallowed-tools: Write Edit
+disable-model-invocation: true
 ---
 
 # Harness retrospective — 30 phút, thứ Sáu

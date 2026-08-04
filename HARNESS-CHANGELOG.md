@@ -11,6 +11,167 @@
 
 ---
 
+## 1.6.0 — 2026-08-04
+
+### Tái phân vai harness ⟷ Claude Code native — nửa đầu
+
+Nền: `docs/adr/0002-tai-phan-vai-native.md`. Nguyên tắc một dòng — **Claude Code sở
+hữu RUNTIME, harness sở hữu CHÍNH SÁCH** — và luật đặt mỗi cơ chế ở **bậc thấp nhất
+mà nó còn làm được việc**.
+
+Đây là **nửa không breaking**. Nửa sau (`2.0.0`) chạm `paths.harness` nên cần quyền
+DRI; spec đầy đủ ở `.claude/learnings/2026-W32-tai-phan-vai-native.md`.
+
+**BREAKING:** không có.
+
+#### Sửa — `allowed-tools` đang CẤP quyền cho skill được thiết kế để không ghi
+
+`allowed-tools` khai tool dùng được **mà không cần hỏi**. Trường **hạn chế** là
+`disallowed-tools`. Cả 12 skill dùng trường cấp quyền; 5 trong số đó có thân skill tự
+viết *"Ra ĐỀ XUẤT, không ra thay đổi"* hoặc *"DỪNG, báo cáo"*.
+
+Đây **không phải lỗ quyền đang mở** — `protect-*` là PreToolUse, chặn bất kể
+frontmatter nói gì. Nó nghiêm trọng vì lý do khác: đây là **template dạy thói quen
+cho mọi repo nhận nó**, và nó đang dạy rằng frontmatter không phải hợp đồng.
+
+Đã kiểm với tài liệu vendor: cú pháp **YAML list được parse** — trường đang có hiệu
+lực thật, không phải field chết.
+
+#### Thêm — `disable-model-invocation` cho 9 skill nghi thức
+
+Chi phí context của một skill về **0**: nó biến mất khỏi tầng discovery. Tầng
+discovery **12 → 3**, không mất chức năng nào.
+
+Hệ quả: trần *"≤12 skill"* đọc lại thành **"≤12 skill model tự gọi được"**.
+`harness-doctor` đếm theo nghĩa mới.
+
+#### Thêm — `tooling/gates.mjs`: một runner, ba nơi gọi
+
+```
+node tooling/gates.mjs --stage stop|subagent|preMerge
+node tooling/gates.mjs --list [--timing]
+```
+
+`gates.preMerge` từng sống ở ba bản sao (config · skill dạng văn xuôi · CI). Ba bản
+sao của một danh sách là ba cơ hội để chúng lệch, và khi lệch thì bản được TIN là bản
+người đọc gần nhất, không phải bản đang chạy.
+
+Kèm **ngân sách độ trễ**: `stop` < 30s, `subagent` < 5s (nhân với tối đa 16 agent song
+song). Đắt hơn thì đẩy xuống CI.
+
+Và **fail-đóng ở phiên không có người ngồi xem**: ở phiên có người, một dòng cảnh báo
+là đủ — có người đọc nó. Ở phiên không người thì không ai đọc.
+
+#### Thêm — năm chỗ vá trong dụng cụ đo (`tooling/lib/harness.mjs`)
+
+Lớp lỗi này không có triệu chứng riêng: nó chỉ hiện ra dưới dạng một kết luận sai mà
+mọi người tin. Chi tiết ở `docs/ANTI-PATTERNS.md §H`.
+
+- `worktreeInfo()` + `reportScope()` — mọi báo cáo **nói ra nó đo ở cây nào**. Trạng
+  thái BÌNH THƯỜNG của phiên harness là ở trong worktree, và `sparsePaths` làm file
+  vắng mặt **hợp lệ**. `harness-size` giờ ghi cây vào baseline và **từ chối so** khác cây.
+- `report()` có **5 rổ**: thêm `na` (bằng không **do cấu trúc**) và `unknown` (chưa đo
+  được). Gộp hai giá trị bất kỳ là cách một thay đổi schema biến thành một đề xuất xoá.
+  Luật kèm theo: tổng kết có `unknown` thì **không được gọi là xanh**.
+- `hookRan()` — bằng chứng một hook đã chạy **kể cả khi nó cho qua**. Không có nó,
+  "chạy suốt tuần không bắt gì" · "chưa từng được cắm" · "crash im lặng" đọc **giống
+  hệt nhau**. Định nghĩa xong ở `1.6.0`; các hook gọi nó ở `2.0.0`.
+- `unattended()` — nhận diện phiên không có người. **KHÔNG dùng `!isTTY`**: hook luôn
+  được spawn với stdio piped nên isTTY sai ở mọi phiên. Chỉ ba tín hiệu đọc được từ
+  trong hook: `CI`, `CLAUDE_CODE_ENTRYPOINT=sdk-cli`, cờ tường minh.
+
+#### Thêm — suite gác đủ bốn phần (53 → 59 case)
+
+Đầu ra của một cái gác là **bộ ba** (stdout, stderr, exit code), không phải một giá trị.
+
+- **Đường im lặng**: input phải bỏ qua ⇒ exit 0 **VÀ không in gì**. Case OK muốn in
+  thì phải **khai `msg`** và khớp — không có cờ "được phép ồn", vì một cửa thoát DRI
+  im lặng vẫn xanh là một cửa thoát không audit được.
+- **Đường hành động**: hợp đồng phổ quát cho **mọi** nhánh từ chối — phải có phần
+  TỪ CHỐI **và** phần GỢI Ý. Gợi ý là thứ agent đọc để biết làm gì tiếp; trước bản này,
+  xoá dòng gợi ý của một hook đi mà cả suite vẫn xanh.
+- **`mutate()`** với gác `ran` trước `killed`: một mutant **chỉ crash** chứng minh
+  suite nhận ra file hỏng, **không** nói gì về hành vi nó tuyên bố đã gỡ.
+- Ba mutant đầu tiên (`dcg`, `block-secrets`, `protect-harness`) đều tiêu vào **PHẠM VI**
+  của check, không phải logic — đó là chỗ cần nhìn trước tiên khi mutant sống sót.
+
+#### Thêm — phòng chờ nghỉ hưu, **luật hai con số**, không có lệnh xoá
+
+```
+node tooling/entropy-scan.mjs --stage <file> --why "…"   # ≥20 ký tự
+node tooling/entropy-scan.mjs --verify                    # dấu hiệu sống = MIỄN TỘI
+```
+
+Suy đoán vô tội: gánh nặng chứng minh nằm ở bên **XOÁ**. Một món chỉ đủ điều kiện khi
+**cả hai** đúng — không dấu hiệu dùng trong toàn bộ lịch sử **VÀ** ≤1 liên kết trỏ tới.
+*Một lần nhắc là nhắc, hai lần là phụ thuộc.*
+
+`paths.harness` **không bao giờ** đủ điều kiện. **Cố ý không có lệnh `--delete`** —
+bước không thu hồi được không phải việc của agent; `--verify` in lệnh cho DRI gõ.
+
+#### Thêm — ratchet trong `harness-size.mjs`
+
+Một cái gác **đỏ ngay ngày đầu** là một cái gác sẽ bị **tắt** — nó dạy người ta cách
+tắt gate. Mốc khai công khai, có ngày, có người khai; chỉ nổ khi số **tăng**; và nó
+**đòi hạ mốc trong cùng commit** khi số giảm, để backlog không bị che.
+
+#### Thêm — `harness-doctor` biết về bề mặt vendor
+
+- Allowlist **16 key** frontmatter skill, **có ngày** (fetch 2026-08-04). Vendor thêm
+  field liên tục; allowlist không ngày sẽ báo một field **đang chạy** là inert.
+- Tách `paths` (Claude Code **thật sự** đọc) khỏi `owner`/`added`/`expires-review`/
+  `why`/`exit-condition` (chỉ `entropy-scan` đọc). Cả hai hợp lệ, nhưng phải gọi đúng tên.
+- **Danh mục hook sinh tự động** từ `settings.json`: hook nào cắm vào event nào, chặn
+  được hay chỉ nhắc, có được `apply-to` mang đi không. Bảng viết tay đã lệch — README
+  nói *28 test*, thực tế **53**.
+- Cảnh báo deny rule **không bao giờ được tra cứu**: Claude Code chỉ kiểm file theo
+  `Edit(path)` và `Read(path)`. `Write(...)`, `Glob(...)`, `NotebookEdit(...)`,
+  `MultiEdit(...)` được nhận nhưng không đọc.
+
+#### Thêm — `occurrences ≥ 2` mà `artifacts` rỗng giờ bị cảnh báo
+
+Một bài học ghi xuống **lần thứ hai** đã tự chứng minh việc ghi xuống không có tác
+dụng. Lần thứ hai phải có cơ chế — hoặc thân bài phải nói **thành lời** vì sao không
+thể có. Lựa chọn thứ ba hợp lệ, nhưng không được là mặc định.
+
+#### Tài liệu
+
+- `docs/adr/0002-tai-phan-vai-native.md` — thang 8 bậc, bài test bốn câu, bảng chủ sở
+  hữu (không ô nào hai chủ), 10 dòng bằng chứng đo trước khi sửa, và **ba chỗ từ chối
+  làm theo tài liệu nguồn** kèm lý do.
+- `docs/ECONOMICS.md` — **§1.1 khi nào KHÔNG delegate**: subagent khởi động **nguội**.
+  Delegate khi việc RỘNG / MÁY MÓC / LÀM BẨN CONTEXT — ba điều kiện, "để cho nhanh"
+  không nằm trong đó. Cộng ba tầng research (**Quick là mặc định**).
+- `docs/ANTI-PATTERNS.md` — **nhóm H: dụng cụ đo** (10 mục) + F7–F9.
+- `docs/progress/_TEMPLATE.md` — `issue:` bắt buộc (neo yêu cầu gốc) + khối **4 câu hỏi
+  trước mỗi lô**, đặt trong artefact người thi hành **thật sự mở**: một luật nằm trong
+  skill mà không ai mở lúc thi hành thì *đọc như là đã có phủ sóng*.
+
+#### Đã CẮT khỏi kế hoạch nguồn — và vì sao
+
+- **Không xoá `/wt`, `/whats-new`.** Nguồn gọi chúng là "bọc một lệnh"; đọc thật thì
+  `/wt` chứa bảng tài nguyên cục bộ + sparse-checkout, `/whats-new` chứa quy trình
+  canary. `disable-model-invocation` đạt đúng mục tiêu (cắt discovery) với **0 tri thức
+  bị mất**.
+- **Không thay `block-generated-edit`/`protect-feature-files` bằng deny rule.** Cả hai
+  **đọc `harness.config.json`**. Deny rule tĩnh đánh đổi nguồn-sự-thật-duy-nhất lấy
+  chút phủ sóng Bash. Ở `2.0.0` chúng được thêm làm **lớp hai**, không thay thế.
+- **Không bật sandbox.** Nó **sẽ** chặn oan — chắc chắn. Quy trình bắt buộc: một máy,
+  hai ngày công việc thật, ghi mọi lần chặn oan. Xem `knowledge/lessons/0002-guard-ban-nham.md`.
+
+#### Việc cho project đã áp template
+
+Không có. Không breaking, không migration. Chạy `node tooling/upgrade.mjs` như thường.
+
+Sau khi nâng cấp, hai lệnh đáng chạy một lần:
+
+```
+node tooling/gates.mjs --list --timing    # gate nào ĐANG THẬT SỰ chạy, tốn bao lâu
+node tooling/harness-size.mjs --baseline  # ghi lại mốc, giờ có kèm cây đã đo
+```
+
+---
+
 ## 1.5.0 — 2026-08-04
 
 ### Sửa — self-test của template không còn đỏ giả ở project đích
