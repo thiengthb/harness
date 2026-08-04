@@ -13,17 +13,20 @@ name: harness-parity
 # không chạy ⇒ GitHub treo PR ở "Expected — waiting for status" VĨNH VIỄN. Đo 2026-08-05:
 # PR v2.7.5 (chỉ sửa migration + changelog) bị chặn đúng như vậy.
 on:
+  # KHÔNG có `paths` cho `pull_request`. Cố ý, và đây là lần sửa THỨ HAI của cùng một lớp lỗi.
+  #
+  # Các job dưới đây là REQUIRED STATUS CHECK. Một workflow bị `paths` lọc ra thì **không
+  # chạy**, và GitHub treo PR ở "Expected — waiting for status" VĨNH VIỄN — không phải bỏ qua,
+  # mà TREO. Đo hai lần trong một ngày: PR chỉ sửa `harness-migrations/` (v2.7.5) và PR chỉ
+  # sửa `knowledge/consumers.json` (sổ consumer) đều bị chặn.
+  #
+  # Cách sửa sai là thêm path mới mỗi lần bị chặn — đập chuột, và mỗi lần đập là một PR bị
+  # treo trước đó. Required check và bộ lọc path là hai thứ KHÔNG TƯƠNG THÍCH: cái thứ nhất
+  # đòi "luôn có kết quả", cái thứ hai nói "có khi không chạy".
+  #
+  # Giá phải trả: matrix 3 OS chạy cả trên PR chỉ đổi tài liệu, khoảng một phút. Giá của
+  # phương án kia: một gate treo PR, và một gate treo PR dạy người ta đi tìm đường vòng.
   pull_request:
-    paths:
-      - '.claude/**'
-      - 'tooling/**'
-      - 'evals/**'
-      - 'harness-migrations/**'
-      - 'harness.config.json'
-      - 'harness.version'
-      - '.gitattributes'
-      - '.githooks/**'
-      - '.github/workflows/harness-parity.yml'
   push:
     branches: [main]
     paths: ['.claude/**', 'tooling/**', 'harness-migrations/**', 'harness.config.json']

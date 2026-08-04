@@ -11,6 +11,23 @@
 
 ---
 
+## 2.7.10 — 2026-08-05
+
+**patch.** Bỏ `paths` filter khỏi `pull_request` của `harness-parity.yml`.
+
+Các job trong đó là **required status check**. Một workflow bị `paths` lọc ra thì **không
+chạy**, và GitHub **treo PR** ở *"Expected — waiting for status"* vĩnh viễn — không phải bỏ
+qua, mà TREO. Đo **hai lần trong một ngày**: PR chỉ sửa `harness-migrations/` (v2.7.5) và PR
+chỉ sửa `knowledge/consumers.json` (sổ consumer) đều bị chặn.
+
+Cách sửa sai là thêm path mới mỗi lần bị chặn — đập chuột, và mỗi lần đập là một PR đã bị treo
+trước đó. **Required check và bộ lọc path là hai thứ không tương thích**: cái thứ nhất đòi
+*"luôn có kết quả"*, cái thứ hai nói *"có khi không chạy"*.
+
+Giá phải trả: matrix 3 OS chạy cả trên PR chỉ đổi tài liệu, khoảng một phút. Giá của phương án
+kia: một gate treo PR — và một gate treo PR dạy người ta đi tìm đường vòng, đúng thứ mà cả lớp
+harness này tồn tại để tránh.
+
 ## 2.7.9 — 2026-08-05
 
 **minor.** Template biết consumer của nó tồn tại — và biết bản vá đã tới ai chưa.
