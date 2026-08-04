@@ -75,6 +75,32 @@ for (const f of staged) {
   }
 }
 
+// ── Commit NÂNG CẤP HARNESS đang mang theo file sản phẩm ─────────────────────
+//
+// Một commit chạm `harness.version` là commit nâng cấp lớp harness — nó phải chứa ĐÚNG lớp
+// đó. Xảy ra thật 2026-08-05: `git add -A` trong repo `sakubun` để nâng v2.7.9 → v2.7.10 và
+// nó cuốn theo `e2e/_shots.spec.ts`, một file SẢN PHẨM do một phiên KHÁC đang viết. File đó
+// chưa tồn tại lúc đọc `git status` và đã tồn tại lúc `git add` — vài giây là đủ.
+//
+// Đây là ca mà AGENTS.md dặn ("một PR một mục đích", "KHÔNG sửa file feature của issue khác")
+// nhưng chưa có cơ chế nào cưỡng chế, và nó đúng chế độ hỏng tệ nhất: commit vẫn xanh, vẫn
+// đọc như một bản nâng harness gọn gàng, và file của người khác biến mất khỏi cây làm việc
+// của họ vào lịch sử của bạn.
+//
+// WARN chứ không FAIL: có commit nâng cấp hợp lệ mang theo thay đổi sản phẩm (ví dụ sửa
+// consumer khi harness đổi public surface — AGENTS.md đòi sửa CÙNG PR). Nhưng nó phải được
+// NÓI RA, vì lớp harness thì người ta đọc lướt.
+if (!ALL && staged.some(f => toRepoRel(f) === 'harness.version')) {
+  const HARNESS_LAYER = /^(\.claude\/|\.github\/|tooling\/|harness-migrations\/|evals\/|knowledge\/|docs\/(adr\/harness\/|MIGRATION\.md)|reservations\/|harness\.(version|config\.json)$|HARNESS-CHANGELOG\.md$|AGENTS\.md$|CLAUDE\.md$|\.gitignore$|\.gitattributes$|\.gitmessage$)/;
+  const foreign = staged.map(toRepoRel).filter(r => !HARNESS_LAYER.test(r));
+  if (foreign.length) {
+    warn.push(`commit này chạm \`harness.version\` (⇒ nâng cấp lớp harness) nhưng mang theo `
+      + `${foreign.length} file NGOÀI lớp harness: ${foreign.slice(0, 5).join(' · ')}${foreign.length > 5 ? ` … +${foreign.length - 5}` : ''}`
+      + `\n         Nếu bạn vừa \`git add -A\`: một phiên KHÁC có thể đang viết trong worktree này. `
+      + `Bỏ ra: \`git restore --staged <file>\`.`);
+  }
+}
+
 // Cảnh báo case-collision — lớp bug chỉ vỡ ở CI/Linux
 const all = git(['ls-files']).stdout.split('\n').filter(Boolean);
 const lower = new Map();

@@ -197,13 +197,31 @@ if (mf) console.log(`  harness version: ${mf.templateVersion} (áp ${String(mf.u
 else if (localVer) console.log(`  harness version: ${localVer} (chưa có manifest — nâng cấp lần tới sẽ không phát hiện được file bạn đã sửa)`);
 else advice.push('không có .claude/harness-manifest.json — chạy upgrade.mjs một lần để tạo, nếu không nâng cấp sau này sẽ ghi đè mù');
 
-// Đã áp template (có manifest) nhưng CHƯA phỏng vấn lần nào. Đây là trạng thái sinh ra
-// mọi mục CHANGEME và mọi `commands` rỗng bên dưới — nói nguyên nhân MỘT lần thì hơn là
-// để người đọc suy ngược từ 8 dòng triệu chứng.
+// Đã áp template (có manifest) nhưng CHƯA phỏng vấn lần nào.
+//
+// `!mf.profile` là dấu của một QUY TRÌNH chưa chạy, KHÔNG phải của một KẾT QUẢ còn thiếu.
+// Bản trước chặn chỉ dựa vào nó, và đo 2026-08-05 nó chặn CẢ BA repo tiêu thụ — cả ba đã có
+// `commands.verify` thật, chỉ là được điền tay chứ không qua `setup.mjs`. Kèm theo là một câu
+// SAI: "mọi dòng CHANGEME/lệnh rỗng bên dưới là triệu chứng của nguyên nhân này", trong khi
+// bên dưới không có dòng nào như vậy.
+//
+// Chỗ này đắt hơn một test đỏ oan: mục `CHẶN — sửa trước mọi việc khác` là kênh ưu tiên cao
+// nhất của doctor, và giá trị của nó bằng đúng độ tin cậy của nó. Một dòng chặn sai ở đó dạy
+// người ta bỏ qua cả mục — đúng cơ chế của `knowledge/lessons/0003`, chỉ khác là lần này nó
+// xảy ra với phép TỰ CHẨN ĐOÁN của harness.
+//
+// Nên: chặn theo KẾT QUẢ (`commands.verify` rỗng), nhắc theo QUY TRÌNH.
 if (mf && !mf.profile) {
-  blocker('đã áp template nhưng CHƯA chạy `node tooling/setup.mjs` — nó đọc repo này (package.json/'
-    + 'pyproject/go.mod/lockfile) rồi đề xuất `commands` kèm BẰNG CHỨNG, và từ chối kết thúc khi '
-    + '`commands.verify` còn rỗng. Mọi dòng CHANGEME/lệnh rỗng bên dưới là triệu chứng của một nguyên nhân này.');
+  const noVerify = !String(cfg.commands?.verify ?? '').trim();
+  const say = 'chưa chạy `node tooling/setup.mjs` — nó đọc repo này (package.json/pyproject/go.mod/'
+    + 'lockfile) rồi đề xuất `commands` kèm BẰNG CHỨNG, chọn skill/rule theo stack, và ghi ADR 0001.';
+  if (noVerify) {
+    blocker(`${say} Và \`commands.verify\` đang RỖNG: gate không có gì để chạy, nên mọi dòng `
+      + 'CHANGEME/lệnh rỗng bên dưới là triệu chứng của một nguyên nhân này.');
+  } else {
+    advice.push(`${say} \`commands.verify\` đã có (điền tay) nên KHÔNG gấp — phần bạn đang bỏ là `
+      + 'phỏng vấn stack và ADR 0001. Chạy `node tooling/setup.mjs --detect` để so, nó không ghi gì.');
+  }
 }
 if (mf?.profile?.allowedEmptyVerify) {
   blocker('setup.mjs đã chạy với `--allow-empty-verify` — project này KHÔNG có gate verify, và điều đó '
@@ -514,8 +532,15 @@ const NATIVE_SLOTS = {
 };
 const emptySlots = Object.keys(NATIVE_SLOTS).filter(ev => !(settings.hooks ?? {})[ev]);
 if (emptySlots.length) {
+  // NÊU CÁCH SỬA, không chỉ nêu lỗ. Bản trước liệt kê đúng 5 slot trống ở cả ba repo tiêu thụ
+  // và in đúng như vậy suốt nhiều version — nhưng không nói ai đóng được chúng, nên không ai
+  // đóng. `settings.json` là SEED (upgrade không ghi đè), nên đường DUY NHẤT là migration 008.
+  // Một dòng chẩn đoán không kèm lệnh sửa là một dòng sẽ được đọc rồi bỏ qua.
   advice.push(`${emptySlots.length}/5 điểm mở rộng native còn TRỐNG trong settings.json: `
-    + emptySlots.map(e => `\n         · ${e} — ${NATIVE_SLOTS[e]}`).join(''));
+    + emptySlots.map(e => `\n         · ${e} — ${NATIVE_SLOTS[e]}`).join('')
+    + (mf ? '\n         Sửa: `node tooling/upgrade.mjs --from <template>` — migration 008 cắm chúng vào.'
+          + ' `settings.json` là lớp SEED nên bước copy của upgrade KHÔNG chạm nó; chỉ migration đi qua được.'
+          : ''));
 }
 
 // ── Sự kiện native ĐỔI CHỦ cơ chế, không phải chỗ cắm quan sát ───────────────

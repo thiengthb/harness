@@ -11,6 +11,68 @@
 
 ---
 
+## 2.8.0 — 2026-08-05
+
+**minor.** Sự kiện hook mới **tới được** repo đã áp template. Trước bản này thì không.
+
+### Đo được: 5 trên 9 sự kiện chưa từng tới bất cứ đâu
+
+`settings.json` ở cả **ba** repo tiêu thụ có ĐÚNG 4 sự kiện — `SessionStart`, `PreToolUse`,
+`PostToolUse`, `Stop` — trong khi template có 9. Thiếu ở cả ba, **kể cả repo chỉ đứng sau
+template một version**:
+
+| Thiếu | Nghĩa là gì ở repo đó |
+|---|---|
+| `StopFailure` | **LỚP KINH TẾ chưa từng bật.** `observe.mjs` được copy sang rồi nằm đó chết. Dòng *"PHIÊN TRƯỚC DỪNG VÌ: rate_limit"* mà template in mỗi phiên không tồn tại — một agent chạy sai 4 giờ lúc 3h sáng không có gì dừng lại. |
+| `SubagentStop` | Gate của subagent không chạy. Output agent con không bị kiểm gì. |
+| `ConfigChange` | Mất lớp hai của `protect-harness`: cấu hình đổi bằng đường KHÁC `Write\|Edit` đi qua tự do. |
+| `InstructionsLoaded` | Không có thiết bị đo thuế context — quay về ƯỚC LƯỢNG bằng grep. |
+| `Setup` | `init.mjs` trở lại thành một dòng trong README mà người ta phải nhớ. |
+
+**Nguyên nhân là một phép SAI, không phải một sự cẩu thả.** `.claude/settings.json` thuộc lớp
+SEED — `upgrade.mjs` không bao giờ ghi đè, và đó là quyết định đúng: project sửa
+`permissions`, `worktree`, thêm hook riêng vào đó. Nhưng cây con `hooks` do **harness** sở hữu
+và nó **lớn dần**. Với một file như vậy, *copy-nếu-chưa-có* là phép sai theo đúng cách
+`.gitignore` từng sai ở 2.5.0: file nào cũng đã tồn tại ⇒ nội dung mới không bao giờ tới. Đây
+là lần thứ ba của cùng bài học, hình dạng mới: **MERGE THEO KHOÁ**.
+
+**Vì sao nó sống được lâu:** cả hai lớp phát hiện đều đã có và đều nói đúng.
+`harness-migrations/README.md` ghi *"Thêm hook mới → CÓ, migration phải TỰ ĐĂNG KÝ"*, và
+`harness-doctor` in *"N/5 điểm mở rộng native còn TRỐNG"* suốt nhiều version. Cái thiếu không
+phải hiểu biết — là **một migration**. Một luật chỉ tồn tại dưới dạng văn xuôi thì bị bỏ qua
+bởi người đang gấp.
+
+### Ba lớp, để nó không tái diễn
+
+- **`harness-migrations/008`** — merge theo khoá: chỉ thêm sự kiện THIẾU, không chạm entry đã
+  có, không chạm `permissions`/`worktree`, và **copy trước** mọi script mà sự kiện mới trỏ vào
+  (luật migration số 1). Điều kiện ⑤ khẳng định `ThisIsALocalPermissionTheProjectAdded` còn
+  sống sót qua lần ghi lại JSON.
+- **`test-hooks.mjs`** — check tất định thay cho văn xuôi: mọi sự kiện trong `settings.json`
+  ngoài 4 sự kiện baseline **phải có đường phân phối** (migration nào đó cắm nó). Kiểm bằng
+  mutant: bỏ mọi migration ra thì check liệt kê đúng 5 sự kiện đã thiếu. Chỉ chạy ở repo
+  TEMPLATE — ở project đích, `settings.json` là của họ.
+- **`harness-doctor`** — dòng "5/5 slot trống" giờ **nói cách sửa** (`upgrade.mjs`, và tại sao
+  chỉ migration đi qua được). Một dòng chẩn đoán không kèm lệnh sửa là dòng sẽ được đọc rồi bỏ
+  qua — bằng chứng là nó đã in đúng suốt nhiều version mà không ai đóng.
+
+### Ba lỗi tự-đo khác, cùng một họ
+
+- **`harness-doctor` chặn SAI cả ba repo đã cấu hình.** Điều kiện là `!manifest.profile` — dấu
+  của một QUY TRÌNH chưa chạy, không phải của một KẾT QUẢ còn thiếu. Cả ba đều đã có
+  `commands.verify` thật, chỉ là điền tay. Kèm một câu sai: *"mọi dòng CHANGEME/lệnh rỗng bên
+  dưới là triệu chứng"*, trong khi bên dưới không có dòng nào như vậy. Mục `CHẶN — sửa trước
+  mọi việc khác` có giá trị bằng đúng độ tin cậy của nó. Nay: **chặn theo KẾT QUẢ, nhắc theo
+  QUY TRÌNH.**
+- **`test-hooks` in `75/72`** — tử số lớn hơn mẫu số. Mẫu số là phép cộng viết tay
+  (`cases + MUTANTS + GATE_CASES + 3`) đã trôi. Nó tồn tại để trả lời *"có case nào NGỪNG CHẠY
+  không"*, và một mẫu số đã trôi thì không trả lời được gì. Nay hai con số hai việc: tổng thật
+  `ok+fail` (mô tả) và **RATCHET** (cưỡng chế, nâng khi thêm case).
+- **`precommit-scan`** — commit chạm `harness.version` mà mang theo file ngoài lớp harness thì
+  WARN. Xảy ra thật hôm nay: `git add -A` để nâng `sakubun` cuốn theo `e2e/_shots.spec.ts` của
+  một **phiên khác đang viết**; file chưa tồn tại lúc đọc `git status` và đã tồn tại lúc
+  `git add`. Vài giây là đủ. AGENTS.md đã dặn *"một PR một mục đích"* — giờ có cơ chế.
+
 ## 2.7.10 — 2026-08-05
 
 **patch.** Bỏ `paths` filter khỏi `pull_request` của `harness-parity.yml`.

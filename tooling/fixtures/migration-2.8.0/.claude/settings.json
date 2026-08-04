@@ -1,0 +1,42 @@
+{
+  "$comment": "FIXTURE của migration 008 — hình dạng THẬT của .claude/settings.json ở một repo đã áp harness v1.4.0 (đo trên `warehouse` và `sakubun-test`, 2026-08-05): ĐÚNG 4 sự kiện, KHÔNG có `$comment_hooks`. NEO mà test khẳng định: `ThisIsALocalPermissionTheProjectAdded` (nội dung của PROJECT phải sống sót qua một lần ghi lại JSON) và `$comment_worktree` (điều kiện ④ — không mất `$comment` nào).",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [{ "type": "command", "command": "node .claude/hooks/session-start.mjs" }]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "node .claude/hooks/dcg.mjs" }]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          { "type": "command", "command": "node .claude/hooks/block-secrets.mjs" },
+          { "type": "command", "command": "node .claude/hooks/protect-harness.mjs" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [{ "type": "command", "command": "node .claude/hooks/post-edit-lint.mjs" }]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [{ "type": "command", "command": "node tooling/gates.mjs --stage stop" }]
+      }
+    ]
+  },
+  "permissions": {
+    "ask": ["ThisIsALocalPermissionTheProjectAdded(*)"],
+    "deny": ["Read(./.env)", "Edit(**/*.gen.*)"]
+  },
+  "$comment_worktree": "Khoá của project, migration 008 KHÔNG được chạm.",
+  "worktree": { "basePath": ".claude/worktrees" }
+}

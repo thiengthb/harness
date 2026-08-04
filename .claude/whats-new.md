@@ -1,4 +1,4 @@
-<!-- version: 2026-08-05-f -->
+<!-- version: 2026-08-05-g -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,25 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-05 — LỚP KINH TẾ của bạn có thể chưa từng bật (v2.8.0)
+
+Đo trên cả ba repo đang dùng harness: `.claude/settings.json` có **4 sự kiện hook**, template
+có **9**. Trong 5 sự kiện thiếu có `StopFailure` — chỗ **duy nhất** vendor gọi cho bạn khi
+tiền/quota chạm trần. `observe.mjs` đã được copy sang từ lâu và **nằm đó chết**.
+
+Kiểm 5 giây:
+
+```
+node -e "console.log(Object.keys(require('./.claude/settings.json').hooks).join(' '))"
+```
+
+Thấy đúng 4 tên → chạy `node tooling/upgrade.mjs --from <template>`. Migration 008 cắm chúng
+vào, **chỉ thêm khoá thiếu** — không chạm `permissions`, `worktree`, hay entry bạn đã sửa.
+
+Vì sao nó thiếu: `settings.json` là lớp SEED, `upgrade.mjs` **không bao giờ ghi đè** nó (đúng —
+đó là file bạn sửa). Nên chỉ **migration** đi qua được lớp đó, và trước hôm nay không có
+migration nào làm việc này.
 
 ## 2026-08-05 — `evals.command`: bỏ `{prompt}`, prompt đi qua stdin (v2.7.8)
 
