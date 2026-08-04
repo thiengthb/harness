@@ -474,6 +474,12 @@ for (const [hook, apply, input, label] of MUTANTS) {
 //
 // Nên luật rời khỏi văn xuôi và thành check tất định. Chỉ chạy ở REPO TEMPLATE: ở project
 // đích, `settings.json` là của HỌ và thêm sự kiện riêng là quyền của họ.
+//
+// `skipped` KHÔNG phải chi tiết kế toán. Một case bỏ qua CÓ CHỦ Ý và một case NGỪNG CHẠY đọc
+// giống nhau nếu chỉ nhìn tổng — và sàn bên dưới tồn tại chính để phân biệt hai thứ đó. Đếm
+// tường minh thì sàn giữ được một con số cho MỌI vai, thay vì mỗi vai một hằng số phải nhớ
+// nâng. Đây là ba giá trị `0 / n/a / ?` mà repo này đòi ở mọi nơi khác, áp cho chính suite.
+let skipped = 0;
 if (repoRole() === 'template') {
   // Bốn sự kiện có mặt từ bản đầu ⇒ mọi repo đã áp template đều có sẵn, không cần migration.
   const BASELINE = ['SessionStart', 'PreToolUse', 'PostToolUse', 'Stop'];
@@ -494,6 +500,8 @@ if (repoRole() === 'template') {
   } else {
     ok.push(`settings.json${' '.repeat(15)} ${events.length} sự kiện, mọi sự kiện ngoài baseline đều có migration phân phối`);
   }
+} else {
+  skipped++;
 }
 
 // SỐ MẪU không phải một phép cộng viết tay. Bản trước in
@@ -504,13 +512,21 @@ if (repoRole() === 'template') {
 //
 // Hai con số, hai việc khác nhau: TỔNG THẬT là `ok+fail` (mô tả), RATCHET là sàn (cưỡng chế).
 // Sàn là thứ DUY NHẤT ở đây thấy được một case biến mất — nâng nó khi thêm case.
+//
+// Sàn tính CẢ `skipped`. Bản 2.8.0 không tính, và nó đỏ ở CẢ BA repo tiêu thụ ngay trong lần
+// phát hành: case "đường phân phối" chỉ chạy ở template, nên ở project đích tổng là 75 < sàn
+// 76 ⇒ FAIL, exit 1. Đó đúng là `knowledge/lessons/0003` — self-test của template assert một
+// thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
+// Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
+// gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
 const RATCHET = 76;
-const total = ok.length + fail.length;
+const ran = ok.length + fail.length;
+const total = ran + skipped;
 if (total < RATCHET) {
-  fail.push(`chỉ chạy ${total} khẳng định, sàn là ${RATCHET} — một case đã NGỪNG CHẠY (hook thiếu file? `
-    + `khối bị throw sớm?). Đây là chế độ hỏng mà một suite "xanh 100%" che kín nhất.`);
+  fail.push(`chỉ có ${total} khẳng định (${ran} chạy + ${skipped} bỏ qua), sàn là ${RATCHET} — một case đã `
+    + `NGỪNG CHẠY (hook thiếu file? khối bị throw sớm?). Đây là chế độ hỏng mà một suite "xanh 100%" che kín nhất.`);
 }
-console.log(`\n=== HOOK TESTS (${ok.length}/${total} pass, sàn ${RATCHET}) ===`);
+console.log(`\n=== HOOK TESTS (${ok.length}/${ran} pass${skipped ? ` · ${skipped} n/a (chỉ chạy ở repo template)` : ''}, sàn ${RATCHET}) ===`);
 for (const m of ok) console.log('  PASS  ' + m);
 for (const m of fail) console.log('  FAIL  ' + m);
 console.log('');
