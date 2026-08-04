@@ -116,6 +116,20 @@ const BASELINES = {
 // một field ma — nó trông như đang gác, và không ai phát hiện ra là không.
 // (`rules-without-paths` được đo ở harness-doctor, nơi nó có ngưỡng riêng.)
 
+/**
+ * Metric ĐỔI TÊN vẫn phải mang theo lịch sử của nó.
+ *
+ * `skills (số)` → `skills (tổng thư mục)` ở 2.4.0: **cùng một phép đo** (số thư mục), chỉ
+ * đổi nhãn để nhường tên gác cho `skills (discovery)`. Không có bảng này thì một lần đổi
+ * tên biến metric thành *"chưa có mốc"* **vĩnh viễn** trên mọi máy đã có baseline — và cách
+ * duy nhất để dọn (`--baseline`) sẽ **XOÁ luôn** tín hiệu phình đang có. Tức là phải chọn
+ * giữa một `n/a` mãi mãi và mất bằng chứng; cả hai đều là mất mát không cần thiết.
+ *
+ * `skills (discovery)` **cố ý KHÔNG có alias**: nó là phép đo MỚI, chưa từng được đo ở
+ * baseline nào. `n/a` của nó là `n/a` THẬT — đừng gán cho nó một lịch sử nó không có.
+ */
+const BASELINE_ALIASES = { 'skills (tổng thư mục)': 'skills (số)' };
+
 // So với baseline — VÀ CHỈ SO KHI CÙNG MỘT CÂY.
 const basePath = repoPath('.claude', 'state', 'harness-size-baseline.json');
 const wt = worktreeInfo();
@@ -144,8 +158,11 @@ if (process.argv.includes('--baseline')) {
     // dòng skill nào. Một mốc chưa tồn tại không phải mốc bằng không.
     const deltas = [], fresh = [];
     for (const [k, v] of Object.entries(metrics)) {
-      if (!(k in (base.metrics ?? {}))) { fresh.push(`${k}=${v}`); continue; }
-      const d = v - base.metrics[k];
+      const bm = base.metrics ?? {};
+      // Metric ĐỔI TÊN phải mang theo lịch sử của nó.
+      const key = k in bm ? k : (BASELINE_ALIASES[k] in bm ? BASELINE_ALIASES[k] : null);
+      if (!key) { fresh.push(`${k}=${v}`); continue; }
+      const d = v - bm[key];
       if (d !== 0) deltas.push(`${k}: ${d > 0 ? '+' : ''}${d}`);
     }
     if (fresh.length) {
