@@ -129,7 +129,8 @@ docs/
 ├── TEAM.md                  DRI · nhịp ngày · khối review chung
 ├── MULTI-PROJECT.md         4 tầng cấu hình · phân phối · portfolio
 ├── DOR-DOD.md · onboarding.md · DESIGN.md
-└── adr/ · progress/<issue>.md · specs/ · rubrics/ · runbooks/
+└── adr/ (ADR của SẢN PHẨM, từ 0001) · adr/harness/ (của lớp harness)
+    progress/<issue>.md · specs/ · rubrics/ · runbooks/
 evals/                       gate cho chính harness
 reservations/                advisory lock có TTL
 .github/                     CODEOWNERS · PR template · CI + parity matrix
@@ -139,6 +140,12 @@ reservations/                advisory lock có TTL
 `node tooling/apply-to.mjs --audit` kiểm mọi file đều được template mang đi
 (chạy trong CI — chống lớp bug "thêm file, quên cập nhật danh sách").
 
+**Ba phép, không phải hai.** `HARNESS` cập nhật được · `SEED` tạo một lần ·
+**`MERGE` thêm dòng thiếu** vào `.gitignore` / `.gitattributes`. Phép thứ ba tồn tại vì
+copy-nếu-chưa-có là phép SAI cho hai file đó: project thật nào cũng đã có chúng, nên trước
+2.5.0 các dòng của harness không bao giờ tới. `harness-doctor` kiểm bằng `git check-ignore`,
+không so chuỗi.
+
 ---
 
 ## Nghi thức hàng ngày
@@ -146,6 +153,7 @@ reservations/                advisory lock có TTL
 ```
 /claim         bắt đầu — dựng worktree, KIỂM CHỒNG LẤN TRƯỚC, tạo nhật ký
 /ship-feature  làm — contract → core+test → ports → api → ui → wiring → verify
+/verify-ui     bước XEM khi chạm giao diện — 2 viewport, design-evaluator chấm
 /pre-merge     cổng cuối trước PR
 /handoff       kết thúc sạch — evidence, nhật ký, dọn reservation
 

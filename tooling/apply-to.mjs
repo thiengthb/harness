@@ -13,7 +13,7 @@
 import { readdirSync, statSync, mkdirSync, cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, resolve, relative, sep } from 'node:path';
-import { REPO_ROOT, report } from './lib/harness.mjs';
+import { REPO_ROOT, report, run, REQUIRED_IGNORE, REQUIRED_ATTRIBUTES, REQUIRED_UNIGNORE, missingLines } from './lib/harness.mjs';
 
 const args = process.argv.slice(2);
 const target = args.find(a => !a.startsWith('--'));
@@ -38,6 +38,11 @@ if (!AUDIT) {
 
 // ── Phân loại ────────────────────────────────────────────────────────────────
 // HARNESS = cơ chế thuần, cập nhật được  ·  SEED = nội dung project, chỉ tạo một lần
+// MERGE   = file DANH SÁCH DÒNG của project — thêm dòng thiếu, không copy, không bỏ qua
+//
+// BA phép, không phải hai. `SEED` (copy-nếu-chưa-có) là phép SAI cho `.gitignore` và
+// `.gitattributes`: project thật nào cũng đã có chúng ⇒ dòng của harness không bao giờ
+// tới đúng nhóm project mà harness nhắm tới. Xem `REQUIRED_IGNORE` trong lib/harness.mjs.
 const HARNESS = [
   '.claude/hooks', '.claude/skills', '.claude/agents',
   'tooling/lib', 'tooling/knowledge', 'tooling/fixtures',
@@ -53,7 +58,9 @@ const HARNESS = [
 ];
 const SEED = [
   'AGENTS.md', 'CLAUDE.md', 'harness.config.json',
-  '.gitattributes', '.gitignore', '.gitmessage',
+  // `.gitmessage` KHÔNG ở MERGE: nó là văn xuôi (khuôn commit message), không phải danh
+  // sách dòng. Thêm dòng vào giữa một khuôn văn xuôi là làm hỏng nó.
+  '.gitmessage',
   '.claude/settings.json', '.claude/settings.local.example.json', '.claude/whats-new.md',
   '.claude/rules', '.claude/learnings/_TEMPLATE.md',
   '.mcp.json.example',
@@ -65,8 +72,13 @@ const SEED = [
   'docs/DOR-DOD.md', 'docs/onboarding.md', 'docs/ROADMAP-30D.md',
   'docs/ANTI-PATTERNS.md', 'docs/ARCHITECTURE.md', 'docs/ECONOMICS.md',
   'docs/MULTI-PROJECT.md', 'docs/RECOVERY.md', 'docs/TEAM.md', 'docs/DESIGN.md',
-  'docs/adr/_TEMPLATE.md', 'docs/adr/0001-harness-baseline.md',
-  'docs/adr/0002-tai-phan-vai-native.md',
+  // ADR của TEMPLATE ở `docs/adr/harness/`, KHÔNG ở `docs/adr/`. Trước 2.5.0 chúng hạ
+  // cánh thành `docs/adr/0001-*` và `0002-*` ở project đích, tức là lớp harness CHIẾM số
+  // 0001 và 0002 của SẢN PHẨM: ADR đầu tiên của đội buộc phải là 0003, và quyết định đầu
+  // tiên của product được đánh số như thể nó là quyết định thứ ba. Cùng lý do với
+  // `docs/progress/<issue>.md`: đánh số dùng chung là một vùng conflict, và ở đây nó
+  // conflict giữa HAI SẢN PHẨM khác nhau.
+  'docs/adr/_TEMPLATE.md', 'docs/adr/harness',
   'docs/progress/_TEMPLATE.md', 'docs/progress/_TEAM.md',
   'docs/rubrics/_TEMPLATE.md', 'docs/specs/_TEMPLATE.md', 'docs/runbooks/README.md',
   'tooling/generators/README.md',
@@ -78,6 +90,41 @@ const SEED = [
   '.github/CODEOWNERS', '.github/pull_request_template.md',
   '.github/workflows/harness-parity.yml', '.github/workflows/ci.yml',
 ];
+
+const MERGE = [
+  { f: '.gitignore', required: REQUIRED_IGNORE },
+  { f: '.gitattributes', required: REQUIRED_ATTRIBUTES },
+];
+
+/** File harness mà cả đội PHẢI có — nếu git đang ignore chúng thì harness chỉ tồn tại trên MỘT máy. */
+const MUST_TRACK = ['.claude/settings.json', '.claude/hooks/observe.mjs', 'harness.config.json'];
+function buriedAtDest() {
+  if (run('git', ['rev-parse', '--git-dir'], { cwd: DEST }).status !== 0) return [];
+  return MUST_TRACK.filter(p => run('git', ['check-ignore', '-q', p], { cwd: DEST }).status === 0);
+}
+
+/** Không có file → copy cả bản template. Có rồi → CHỈ thêm dòng thiếu, dưới một mốc có tên. */
+function planMerge() {
+  return MERGE.map(({ f, required }) => {
+    const dst = join(DEST, f);
+    // `!.claude/` chỉ được thêm khi ĐO THẤY có file bị chôn — không thêm vô điều kiện.
+    // Nó đảo một quyết định tường minh của project, nên nó phải có bằng chứng và phải NÓI RA.
+    const buried = f === '.gitignore' ? buriedAtDest() : [];
+    const want = buried.length ? [...REQUIRED_UNIGNORE, ...required] : required;
+    if (!existsSync(dst)) return { f, action: 'create', missing: want, buried };
+    return { f, action: 'merge', missing: missingLines(readFileSync(dst, 'utf8'), want), buried };
+  });
+}
+
+function applyMerge(m) {
+  const dst = join(DEST, m.f);
+  if (m.action === 'create') { cpSync(join(REPO_ROOT, m.f), dst); return; }
+  if (!m.missing.length) return;                      // idempotent: chạy lại là no-op
+  const cur = readFileSync(dst, 'utf8');
+  const block = `\n# ── harness (apply-to.mjs) — xem REQUIRED_IGNORE trong tooling/lib/harness.mjs ──\n`
+    + m.missing.join('\n') + '\n';
+  writeFileSync(dst, cur.endsWith('\n') ? cur + block : cur + '\n' + block, 'utf8');
+}
 
 function filesUnder(rel) {
   const abs = join(REPO_ROOT, rel);
@@ -112,7 +159,7 @@ if (AUDIT && IS_TARGET_PROJECT) {
   process.exit(0);
 }
 if (AUDIT) {
-  const covered = new Set([...HARNESS, ...SEED].flatMap(filesUnder));
+  const covered = new Set([...HARNESS, ...SEED, ...MERGE.map(m => m.f)].flatMap(filesUnder));
   // Cố ý không mang đi: nội dung riêng của repo này, artifact sinh ra, hoặc file gốc
   const IGNORE = [
     // `\.git(\/|$)` — dấu `$` KHÔNG dư. Trong một WORKTREE, `.git` là một FILE, không
@@ -162,16 +209,24 @@ for (const [group, list] of [['harness', HARNESS], ['seed', SEED]]) {
 const created = plan.filter(p => p.action === 'create');
 const updated = plan.filter(p => p.action === 'update');
 const skipped = plan.filter(p => p.action === 'skip');
+const merges = planMerge();
+const toAppend = merges.filter(m => m.action === 'merge' && m.missing.length);
 
 console.log(`\n=== ÁP HARNESS → ${DEST} ===`);
 console.log(`  tạo mới:   ${created.length}`);
 console.log(`  cập nhật:  ${updated.length}${UPDATE ? '' : '  (dùng --update để cập nhật lớp harness)'}`);
 console.log(`  bỏ qua:    ${skipped.length}  (đã tồn tại)`);
+console.log(`  thêm dòng: ${toAppend.reduce((n, m) => n + m.missing.length, 0)}  (${merges.map(m => m.f).join(', ')})`);
 
 if (!APPLY) {
   console.log('\n  Xem trước. Thêm --apply để thực hiện.\n');
   for (const p of [...created, ...updated].slice(0, 40)) console.log(`    ${p.action.padEnd(7)} ${p.f}`);
   if (created.length + updated.length > 40) console.log(`    … và ${created.length + updated.length - 40} file nữa`);
+  for (const m of merges) {
+    if (m.action === 'create') console.log(`    create  ${m.f}  (chưa có → copy cả bản template)`);
+    else if (m.missing.length) for (const l of m.missing) console.log(`    +dòng   ${m.f}: ${l}`);
+    else console.log(`    ok      ${m.f}  (đã có đủ dòng bắt buộc)`);
+  }
   console.log('');
   process.exit(0);
 }
@@ -182,6 +237,7 @@ for (const p of [...created, ...updated]) {
   mkdirSync(join(dst, '..'), { recursive: true });
   cpSync(src, dst);
 }
+for (const m of merges) applyMerge(m);
 
 // Tạo thư mục rỗng cần thiết
 for (const d of ['.claude/learnings', 'knowledge/lessons', 'reservations', 'docs/progress', 'evals/tasks']) {
@@ -219,8 +275,19 @@ for (const p of created) {
   } catch {}
 }
 
-const ok = [`${created.length} file tạo mới`, ...(updated.length ? [`${updated.length} file cập nhật`] : [])];
+const ok = [
+  `${created.length} file tạo mới`,
+  ...(updated.length ? [`${updated.length} file cập nhật`] : []),
+  ...merges.map(m => m.action === 'create' ? `${m.f}: tạo mới`
+    : m.missing.length ? `${m.f}: thêm ${m.missing.length} dòng bắt buộc (${m.missing.join(' · ')})`
+    : `${m.f}: đã đủ dòng bắt buộc, không đổi`),
+];
 const warn = todos.length ? [`${todos.length} file còn CHANGEME:`, ...todos.map(t => '   ' + t)] : [];
+for (const m of merges.filter(m => m.buried?.length)) {
+  warn.push(`${m.f} của project đang ignore ${m.buried.join(' · ')} → đã thêm \`!.claude/\`.`
+    + ` Harness của TEAM phải được commit; nếu không, chỉ máy vừa chạy lệnh này có nó.`
+    + ` Xem lại dòng ignore rộng (thường là \`.claude/\`) và commit .claude/ trong PR đầu tiên.`);
+}
 
 report('ÁP HARNESS', { ok, warn });
 

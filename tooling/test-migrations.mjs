@@ -42,7 +42,7 @@
  * bản sao cây HIỆN TẠI — ở đó nó phải là **no-op**, vì repo đã ở trạng thái đích. Nhánh
  * đó rẻ nhưng không vô dụng: nó bắt migration sửa một repo vốn đã đúng.
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync, cpSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync, cpSync, readdirSync, statSync, renameSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -104,6 +104,13 @@ function makeCtx(root, logs) {
       if (existsSync(dst) && !overwrite) return false;
       mkdirSync(dirname(dst), { recursive: true });
       cpSync(src, dst);
+      return true;
+    },
+    moveFile: (relFrom, relTo) => {
+      const from = join(root, relFrom), to = join(root, relTo);
+      if (!existsSync(from) || existsSync(to)) return false;
+      mkdirSync(dirname(to), { recursive: true });
+      renameSync(from, to);
       return true;
     },
     log: m => logs.push(String(m)),

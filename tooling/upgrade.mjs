@@ -20,7 +20,7 @@
  * những thứ mà copy file không làm được (đổi tên field trong config, chuyển
  * cấu trúc thư mục).
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, readdirSync, statSync, renameSync } from 'node:fs';
 import { join, resolve, sep, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
@@ -216,6 +216,21 @@ for (const m of migrations) {
                    if (existsSync(dst) && !overwrite) return false;
                    mkdirSync(dirname(dst), { recursive: true });
                    cpSync(src, dst);
+                   return true;
+                 },
+                 // "Đổi cấu trúc thư mục" là một trong những việc README của
+                 // harness-migrations/ liệt kê là BẮT BUỘC phải có migration — nhưng cho
+                 // tới 2.5.0 ctx không có cách nào DI CHUYỂN một file. Hệ quả: migration
+                 // phải tự `import` node:fs (không migration nào làm) hoặc gọi `git mv`
+                 // (fail ở test, vì thư mục fixture không phải git repo). Nên việc đó
+                 // trước đây chỉ tồn tại trên giấy.
+                 // Đổi tên, KHÔNG copy-rồi-xoá: `renameSync` là nguyên tử trong cùng
+                 // filesystem, còn copy-rồi-xoá thì đứt giữa đường là mất file.
+                 moveFile: (relFrom, relTo) => {
+                   const from = repoPath(relFrom), to = repoPath(relTo);
+                   if (!existsSync(from) || existsSync(to)) return false;
+                   mkdirSync(dirname(to), { recursive: true });
+                   renameSync(from, to);
                    return true;
                  },
                  // Log có ⚠ đi vào WARN, không vào OK. Một cảnh báo in dưới nhãn

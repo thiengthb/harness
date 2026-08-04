@@ -60,7 +60,9 @@ Route **mỏng**: parse (theo contract) → gọi core → serialize. Không log
 - Primitive: **dùng lại** từ design system
 - Composite mới: thêm vào **design system**, không viết trong app
 
-**GATE:** 0 màu cứng, 0 spacing cứng ngoài token.
+**GATE:** 0 màu cứng, 0 spacing cứng ngoài token — rồi `/verify-ui` (bước XEM: 2 viewport,
+ảnh vào `docs/evidence/<issue>/`, `design-evaluator` chấm). Không có bước đó thì vòng UI
+làm việc mà không có mắt, và `features/<id>.json → web.evidence` không có gì thật để trỏ tới.
 
 ## Bước 6 — WIRING (tầng 5), lặp cho từng app
 

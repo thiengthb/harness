@@ -44,7 +44,7 @@ App chưa chạy được thì **DỪNG**. Chụp ảnh một app không chạy 
 | Bối cảnh | Cách chụp |
 |---|---|
 | Phiên **có người** (mặc định) | Claude in Chrome: `navigate` → `resize_window` 390×844 rồi 1440×900 → `computer` screenshot |
-| Project **đã có** công cụ visual | `commands.visual` của project (Playwright/Cypress/Maestro) — dùng cái đã có |
+| Project **đã có** công cụ visual | chạy qua `commands.e2e` (Playwright/Cypress/Maestro) — dùng cái đã có |
 | **CI** | Bắt buộc là công cụ của project. Claude in Chrome **không** chạy ở phiên headless |
 
 **Template KHÔNG ship công cụ chụp, và đó là cố ý.** Playwright/Maestro là tri thức stack;
@@ -88,6 +88,10 @@ Nó không có quyền sửa code — cố ý. Người sửa là bạn, sau khi
 
 ## Điều kiện thoát
 
-Khi `commands.visual` của project chạy được ở CI **và** so ảnh với baseline tự động, bước
-2–3 của skill này thành thừa: gate làm việc đó mỗi PR, không cần nghi thức. Lúc đó skill
-co lại còn bước 4–5. **Kiểm lại mỗi lần `commands.visual` được điền.**
+Khi `commands.e2e` của project so ảnh với baseline **tự động ở CI**, bước 2–3 của skill này
+thành thừa: gate làm việc đó mỗi PR, không cần nghi thức. Lúc đó skill co lại còn bước 4–5.
+**Kiểm lại mỗi lần `commands.e2e` đổi.**
+
+(Bản 2.3.0 khoá điều kiện thoát này vào một field tên **visual** — field mà
+`harness.config.json` nói thẳng là KHÔNG được thêm. Một điều kiện thoát trỏ vào thứ không
+bao giờ tồn tại là điều kiện thoát không bao giờ đến; `entropy-scan` bắt được nó ở 2.5.0.)

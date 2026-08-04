@@ -80,3 +80,6 @@ implement → chụp screenshot → so với thiết kế → LIỆT KÊ khác b
 
 Bắt agent **liệt kê** khác biệt thành danh sách trước khi sửa. Không có bước liệt kê,
 nó sẽ sửa một thứ và tuyên bố xong.
+
+Vòng lặp đó có một skill cưỡng chế nó: **`/verify-ui`** — 2 viewport, ảnh vào
+`docs/evidence/<issue>/`, và `design-evaluator` chấm (không phải chính agent vừa viết UI).
