@@ -56,7 +56,7 @@ Danh mục tra cứu. Khi có gì đó sai mà bạn chưa gọi tên được, 
 | D5 | **Không có merge queue** | conflict ngữ nghĩa vỡ trên main, lặp lại mãi | bật merge queue — việc ROI cao nhất |
 | D6 | **Một file chung cho nhiều người ghi** | conflict mỗi ngày ở chỗ git không giúp được | chẻ theo người / theo issue |
 | D7 | **Serialize mọi thứ vì sợ conflict** | ~4/5 cặp song song không conflict → ném throughput để tránh chi phí xác suất | leo ladder, serialize là bậc cuối |
-| D8 | **Đổi harness rồi không thông báo** | nửa team hành xử theo rule cũ | `/whats-new` + canary |
+| D8 | **Đổi harness rồi không thông báo** | nửa team hành xử theo rule cũ | `/harness-propose` §6 (canary → thông báo) |
 | D9 | **Review comment lặp lại mà không thành rule** | team dạy lại cùng một bài mỗi tháng | checkbox trong PR template |
 | D10 | **Agent tự trị push lên nhánh của người** | xoá/ghi đè việc đang làm | tiền tố `auto/`; DCG chặn force push |
 | D11 | **Worktree không gitignore / không dọn** | commit worktree vào repo; ổ cứng và file-watcher cạn | `.gitignore` + `/wt` mỗi sáng |
@@ -124,6 +124,8 @@ Danh mục tra cứu. Khi có gì đó sai mà bạn chưa gọi tên được, 
 | H8 | **Bật một gate mới ở mức ĐỎ** | gate đỏ ngày đầu không dạy ai điều gì — nó dạy người ta cách **tắt gate** | ratchet: khai mốc hôm nay, chỉ nổ khi số **tăng**, hạ mốc trong **cùng commit** với mỗi lần sửa. Backlog nằm công khai, có ngày |
 | H9 | **Chỉ khẳng định exit code cho một nhánh từ chối** | "nó exit 2" không phải bằng chứng nó nổ **đúng lý do**. Và dòng GỢI Ý là thứ agent đọc để biết làm gì tiếp — xoá nó đi mà suite vẫn xanh | kiểm cả phần TỪ CHỐI lẫn phần GỢI Ý. Một cái gác cho-qua mà vẫn in thì phải **khai** nó in gì |
 | H10 | **Nhận diện "phiên không người" bằng `!isTTY`** | hook LUÔN được spawn với stdio piped → isTTY false ở **mọi** phiên, kể cả phiên có người ngồi nhìn. Mọi thứ fail-đóng dựng trên đó thành guard bắn nhầm cho cả team | chỉ ba tín hiệu đọc được từ trong hook: `CI`, `CLAUDE_CODE_ENTRYPOINT=sdk-cli`, cờ tường minh |
+| H11 | **Check neo vào VĂN XUÔI thay vì vào CODE** | một comment GIẢI THÍCH check, viết bằng đúng cú pháp check đi tìm, sẽ tự tố giác mình. **5 lần trong một phiên** 2026-08-04: check CODEOWNERS đọc comment về placeholder thành placeholder · engine mutant đọc `[\s\S]*?` trong comment thành regex lazy · check tham chiếu skill đọc chính header của nó (**2 lần**, lần thứ hai là câu cảnh báo về cái bẫy) | quyết định trên bản **đã bỏ comment** khi tham chiếu thật chỉ nằm trong code (`test-migrations`); nếu tham chiếu thật CŨNG nằm trong comment thì đổi cách viết comment, đừng nới check. Neo vào **KHAI**, không vào **NHẮC** |
+| H12 | **Xoá một thứ rồi để lại tham chiếu tới nó** | xoá là MỘT lệnh, tìm hết chỗ nhắc thì không. Xoá 1 skill để lại **5** tham chiếu chết, một trong đó là ADR ghi thẳng "KHÔNG xoá". Không có triệu chứng: nó chỉ dạy người đọc rằng tài liệu không đáng tin | `harness-doctor` đối chiếu mọi `slash-tên` trong file **không phải hồ sơ lịch sử** với `.claude/skills/*`; ADR/changelog/whats-new/learnings được loại trừ **theo bản chất** (chúng PHẢI nhắc được thứ đã xoá) |
 
 ---
 

@@ -1,4 +1,4 @@
-<!-- version: 2026-08-04-e -->
+<!-- version: 2026-08-04-f -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,16 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-04 — Skill `/whats-new` bị XOÁ · hai chỉ số thôi nói dối (v2.4.0)
+
+1. **`/whats-new` không còn.** File `.claude/whats-new.md` **giữ nguyên** — bạn đang đọc nó,
+   và SessionStart hook vẫn in nó một lần mỗi version. Phần *cập nhật* + *canary* chuyển vào
+   **`/harness-propose` §6**, nơi bạn đang đứng khi thật sự cần chúng.
+2. **`harness-size` giờ gác `skills (discovery)`**, đọc ngưỡng từ `limits.maxSkills`, không
+   đếm số thư mục. Skill có `disable-model-invocation: true` tốn 0 context nên không tính.
+3. **`gates --list --timing`**: stage mà mọi gate đều `n/a` giờ báo `n/a`, không báo
+   `OK 0ms`. `0ms` khi không có gì chạy không phải "nhanh".
 
 ## 2026-08-04 — a11y/perf cuối cùng có dụng cụ đo · skill `verify-ui` (v2.3.0)
 

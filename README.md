@@ -63,7 +63,7 @@ Bạn vẫn là verification loop.
 | "Session sau không biết session trước" | nhật ký per-issue · SessionStart ritual · nghi thức handoff | `docs/progress/<issue>.md`, `session-start.mjs`, `/handoff` |
 | Nhiều session song song đạp lên nhau | Coordination Ladder: đo → partition → đặt chỗ → serialize | `docs/CONFLICTS.md`, `coactivity.mjs`, `reservations/` |
 | Merge sạch nhưng build vỡ (conflict ngữ nghĩa) | merge queue · typecheck toàn repo · nhánh < 1 ngày | `docs/BRANCH-PROTECTION.md` |
-| 5 người cùng sửa harness | CODEOWNERS · `protect-harness` hook · canary · `/whats-new` | `.github/CODEOWNERS`, `.claude/hooks/` |
+| 5 người cùng sửa harness | CODEOWNERS · `protect-harness` hook · canary + thông báo (`/harness-propose` §6) | `.github/CODEOWNERS`, `.claude/hooks/` |
 | "Chạy trên máy tôi thì được" | Parity Contract: mọi script là Node `.mjs` · CI matrix 3 OS · `.gitattributes` | `harness-parity.yml`, `tooling/init.mjs` |
 | Agent tự khen, mark done sớm | default-FAIL + evidence bắt buộc + CI cưỡng chế | `features/`, `check-feature-integrity.mjs` |
 | Agent sửa test cho pass thay vì sửa code | đếm assertion/test block, chặn khi thu nhỏ | `protect-tests.mjs` |
@@ -90,8 +90,8 @@ CLAUDE.md                    → @AGENTS.md
 ├── whats-new.md             thông báo đổi harness, hiện MỘT LẦN mỗi version
 ├── hooks/*.mjs              10 hook, Node thuần, chạy 3 OS
 ├── rules/                   rule theo `paths`, có owner + expires-review
-├── skills/                  13 skill · trần ≤12 tính trên tầng DISCOVERY (đang 3), không trên tổng
-│                            (`disable-model-invocation: true` đưa chi phí context về 0)
+├── skills/                  12 skill · trần `limits.maxSkills` tính trên tầng DISCOVERY (đang 3),
+│                            không trên tổng (`disable-model-invocation: true` → chi phí context 0)
 ├── agents/                  evaluator · design-evaluator · security-reviewer
 │                            architect · researcher
 └── learnings/               ĐỀ XUẤT của agent — một file/người/tuần

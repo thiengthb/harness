@@ -160,6 +160,21 @@ phần phụ lục.
    đúng điều đó với chi phí context về 0 và **không mất tri thức nào**.
    Hệ quả: trần "≤12 skill" đọc lại thành **"≤12 skill model tự gọi được"**.
 
+   > **THAY THẾ MỘT NỬA ở v2.4.0 — phần `/whats-new`.** Skill đó **đã bị xoá**, và lý do
+   > không phải vì quyết định trên sai: nó **đúng cho tới khi tiền đề của nó hết hiệu lực.**
+   > Tiền đề là *"quy trình canary không có ở đâu khác"*. Ở v2.4.0 canary + nghi thức
+   > thông báo được **chuyển vào `/harness-propose` §6** — nơi chúng thuộc về, vì đó là
+   > artefact người thi hành thật sự mở lúc đổi harness (cùng luật với D8/G-nhóm:
+   > *một luật cưỡng chế ở sai thời điểm đọc như là đã có phủ sóng*). Sau khi chuyển,
+   > tiền đề sai, nên kết luận không còn đứng.
+   >
+   > `/wt` **vẫn giữ** — bảng tài nguyên cục bộ của nó chưa được chuyển đi đâu, nên tiền
+   > đề của nó còn nguyên. Đây là chỗ ghi rõ để lần sau không ai cắt nó bằng cách trích
+   > câu này như một tiền lệ chung.
+   >
+   > Ghi vào ADR chứ không sửa dòng trên, vì một ADR bị viết lại thì mất giá trị: cái
+   > đáng đọc không phải "hôm nay đúng gì" mà là **"vì sao nó từng đúng, và điều gì đã đổi"**.
+
 2. **KHÔNG thay `block-generated-edit` / `protect-feature-files` bằng deny rule.**
    Nguồn coi chúng là glob tĩnh. Thực tế cả hai **đọc `harness.config.json`**:
    `paths.generated` là per-project, và `protect-feature-files` còn so mã issue với

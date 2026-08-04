@@ -18,7 +18,7 @@
  */
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, extname } from 'node:path';
-import { repoPath, readJson, writeJson, report, exists, worktreeInfo, REPO_ROOT } from './lib/harness.mjs';
+import { repoPath, readJson, writeJson, report, exists, worktreeInfo, limit, REPO_ROOT } from './lib/harness.mjs';
 
 function walk(dir, filter = () => true) {
   if (!existsSync(dir)) return [];
@@ -36,12 +36,41 @@ const sum = fs => fs.reduce((n, f) => n + lines(f), 0);
 
 const md = p => extname(p) === '.md';
 
+/**
+ * Đếm skill theo TẦNG DISCOVERY, không theo số thư mục.
+ *
+ * `disable-model-invocation: true` đưa chi phí context của một skill về **0**: model không
+ * thấy `description` của nó nên nó không cạnh tranh với skill khác. Một skill nghi thức
+ * (`/claim`, `/pre-merge`) do đó KHÔNG phải là thuế.
+ *
+ * Trước 2.4.0 file này đếm **thư mục** và so với hằng số `12` **viết cứng ngay trong bảng
+ * `THRESHOLDS`** — nó không đọc `limits.maxSkills` bao giờ. Cùng lúc `harness-doctor` đếm
+ * theo tầng discovery và `harness.config.json → $comment_maxSkills` tự khai *"Đếm theo
+ * tầng DISCOVERY, không theo tổng số file… harness-doctor đọc field này."*
+ *
+ * Kết quả: MỘT khái niệm hai nghĩa, hai tool cho hai phán quyết trái nhau về cùng một
+ * repo, và với file này thì `limits.maxSkills` là một **field ma** — đúng lớp
+ * `budget.modelTiering` bị cắt ở 2.0.0. Config đã tự khai nghĩa của nó, nên file này sai.
+ *
+ * Tổng số thư mục vẫn được in ra, dưới nhãn khác, vì nó là **bề mặt bảo trì** — một số
+ * đáng biết, chỉ không phải số đáng gác.
+ */
+const skillDirs = existsSync(repoPath('.claude/skills'))
+  ? readdirSync(repoPath('.claude/skills'), { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name)
+  : [];
+const discoverableSkills = skillDirs.filter(name => {
+  const f = repoPath('.claude/skills', name, 'SKILL.md');
+  if (!existsSync(f)) return false;
+  const fm = readFileSync(f, 'utf8').match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? '';
+  return !/^disable-model-invocation:\s*true/m.test(fm);
+}).length;
+
 const metrics = {
   'AGENTS.md (dòng)': exists(repoPath('AGENTS.md')) ? lines(repoPath('AGENTS.md')) : 0,
   'rules (số file)': walk(repoPath('.claude/rules'), md).length,
   'rules (dòng)': sum(walk(repoPath('.claude/rules'), md)),
-  'skills (số)': existsSync(repoPath('.claude/skills'))
-    ? readdirSync(repoPath('.claude/skills'), { withFileTypes: true }).filter(d => d.isDirectory()).length : 0,
+  'skills (discovery)': discoverableSkills,
+  'skills (tổng thư mục)': skillDirs.length,
   'skills (dòng)': sum(walk(repoPath('.claude/skills'), md)),
   'agents (số)': walk(repoPath('.claude/agents'), md).length,
   'hooks (số)': walk(repoPath('.claude/hooks'), p => p.endsWith('.mjs')).length,
@@ -54,7 +83,10 @@ const metrics = {
 const THRESHOLDS = {
   'AGENTS.md (dòng)': [150, 'Dài hơn 150 dòng: có thứ thuộc về rules/ (theo path), skill, hoặc hook'],
   'rules (dòng)': [400, 'Rule nhiều = thuế context ở mọi request. Rule nào không có `paths` frontmatter?'],
-  'skills (số)': [12, 'Bằng chứng cộng đồng: ≤12 skill cho kết quả tốt hơn skill tràn lan'],
+  // Ngưỡng ĐỌC TỪ CONFIG, không viết cứng: nó là con số của đội, và một ngưỡng viết cứng
+  // trong hai tool là hai ngưỡng sẽ lệch nhau.
+  'skills (discovery)': [limit('maxSkills', 12),
+    'Skill trong tầng discovery trả tiền thuê `description` MỌI phiên. Thêm `disable-model-invocation: true` cho skill nghi thức: chi phí về 0, không mất chức năng'],
   'mcp servers': [5, '3–5 server/project. Tool definition ăn context mỗi request'],
 };
 
@@ -103,10 +135,23 @@ if (process.argv.includes('--baseline')) {
     unknown.push(`baseline đo ở \`${base.tree ?? 'main-tree'}\`, đang chạy ở \`${treeId}\` — TỪ CHỐI so. `
       + `sparsePaths làm file vắng mặt hợp lệ; so hai cây khác nhau cho ra một con số sai mà trông đúng.`);
   } else {
-    const deltas = Object.entries(metrics)
-      .map(([k, v]) => [k, v - (base.metrics[k] ?? 0)])
-      .filter(([, d]) => d !== 0)
-      .map(([k, d]) => `${k}: ${d > 0 ? '+' : ''}${d}`);
+    // Metric VẮNG MẶT trong baseline là `n/a`, KHÔNG phải `0`.
+    //
+    // Bản cũ dùng `base.metrics[k] ?? 0`. Cái `?? 0` đó trông vô hại và nó BỊA RA sự
+    // phình: ngay lần đổi tên metric đầu tiên (`skills (số)` → `skills (discovery)` +
+    // `skills (tổng thư mục)` ở 2.4.0), báo cáo nói `+3` và `+12` cho hai metric chưa
+    // từng được đo, rồi kết luận "Harness đang PHÌNH" — về một thay đổi KHÔNG thêm một
+    // dòng skill nào. Một mốc chưa tồn tại không phải mốc bằng không.
+    const deltas = [], fresh = [];
+    for (const [k, v] of Object.entries(metrics)) {
+      if (!(k in (base.metrics ?? {}))) { fresh.push(`${k}=${v}`); continue; }
+      const d = v - base.metrics[k];
+      if (d !== 0) deltas.push(`${k}: ${d > 0 ? '+' : ''}${d}`);
+    }
+    if (fresh.length) {
+      na.push(`metric MỚI, chưa có mốc: ${fresh.join(' · ')} — xu hướng CHƯA ĐO ĐƯỢC, không phải "+N từ 0". `
+        + `Chạy \`--baseline\` để ghim (và nhớ: ghim lại sẽ XOÁ luôn tín hiệu phình đang có).`);
+    }
     if (deltas.length) {
       const grew = deltas.filter(d => d.includes('+')).length;
       (grew > deltas.length / 2 ? warn : ok).push(`so với baseline (${base.at.slice(0, 10)}): ${deltas.join(', ')}`);

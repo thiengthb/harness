@@ -11,6 +11,66 @@
 
 ---
 
+## 2.4.0 — 2026-08-04
+
+**minor.** Không cần migration. Xoá skill `/whats-new` — nội dung chuyển vào
+`/harness-propose §6`.
+
+### `maxSkills` có HAI nghĩa, và một tool không đọc config
+
+```
+harness-doctor:  skill: 13 tổng · 3 model tự gọi được (trần 12)   → xanh
+harness-size:    WARN skills (số): 13 (ngưỡng 12)                  → đỏ
+```
+
+`harness-size.mjs` đếm **số thư mục** và so với hằng số `12` **viết cứng trong bảng
+`THRESHOLDS` của chính nó** — nó **không đọc `limits.maxSkills`** bao giờ. Cùng lúc
+`harness.config.json → $comment_maxSkills` tự khai: *"Đếm theo tầng DISCOVERY, không theo
+tổng số file… **harness-doctor** đọc field này."*
+
+Một khái niệm hai nghĩa, hai tool hai phán quyết trái nhau về **cùng một repo** — và với
+`harness-size` thì `limits.maxSkills` là một **field ma**, đúng lớp `budget.modelTiering`
+bị cắt ở 2.0.0. Config đã tự khai nghĩa của nó, nên file kia sai.
+
+Nay: `skills (discovery)` (gác, ngưỡng **đọc từ config**) + `skills (tổng thư mục)` (in ra,
+**không** gác — nó là bề mặt bảo trì, đáng biết, không đáng gác).
+
+### `?? 0` bịa ra sự phình
+
+`harness-size` so baseline bằng `v - (base.metrics[k] ?? 0)`. Cái `?? 0` trông vô hại, và
+ngay lần đổi tên metric đầu tiên nó báo `skills (discovery): +3` · `skills (tổng thư mục):
++12` rồi kết luận **"Harness đang PHÌNH"** — về một thay đổi **không thêm một dòng skill
+nào**. Một mốc chưa tồn tại **không phải** mốc bằng không.
+
+Nay metric vắng mặt trong baseline báo `n/a` kèm cảnh báo rằng ghim lại sẽ **xoá** tín hiệu
+phình đang có.
+
+### `--list --timing`: `0ms` không phải "nhanh"
+
+Chỉ số mà `AGENTS.md` gọi là *chỉ số "harness đang cản" duy nhất đo trực tiếp được* **chưa
+từng được chạy**. Chạy lần đầu:
+
+```
+OK  stop: tổng 0ms / ngân sách 30000ms        ← trong khi 11/11 gate là n/a
+```
+
+`0ms` ở đây nghĩa là **không có gì chạy**. Báo nó thành `OK` là chính phép gộp `0` với
+`n/a` mà `gates.mjs §TRẠNG THÁI THỨ BA` cấm — và nó nói dối đúng hướng dễ chịu: *"harness
+không cản gì cả"*. Nay stage không có gate nào chạy được báo `n/a`, và stage có chạy thì in
+kèm **mẫu số** (`1/3 gate có lệnh`).
+
+### Cắt: skill `/whats-new`
+
+`harness-size` báo PHÌNH sau khi thêm `verify-ui` (2.3.0), và luật của repo là **mỗi lần
+promote kèm một đề xuất CẮT**. Đã cắt: `/whats-new` (55 dòng).
+
+Không mất năng lực nào — phần "xem" là 3 dòng mà **SessionStart hook đã tự động in**, phần
+"cập nhật" + **canary** chuyển vào `/harness-propose §6`, nơi nó thuộc về: *một luật thi
+hành nằm trong artefact người thi hành mở, không nằm trong một skill không ai mở đúng lúc.*
+File `.claude/whats-new.md` **giữ nguyên** — chỉ cái cửa dẫn tới nó bị bỏ.
+
+---
+
 ## 2.3.0 — 2026-08-04
 
 **minor, có migration** (`harness-migrations/005`).

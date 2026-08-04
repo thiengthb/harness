@@ -183,6 +183,7 @@ const fmKeys = (txt) => {
 };                                                               // key không phải là KHAI nó.
 
 let skillTotal = 0, discoverable = 0, grantsWrite = [];
+const skillNames = new Set();
 const unknownKeys = [];
 const skillsDir = repoPath('.claude', 'skills');
 if (exists(skillsDir)) {
@@ -190,6 +191,7 @@ if (exists(skillsDir)) {
     const f = repoPath('.claude', 'skills', name, 'SKILL.md');
     if (!exists(f)) continue;
     skillTotal++;
+    skillNames.add(name);
     const txt = readFileSync(f, 'utf8');
     const keys = fmKeys(txt);
     const fm = txt.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? '';
@@ -328,6 +330,44 @@ if (readmeTxt) {
       + `Đây là tài liệu VÀO-CỬA: một con số sai ở đây dạy người mới rằng tài liệu này không đáng tin`);
   }
   console.log(`  README, số máy đếm được:     ${parts.join(' · ')}`);
+}
+
+// ── Tham chiếu tới một skill KHÔNG TỒN TẠI ───────────────────────────────────
+// Xoá một skill là MỘT lệnh; tìm hết chỗ đang nhắc nó thì không. Đo 2026-08-04: xoá
+// skill whats-new để lại NĂM tham chiếu chết — test-hooks.mjs, lib/harness.mjs,
+// docs/TEAM.md, docs/ANTI-PATTERNS.md, và docs/adr/0002 (nơi ghi thẳng "KHÔNG xoá" nó).
+//
+// TÊN SKILL Ở COMMENT NÀY CỐ Ý KHÔNG VIẾT DẠNG slash-trong-backtick: check quét cả comment (tham chiếu
+// thật cũng nằm trong comment, xem test-hooks.mjs), nên một comment GIẢI THÍCH check bằng
+// đúng cú pháp check đi tìm sẽ tự tố giác mình. Đã xảy ra 2 lần trong lần viết file này.
+// Không tool nào bắt được: `entropy-scan` kiểm link file, không kiểm tên lệnh.
+//
+// Một tham chiếu chết không làm gì hỏng — nó dạy người đọc rằng tài liệu này không đáng
+// tin, và sau đó họ không đọc phần đáng tin.
+//
+// LOẠI TRỪ theo bản chất, không theo tiện lợi: changelog · whats-new · ADR · learnings là
+// **hồ sơ lịch sử**, chúng PHẢI được phép nhắc tên một skill đã bị xoá — đó là việc của
+// chúng. Mọi file khác thì không.
+const NATIVE_OR_NOT_A_SKILL = new Set([
+  // Lệnh NATIVE của Claude Code + thứ trông giống lệnh mà không phải (`/tmp`).
+  // Cập nhật 2026-08-04: vendor thêm lệnh thì thêm vào đây, đừng bỏ qua check.
+  'clear', 'context', 'compact', 'doctor', 'help', 'memory', 'skills', 'plugin', 'verify', 'tmp',
+]);
+const HISTORICAL = /^(HARNESS-CHANGELOG\.md|\.claude\/whats-new\.md|docs\/adr\/|\.claude\/learnings\/)/;
+const deadRefs = new Map();
+for (const f of git(['ls-files']).stdout.split('\n').filter(Boolean)) {
+  if (!/\.(md|mjs)$/.test(f) || HISTORICAL.test(f)) continue;
+  let txt = ''; try { txt = readFileSync(repoPath(f), 'utf8'); } catch { continue; }
+  for (const m of txt.matchAll(/`\/([a-z][a-z0-9-]*)`/g)) {
+    const n = m[1];
+    if (skillNames.has(n) || NATIVE_OR_NOT_A_SKILL.has(n)) continue;
+    if (!deadRefs.has(n)) deadRefs.set(n, new Set());
+    deadRefs.get(n).add(f);
+  }
+}
+for (const [n, files] of deadRefs) {
+  advice.push(`\`/${n}\` được nhắc ở ${[...files].join(', ')} nhưng KHÔNG có .claude/skills/${n}/SKILL.md — `
+    + `tham chiếu chết. Sửa chỗ nhắc, hoặc dựng lại skill. (Lệnh native mới của vendor? Thêm vào NATIVE_OR_NOT_A_SKILL)`);
 }
 
 // ── Cửa thoát trong CI: ai canh nó? ──────────────────────────────────────────

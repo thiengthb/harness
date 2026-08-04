@@ -72,6 +72,36 @@ Label `harness`, link tới mục vừa ghi. Tiêu đề = triệu chứng, khô
 DRI quyết định promote. **Đừng tự áp dụng.**
 Sau khi được duyệt, dùng `/knowledge-promote` để đưa vào `knowledge/lessons/`.
 
+## 6. Sau khi được duyệt: canary, rồi THÔNG BÁO
+
+Hai bước này ở đây — trong artefact người thi hành mở — chứ không ở một skill riêng.
+Một luật nằm trong skill mà không ai mở lúc thi hành thì **đọc như là đã có phủ sóng**.
+
+**Canary trước.** Đừng bao giờ merge thay đổi hook vào `main` rồi mới biết nó chậm
+4 giây trên máy Windows:
+
+```
+Đổi hook/settings.json
+  → 1 người dùng thử 2 ngày (qua .claude/settings.local.json)
+  → chạy eval set:  node evals/run.mjs
+  → CI parity 3 OS xanh
+  → PR + cập nhật .claude/whats-new.md
+  → merge
+```
+
+**Rồi thông báo.** `.claude/whats-new.md` **không** nằm trong `paths.harness` — cố ý:
+thông báo thay đổi phải rẻ, nếu không sẽ không ai làm.
+
+1. Đổi dòng `<!-- version: YYYY-MM-DD-x -->` ở đầu file — SessionStart hook so dòng này
+   với `.claude/state/whats-new-seen.json` và **in nội dung một lần** cho mỗi người.
+2. Thêm mục mới **lên trên cùng**, tối đa ~5 dòng: *cái gì đổi* · *người dùng phải làm gì
+   khác đi* · *bị chặn sai thì nhắn ai*.
+3. Xoá mục cũ hơn 1 tháng. File phải **ngắn** để người ta thật sự đọc.
+
+**Bỏ bước này = nửa team hành xử theo rule cũ, nửa theo rule mới, và không ai biết tại
+sao agent hôm nay lạ.** Đây là loại conflict tệ nhất vì không công cụ nào báo —
+`entropy-scan` chỉ cảnh báo được sau 14 ngày.
+
 ## Nếu bạn đang đề xuất vì bị hook chặn sai
 
 Nói rõ trong đề xuất: lệnh/file gì, hook nào, vì sao bạn tin nó sai.
