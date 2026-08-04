@@ -11,6 +11,45 @@
 
 ---
 
+## 2.7.9 — 2026-08-05
+
+**minor.** Template biết consumer của nó tồn tại — và biết bản vá đã tới ai chưa.
+
+### Sổ đăng ký: `tooling/knowledge/consumers.mjs`
+
+Template **không biết consumer của nó tồn tại**. Đo 2026-08-05: ba repo đã dùng harness này
+từ 08-03, **hai trong ba đứng ở v1.4.0 — sáu version sau lưng**, và chúng chưa từng có
+`tooling/gates.mjs` (runner ra đời ở 2.0.0). Hai project chạy một harness mà lớp cưỡng chế
+của nó chưa tồn tại — và cách duy nhất phát hiện là liệt kê thư mục bằng tay.
+
+Một hệ phân phối mà bên phát hành không biết mình đã phát hành cho ai thì không trả lời được
+câu rẻ nhất và quan trọng nhất: *"bản vá hôm nay đã tới ai chưa?"*
+
+Nguồn dữ liệu là `knowledge/incoming/<id>/pack.json` — **project TỰ báo danh** khi chạy
+`upstream`. Không quét filesystem, không đoán: vào sổ vì đã báo danh, không vì tình cờ nằm
+cạnh. `--record` là hành động của NGƯỜI; sổ được commit nên nó đi qua review như mọi dữ liệu.
+
+Sổ trống báo `n/a`, **không báo "không có consumer"** — hai thứ đó khác nhau, và gộp chúng là
+đúng lỗi mà cả loạt 2.5–2.7 này đi sửa.
+
+### Tag trỏ vào commit TRƯỚC rebase — im lặng và khó gỡ
+
+Rebase-merge của GitHub **viết lại SHA**. Tag một commit trước rebase thì tag đó trỏ vào commit
+**không nằm trên main** — và không gì báo: `git tag` vẫn liệt kê, `git show` vẫn mở được, chỉ
+có điều `upgrade.mjs --ref <tag>` sẽ kéo về một cây **không ai review**. Với một kênh phân phối
+thì đó là lỗ supply-chain, không phải lỗi tiện lợi.
+
+Gặp thật hôm nay với `v2.7.7`. Nay `harness-doctor` kiểm mọi tag `vX.Y.Z` là tổ tiên của `main`,
+và nhắc khi `harness.version` trên main chưa có tag (consumer không pin được version đó).
+
+### Mọi `.mjs` phải parse được — kiểm trong CI
+
+Một file `.mjs` **chưa từng được CI chạy** vẫn có thể ship lỗi cú pháp. Gặp **ba lần trong một
+ngày**: một glob (`**` + `/` hoặc `../*` + `/`) nằm trong block comment tạo ra chuỗi đóng comment
+và **kết thúc comment sớm**. Lỗi đó không lộ ra cho tới khi có người chạy đúng file đó — và
+người đó có thể là người dùng, ở project của họ. `node --check` mọi file được track là kiểm rẻ
+nhất cho cả lớp lỗi.
+
 ## 2.7.8 — 2026-08-05
 
 **minor về hành vi, breaking cho `evals.command`.** Runner eval có ~40 dòng **chưa bao giờ
