@@ -17,6 +17,16 @@
 export const version = '1.4.0';
 export const description = 'Seed eval task 0004 và nhắc khai evals: cho bài học đã có';
 
+// Điều kiện ⑤ của `tooling/test-migrations.mjs` — và nó neo vào BÀI HỌC, không vào file được
+// seed. Lý do: seed thành công thì thấy ngay (file có hay không), còn lời hứa *"không đụng vào
+// bài học của project"* thì vỡ IM LẶNG — một bản sau thêm `evals:` hộ người viết sẽ không làm
+// gì đỏ, chỉ lặng lẽ ghi vào file mà chủ nó chưa quyết. Đó là thứ đáng assert.
+export const expect = {
+  file: 'knowledge/lessons/0099-fixture-chua-khai-evals.md',
+  mustContain: ['FIXTURE-KHONG-DUOC-SUA', 'representation: computational-control'],
+  mustNotContain: ['\nevals:'],
+};
+
 export async function up(ctx) {
   const SEED_EVALS = ['evals/tasks/0004-khong-merge-tay-lockfile.md'];
 

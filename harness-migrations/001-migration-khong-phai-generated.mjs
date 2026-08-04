@@ -17,6 +17,21 @@
 export const version = '1.3.0';
 export const description = 'Bỏ migrations khỏi paths.generated, thêm paths.migrations và project.integrationBranch';
 
+// Điều kiện ⑤ của `tooling/test-migrations.mjs`. Migration này vá TEXT bằng regex, và chế độ
+// hỏng của vá-text là **ăn quá nhiều** — nên `mustContain` neo vào hai thứ nằm NGAY CẠNH vùng
+// bị sửa (`__generated__` ở cuối mảng `generated`, `"id"` ở trên `dri`) chứ không neo vào thứ
+// nó thêm. Một mục `expect` chỉ khẳng định "cái mới có mặt" thì im lặng đúng lúc regex đã ăn
+// mất phần khác của file.
+export const expect = {
+  file: 'harness.config.json',
+  mustContain: [
+    '"migrations"', '"integrationBranch"',                 // đã thêm
+    '"**/__generated__/**"', '"**/*.gen.*"',               // mảng generated không bị ăn
+    '"id"', '"platforms"',                                 // khối project còn nguyên
+    '$comment_paths', '$comment_commands',                 // comment không bị ăn
+  ],
+};
+
 export async function up(ctx) {
   const p = ctx.repoPath('harness.config.json');
   if (!ctx.existsSync(p)) { ctx.log('không có harness.config.json — bỏ qua'); return; }

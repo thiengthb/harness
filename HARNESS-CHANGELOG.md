@@ -11,6 +11,67 @@
 
 ---
 
+## 2.9.0 — 2026-08-05
+
+**minor.** Ba khoảng trống xác minh bị đóng. Không đổi hành vi runtime nào.
+
+### `settings.local.json` không còn là điểm mù
+
+`harness-doctor` và `entropy-scan` chưa từng đọc **nội dung** file này — doctor chỉ kiểm nó có
+bị track không. Điểm mù được **consumer báo lên** (chiều LÊN của vòng học, không phải tôi đọc
+code), với hai hệ quả đo được ở repo đó:
+
+- Hai deny rule sống trong `settings.local.json`, doctor vẫn báo **"thiếu"**. Người đọc đã
+  thêm chúng rồi, nên bài học họ nhận được là *"doctor nói sai"* — đúng cách một kênh chẩn
+  đoán mất uy tín.
+- Bốn hook cắm ở đó thì **vô hình**, nên một canary đăng ký **TRÙNG** với `settings.json`
+  chạy gate **hai lần** mà không gì phát hiện. Ở `SubagentStop` con số đó nhân với **tối đa
+  16 agent song song** — tức trần 5 giây của `AGENTS.md` thực tế là 2.5 giây.
+
+Nay doctor đọc nó, và:
+
+- *"thiếu deny rule X"* trở thành hai câu khác nhau. Khi rule chỉ có ở bản local, câu đúng
+  không phải *"đã có"* mà là **"nó bảo vệ MÁY NÀY, cả đội KHÔNG có nó"** — nói được câu đó
+  thì mới sửa được.
+- Check mới: **đăng ký trùng** giữa hai file. Claude Code **hợp nhất** chúng chứ không cho
+  bản local ghi đè, nên hook chạy hai lần và **cả hai đăng ký đều hợp lệ** — không có gì báo.
+
+**Không bao giờ là gate.** File này là máy-cục-bộ, không commit (Parity Contract). Một check
+đọc nó cho kết quả khác nhau trên mỗi máy, và một gate khác nhau trên mỗi máy thì không phải
+gate — nó là chỗ để tranh luận *"trên máy tôi xanh mà"*. Mọi phát hiện từ đây vào `advice`,
+luôn kèm chữ **MÁY NÀY**, không bao giờ vào `blockers`.
+
+### Mutant cho hai hook ít bằng chứng nhất: 3/10 → 5/10
+
+- **`observe.mjs`** — LỚP KINH TẾ, lớp duy nhất gây thiệt hại tài chính trực tiếp, và cho tới
+  hôm nay là hook **không có mutant nào**: ba khẳng định về mẩu bánh mì chưa từng được chứng
+  minh là có hiệu lực. `mutate()` dùng không được ở đây vì nó giết bằng *"không còn CHẶN"*,
+  mà observe là advisory — exit 0 mọi trường hợp, vendor còn bỏ qua output. Nên tiêu chí giết
+  là **hiệu quả**: rỗng hoá bảng `MONEY` ⇒ `rate_limit` không còn ghi mẩu bánh mì.
+- **`protect-feature-files.mjs`** — hook mà doctor báo *"chưa có BẰNG CHỨNG nó chạy"*. Đo ra
+  lý do: `issueFromBranch('main')` trả `null` nên hook `pass()` **ngay**, và nhánh so-issue
+  **không tới được từ `main`**. Mutant vì thế neo vào nhánh `_index.json` — phần chặn độc lập
+  với tên nhánh. Phần so-issue **vẫn là khoảng trống**, và nói ra thì hơn là neo vào một ca
+  không bao giờ chạy rồi tưởng đã phủ.
+
+`RATCHET` 76 → **78**, kiểm ở **cả hai vai** trước khi phát hành (template 78/78 · consumer
+77/77 + 1 n/a).
+
+### 8/8 migration có fixture — hết `WARN`
+
+`001` (v1.3.0) và `002` (v1.4.0) là hai migration cuối chỉ kiểm được nhánh *"đã ở trạng thái
+đích"*. Cả hai giờ có fixture CŨ→MỚI và khai `expect`, và chỗ `expect` neo vào là điều đáng
+nói:
+
+- `001` vá **TEXT** bằng regex, nên `expect` neo vào những thứ nằm **ngay cạnh** vùng bị sửa
+  (`__generated__`, `"id"`, `$comment_*`) chứ không neo vào thứ nó thêm. Một `expect` chỉ
+  khẳng định *"cái mới có mặt"* thì im lặng đúng lúc regex đã ăn mất phần khác. Fixture của
+  nó có cả `.claude/settings.json` để bước **tự đăng ký hook** được chạy thật — chính bước mà
+  bài học v2.8.0 nói về.
+- `002` neo vào **BÀI HỌC**, không vào file được seed: seed thành công thì thấy ngay, còn lời
+  hứa *"không đụng vào bài học của project"* thì **vỡ im lặng**. `mustNotContain: '\nevals:'`
+  đã được kiểm bằng positive control (thêm `evals:` vào frontmatter ⇒ bắt được).
+
 ## 2.8.1 — 2026-08-05
 
 **patch.** Sàn `RATCHET` của `test-hooks` cộng cả case **bỏ qua có chủ ý**.

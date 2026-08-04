@@ -383,6 +383,44 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   fire({ hook_event_name: 'StopFailure', error: 'server_error' });
   if (exists(crumb)) fail.push('lớp kinh tế: server_error (không phải lỗi tiền) cũng tạo cảnh báo — đây là cách cảnh báo bị phớt lờ');
   else ok.push(`observe.mjs${' '.repeat(17)} lỗi kỹ thuật KHÔNG làm giật mình phiên sau`);
+
+  // ── MUTANT của lớp kinh tế ────────────────────────────────────────────────
+  //
+  // `mutate()` ở dưới KHÔNG dùng được cho `observe.mjs`: nó giết mutant bằng "không còn
+  // CHẶN nữa", mà observe là advisory — nó exit 0 trong mọi trường hợp, vendor còn bỏ qua
+  // cả output. Nên tiêu chí giết ở đây phải là HIỆU QUẢ: mẩu bánh mì có được ghi không.
+  //
+  // Vì sao phải có: đây là lớp DUY NHẤT gây thiệt hại tài chính trực tiếp (docs/ECONOMICS.md),
+  // và cho tới 2.8.1 nó là hook có `paths.harness` bảo vệ nhưng KHÔNG có mutant nào — tức
+  // ba khẳng định phía trên chưa từng được chứng minh là có hiệu lực. Nếu bảng `MONEY` bị
+  // rỗng hoá, cả ba vẫn xanh? Đó chính là câu hỏi này trả lời.
+  const src = repoPath('.claude', 'hooks', 'observe.mjs');
+  const orig = readFileSync(src, 'utf8');
+  // Rỗng hoá BẢNG PHÂN LOẠI, không phải `if (false)`: sau nó còn code dùng `MONEY`, và một
+  // mutant chỉ crash thì không chứng minh gì (xem note trong `mutate()`).
+  const mutated = orig.replace(/^const MONEY = \/[^\n]*\/i;/m, 'const MONEY = { test: () => false };');
+  if (mutated === orig) {
+    fail.push('MUTANT observe.mjs         neo sai chuỗi `const MONEY = /…/i;` — lỗi của TEST, không phải của hook');
+  } else {
+    const tmp = repoPath('.claude', 'hooks', '.mutant.observe.tmp.mjs');
+    try {
+      writeFileSync(tmp, mutated, 'utf8');
+      try { rmSync(crumb, { force: true }); } catch {}
+      spawnSync(process.execPath, [tmp], {
+        input: JSON.stringify({ hook_event_name: 'StopFailure', error: 'rate_limit' }),
+        encoding: 'utf8', cwd: repoPath(''), env,
+      });
+      if (exists(crumb)) {
+        fail.push('MUTANT observe.mjs         bảng MONEY bị vô hiệu mà VẪN ghi mẩu bánh mì — nghĩa là mẩu bánh mì '
+          + 'không phụ thuộc phân loại, và ba khẳng định lớp kinh tế phía trên không kiểm gì');
+      } else {
+        ok.push(`MUTANT observe.mjs${' '.repeat(10)} bảng MONEY rỗng ⇒ rate_limit KHÔNG còn cảnh báo — lớp kinh tế thật sự tra bảng`);
+      }
+    } finally {
+      try { rmSync(tmp, { force: true }); } catch {}
+      try { rmSync(crumb, { force: true }); } catch {}
+    }
+  }
 }
 
 // ─── MỘT nguồn cho SECRET_PATTERNS ───────────────────────────────────────────
@@ -451,6 +489,16 @@ const MUTANTS = [
     s => s.replace(/matchAny\(rel, pathsFor\('harness'\)\)/, 'false'),
     { tool_input: { file_path: '.claude/settings.json' } },
     'paths.harness bị vô hiệu ⇒ settings.json LỌT — phạm vi được cưỡng chế thật'],
+  // Neo vào nhánh `_index.json`, KHÔNG vào nhánh so-issue. Lý do là đo được, không phải
+  // tiện tay: `issueFromBranch('main')` trả về null nên hook `pass()` NGAY, và nhánh so-issue
+  // không tới được từ `main` — đó cũng là lý do `harness-doctor` báo hook này "chưa có BẰNG
+  // CHỨNG nó chạy". Nhánh `_index.json` thì chặn độc lập với tên nhánh, nên nó là phần phạm
+  // vi kiểm được ở MỌI nhánh. Phần so-issue vẫn là khoảng trống, và nói ra thì hơn là neo
+  // vào một ca không bao giờ chạy rồi tưởng đã phủ.
+  ['protect-feature-files.mjs',
+    s => s.replace(/rel\.endsWith\('_index\.json'\)/, 'false'),
+    { tool_input: { file_path: 'features/_index.json' } },
+    '_index.json không còn do DRI giữ ⇒ LỌT — guard chống single-writer là thật'],
 ];
 for (const [hook, apply, input, label] of MUTANTS) {
   const m = mutate(hook, apply, input);
@@ -519,7 +567,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 76;
+const RATCHET = 78;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

@@ -1,0 +1,39 @@
+{
+  "$comment_fixture": "FIXTURE của migration 001 — hình dạng harness.config.json ở v1.2.0. NEO mà migration grep: \"**/migrations/**\" NẰM TRONG paths.generated (phải bị bỏ ra), KHÔNG có khoá \"migrations\" (phải được thêm), và \"dri\" có mặt mà \"integrationBranch\" thì không (phải được chèn NGAY SAU dri). Đổi các neo đó là làm fixture mất tác dụng — test vẫn xanh, nhưng xanh vô nghĩa. Ba khoá $comment_* ở đây tồn tại để điều kiện ④ có gì mà đếm: migration này vá TEXT bằng regex, và chế độ hỏng của vá-text là ăn quá nhiều.",
+  "version": 1,
+  "project": {
+    "id": "fixture-1-2-0",
+    "dri": "@fixture",
+    "issuePrefixes": ["FIX"],
+    "platforms": ["core"]
+  },
+  "$comment_commands": "Giữ để đếm $comment.",
+  "commands": {
+    "install": "npm ci",
+    "typecheck": "npm run typecheck",
+    "test": "npm test",
+    "verify": "npm run verify"
+  },
+  "$comment_paths": "Glob theo cú pháp minimatch, đường dẫn POSIX.",
+  "paths": {
+    "generated": [
+      "**/*.gen.*",
+      "**/migrations/**",
+      "**/__generated__/**"
+    ],
+    "secrets": [
+      "**/.env",
+      "**/*.pem"
+    ],
+    "harness": [
+      ".claude/settings.json",
+      ".claude/hooks/**",
+      "harness.config.json"
+    ],
+    "lintable": ["**/*.ts", "**/*.mjs"]
+  },
+  "limits": { "prWarnLines": 400 },
+  "gates": { "stop": ["typecheck", "test"], "preMerge": ["typecheck", "test"] },
+  "budget": { "maxTurnsPerRun": 25, "maxWallClockMinutes": 30 },
+  "knowledge": { "packName": "fixture-pack", "exportScopes": ["universal"] }
+}
