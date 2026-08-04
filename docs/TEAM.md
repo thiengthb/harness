@@ -36,7 +36,7 @@ QĐ4. WIP limit + trần song song        → chốt bằng CON SỐ trong harne
 | 2 lần/tuần | team | **review capacity check**: PR đang mở / số người review được | 5 phút |
 | thứ Sáu | DRI + 1 người | `/harness-retro` — **một đề xuất, một phản biện** | 30 phút |
 | 2 tuần | DRI | `/entropy-sweep` + `harness-size.mjs` | 20 phút |
-| đổi model | DRI | deprecation review + `/whats-new` cho team | 1 giờ |
+| đổi model | DRI | deprecation review + cập nhật `.claude/whats-new.md` cho team | 1 giờ |
 
 **Vì sao `harness-retro` cần 2 người:** đề xuất harness của một người rất dễ là
 **sở thích cá nhân được đóng gói thành "best practice"**. Người thứ hai không đồng

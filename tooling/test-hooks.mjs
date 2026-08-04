@@ -30,7 +30,7 @@ const TEST_ENV = {
   HARNESS_ALLOW_MIGRATION_EDIT: '',
   HARNESS_ALLOW_SKIPPED_GATES: '',
   HARNESS_TELEMETRY_DIR: join(tmpdir(), 'harness-test-telemetry'),
-  // Không có dòng này, mỗi lần chạy suite sẽ ăn mất thông báo `/whats-new` của chính
+  // Không có dòng này, mỗi lần chạy suite sẽ ăn mất thông báo `.claude/whats-new.md` của chính
   // bạn: cơ chế đó cố ý chỉ in MỘT LẦN cho mỗi version, nên "đã in rồi" là trạng thái
   // không lấy lại được. Test không được phép tiêu thụ trạng thái thật của người dùng.
   HARNESS_STATE_DIR: join(tmpdir(), 'harness-test-state'),

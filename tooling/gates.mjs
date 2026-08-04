@@ -72,19 +72,25 @@ if (has('--list')) {
   const ok = [], warn = [], na = [], unknown = [];
   for (const [stage, names] of Object.entries(cfg)) {
     if (!Array.isArray(names)) continue;
-    let total = 0;
+    let total = 0, ran = 0;
     for (const n of names) {
       const declared = COMPOSITE[n] || String(config().commands?.[n] ?? '').trim();
       if (!declared) { na.push(`${stage}/${n}: KHÔNG có lệnh → gate này không tồn tại, dù nó nằm trong config`); continue; }
       if (!timing) { ok.push(`${stage}/${n}`); continue; }
       const r = runGate(n);
       total += r.ms;
+      ran++;
       ok.push(`${stage}/${n}: ${r.ms}ms (${r.state})`);
     }
     if (timing) {
       const budget = STAGE_BUDGET_MS[stage] ?? Infinity;
-      if (total > budget) warn.push(`${stage}: ${total}ms VƯỢT ngân sách ${budget}ms — đẩy gate đắt xuống CI. Ở subagent, con số này nhân với tối đa 16 agent song song.`);
-      else if (budget !== Infinity) ok.push(`${stage}: tổng ${total}ms / ngân sách ${budget}ms`);
+      // `0ms` khi KHÔNG gate nào chạy được nghĩa là "không có gì chạy", không phải "nhanh".
+      // Báo `OK stage: tổng 0ms / ngân sách 30000ms` cho một stage mà mọi gate đều `n/a`
+      // là chính phép gộp `0` với `n/a` mà file này cấm ở §TRẠNG THÁI THỨ BA — và nó nói
+      // dối đúng hướng dễ chịu: nó bảo "harness không cản gì cả".
+      if (!ran) na.push(`${stage}: KHÔNG đo được độ trễ — 0/${names.length} gate có lệnh. \`0ms\` ở đây là "không có gì chạy", không phải "nhanh"`);
+      else if (total > budget) warn.push(`${stage}: ${total}ms VƯỢT ngân sách ${budget}ms — đẩy gate đắt xuống CI. Ở subagent, con số này nhân với tối đa 16 agent song song.`);
+      else if (budget !== Infinity) ok.push(`${stage}: tổng ${total}ms / ngân sách ${budget}ms (${ran}/${names.length} gate có lệnh)`);
     }
   }
   if (!timing) unknown.push('độ trễ CHƯA ĐO — chạy `--list --timing`. Không có số này thì "harness có đang cản không" là câu chưa trả lời được.');

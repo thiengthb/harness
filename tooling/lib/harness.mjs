@@ -384,7 +384,7 @@ export const SECRET_PATTERNS = [
  *
  * `HARNESS_STATE_DIR` chuyển đích. CHỈ dùng cho TEST, và cũng bắt buộc như dòng dưới:
  * `test-hooks.mjs` spawn `session-start.mjs` thật, và nếu nó ghi vào state THẬT thì
- * mỗi lần chạy suite sẽ **ăn mất thông báo `/whats-new` của chính bạn** — cơ chế đó
+ * mỗi lần chạy suite sẽ **ăn mất thông báo `.claude/whats-new.md` của chính bạn** — cơ chế đó
  * cố ý chỉ in MỘT LẦN cho mỗi version, nên "đã in rồi" là trạng thái không lấy lại được.
  */
 export function stateDir() {
