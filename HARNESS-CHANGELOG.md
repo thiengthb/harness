@@ -11,6 +11,21 @@
 
 ---
 
+## 2.7.3 — 2026-08-05
+
+**patch.** `setup.mjs` chỉ điền chỗ TRỐNG, không ghi đè lệnh người đã khai.
+
+Lệnh đã có trong config là lệnh NGƯỜI viết — có thể kèm cờ, biến môi trường, hoặc một
+wrapper mà không phép phát hiện nào đoán ra. Ghi đè nó là lấy một giá trị ĐÚNG thay bằng
+một giá trị SUY RA. Đo trên `warehouse`: phát hiện đề xuất `npm run gen`, còn thứ đang chạy
+thật là `npx prisma generate` — hai thứ khác nhau, và bản cũ sẽ âm thầm thay cái sau bằng
+cái trước.
+
+Ca này không hiếm mà là ca THƯỜNG: cả ba repo tiêu thụ hiện có đều đã khai tay 8–9 lệnh
+**trước khi** `setup.mjs` tồn tại. Một công cụ chỉ an toàn với repo trống là công cụ không
+dùng được ở đúng nơi cần nó. Chênh lệch giữa "đang khai" và "phát hiện được" nay hiện dưới
+dạng `WARN ... GIỮ \`x\` (phát hiện ra \`y\`)` — người đọc rồi tự quyết.
+
 ## 2.7.2 — 2026-08-05
 
 **patch, nhưng là bản vá QUAN TRỌNG NHẤT của 2.x.** Nâng cấp từ version cũ để lại repo
