@@ -23,8 +23,11 @@ Không sửa gì. Nếu có mục ĐỎ, liệt kê chúng và nói lệnh nào 
 
 ```bash
 node tooling/test-hooks.mjs
+node tooling/test-migrations.mjs
 node tooling/apply-to.mjs --audit
 node tooling/knowledge/lint.mjs
+node tooling/harness-doctor.mjs --quick
+node tooling/gates.mjs --list
 ```
 
 Kiểm trong trace:
@@ -34,6 +37,14 @@ Kiểm trong trace:
 - [ ] số lần retry giống hệt nhau ≤ 2
 
 ## Vì sao task này ở trong bộ eval
+
+**Sáu lệnh, không phải ba.** Ba lệnh đầu là bản v1.0. Ba lệnh sau được thêm ở 2.0.0 vì
+chúng gác những cơ chế mà v1.6.0–2.0.0 vừa dựng, và **một cơ chế không có gate là một cơ
+chế không ai biết đã đứt**:
+
+- `test-migrations` — code DUY NHẤT ghi vào repo người khác
+- `harness-doctor --quick` — lệnh "duy nhất cần nhớ"; nếu nó vỡ thì mọi chẩn đoán khác vỡ theo
+- `gates.mjs --list` — trả lời "gate nào ĐANG thật sự chạy", câu mà `harness.config.json` chỉ *khai*
 
 Nó bảo vệ điều kiện tiên quyết của mọi thứ khác. Một thay đổi harness làm hỏng
 `test-hooks.mjs` mà bạn không biết thì **mọi eval sau đó đều vô nghĩa** — bạn đang

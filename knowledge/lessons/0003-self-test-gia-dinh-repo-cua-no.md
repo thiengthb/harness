@@ -8,14 +8,21 @@ status: active
 owner: "@dri"
 added: 2026-08-04
 expires-review: 2027-02-04
-occurrences: 3
+occurrences: 6
 evidence:
   - "harness v1.4.0 áp lên project `sakubun`: `tooling/test-hooks.mjs` 49/52 pass. Cả 3 case đỏ đều assert trạng thái CHƯA cấu hình — `stop-gate · gate chưa cấu hình lệnh`, `post-edit-lint · lintFix chưa khai`, `block-secrets · .env.example`. Điền `commands` (việc SỐ 1 mà README yêu cầu) là điều kiện làm chúng đỏ."
   - "Cùng lớp: `apply-to.mjs --audit` đối chiếu HARNESS/SEED với cây file của TEMPLATE, nhưng `doctor.mjs` và `harness-parity.yml` chạy nó ở MỌI project đích — sakubun nhận 'thiếu 351 file', 351 file đó là source của chính nó."
   - "Cùng lớp: `post-edit-lint` case hardcode `file_path: 'src/a.ts'`. sakubun dùng layout app/components/lib, không có `src/`, nên `eslint --fix src/a.ts` → 'No files matching the pattern' → exit 2 → hook chặn ĐÚNG như thiết kế. Test sai, không phải hook sai."
+  - "Cùng lớp, 2026-08-04 (v2.0.0): `apply-to.mjs --audit` IGNORE dùng `/^\\.git\\//` — cần dấu `/` cuối. Trong WORKTREE thì `.git` là một FILE, nên audit báo 'bỏ sót .git' và eval 0001 đỏ theo. Mà worktree là trạng thái BÌNH THƯỜNG theo AGENTS.md (một issue = một worktree). Cùng một check, lần thứ hai giả định sai về hình dạng repo."
+  - "Cùng lớp, 2026-08-04 (v2.0.0): `limits.prWarnLines/prFailLines` 400/800 hiệu chỉnh cho repo SẢN PHẨM nhưng áp lên chính repo TEMPLATE — nơi mọi thay đổi harness là đa file bắt buộc. Đo 6 release: 3/6 vượt mốc fail, 5/6 vượt mốc warn số file. Gate tự fail chính công việc bình thường của repo nó đang gác."
+  - "Cùng lớp, 2026-08-04 (v2.0.0): check CODEOWNERS trong harness-doctor dùng `coText.includes('@dri')` trên CẢ FILE, nên một comment GIẢI THÍCH về placeholder bị tính là DÙNG placeholder. `fmKeys()` cách đó 60 dòng trong cùng file đã có comment 'văn xuôi NHẮC tới một key không phải là KHAI nó' — cùng bài học, hai chỗ, một chỗ đã học."
 artifacts:
   - "tooling/lib/harness.mjs — config() đọc HARNESS_CONFIG"
   - "tooling/fixtures/config-unconfigured.json"
+  - "tooling/fixtures/config-automemory-in-repo.json"
+  - "tooling/test-migrations.mjs — hợp đồng 4 điều kiện + mutant, cho code ghi vào repo KHÁC"
+  - "tooling/apply-to.mjs — IGNORE dùng `/^\\.git(\\/|$)/`, dấu `$` là bản sửa"
+  - "harness.config.json — `$comment_prLines` ghi phép đo 6 release, không phải con số suông"
   - "tooling/apply-to.mjs — --audit tự bỏ qua khi thấy .claude/harness-manifest.json"
 evals:
   - "tooling/test-hooks.mjs (phải xanh 100% trên project ĐÃ cấu hình đầy đủ)"

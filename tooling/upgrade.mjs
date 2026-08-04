@@ -94,7 +94,7 @@ if (existsSync(changelogPath)) {
 const MECHANISM = [
   '.claude/hooks', '.claude/skills', '.claude/agents',
   'tooling/lib', 'tooling/knowledge', 'tooling/fixtures', 'tooling/generators',
-  'tooling/init.mjs', 'tooling/test-hooks.mjs', 'tooling/apply-to.mjs', 'tooling/upgrade.mjs',
+  'tooling/init.mjs', 'tooling/test-hooks.mjs', 'tooling/test-migrations.mjs', 'tooling/apply-to.mjs', 'tooling/upgrade.mjs',
   'tooling/fixlog.mjs', 'tooling/coactivity.mjs', 'tooling/harness-size.mjs',
   'tooling/capo-report.mjs', 'tooling/harness-doctor.mjs', 'tooling/doctor.mjs', 'tooling/entropy-scan.mjs',
   'tooling/check-reservations.mjs', 'tooling/check-feature-integrity.mjs',

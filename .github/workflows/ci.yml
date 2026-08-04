@@ -29,6 +29,12 @@ jobs:
       - name: Hook tests
         run: node tooling/test-hooks.mjs
 
+      # Migration là code DUY NHẤT ghi vào harness.config.json/settings.json của repo
+      # KHÁC. Nó chịu cùng luật với hook: code có quyền làm hỏng repo người khác thì
+      # phải có test. Trước 2.0.0 nó không có dòng nào.
+      - name: Migration tests
+        run: node tooling/test-migrations.mjs
+
       - name: Feature integrity (chỉ được đổi passes/evidence)
         run: node tooling/check-feature-integrity.mjs origin/${{ github.base_ref || 'main' }}
 

@@ -45,10 +45,14 @@
       "representation": "test",
       "status": "active",
       "added": "2026-08-04",
-      "occurrences": 3,
+      "occurrences": 6,
       "artifacts": [
         "tooling/lib/harness.mjs — config() đọc HARNESS_CONFIG",
         "tooling/fixtures/config-unconfigured.json",
+        "tooling/fixtures/config-automemory-in-repo.json",
+        "tooling/test-migrations.mjs — hợp đồng 4 điều kiện + mutant, cho code ghi vào repo KHÁC",
+        "tooling/apply-to.mjs — IGNORE dùng `/^\\\\.git(\\\\/|$)/`, dấu `$` là bản sửa",
+        "harness.config.json — `$comment_prLines` ghi phép đo 6 release, không phải con số suông",
         "tooling/apply-to.mjs — --audit tự bỏ qua khi thấy .claude/harness-manifest.json"
       ]
     }

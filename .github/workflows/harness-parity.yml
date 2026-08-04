@@ -37,6 +37,12 @@ jobs:
       - name: Hook chạy được không cần dependency
         run: node tooling/test-hooks.mjs
 
+      # Migration ghi vào config của repo KHÁC, và nó chạy trên máy của họ — tức là
+      # trên cả ba OS. Đúng chỗ để bắt lớp lỗi chỉ-đỏ-trên-Windows: `git rm` trong
+      # migration, đường dẫn có khoảng trắng, CRLF trong file config.
+      - name: Migration chạy được trên OS này
+        run: node tooling/test-migrations.mjs
+
       - name: Knowledge lint
         run: node tooling/knowledge/lint.mjs
 

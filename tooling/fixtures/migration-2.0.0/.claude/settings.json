@@ -1,0 +1,25 @@
+{
+  "$comment": "FIXTURE — settings.json của một project đích ở v1.6.0. NEO mà migration 003 grep: `node .claude/hooks/stop-gate.mjs` trong nhánh Stop. Giữ nguyên neo đó, và giữ ít nhất một `$comment_*` để kiểm điều kiện ④ (không mất comment).",
+  "hooks": {
+    "SessionStart": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "node .claude/hooks/session-start.mjs" }] }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          { "type": "command", "command": "node .claude/hooks/block-secrets.mjs" },
+          { "type": "command", "command": "node .claude/hooks/protect-harness.mjs" }
+        ]
+      }
+    ],
+    "Stop": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "node .claude/hooks/stop-gate.mjs" }] }
+    ]
+  },
+  "$comment_permissions": "Comment của project đích — phải còn sau migration.",
+  "permissions": {
+    "deny": ["Read(./.env)", "Bash(git reset --hard:*)"],
+    "ask": ["Bash(gh pr merge:*)"]
+  }
+}
