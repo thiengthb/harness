@@ -281,6 +281,46 @@ for (const f of onDisk) {
 }
 if (!carriesHooks && onDisk.length) advice.push('apply-to.mjs không mang `.claude/hooks/` — repo tiêu thụ sẽ nhận settings.json trỏ vào file không tồn tại');
 
+// ── Con số MÁY ĐẾM ĐƯỢC mà NGƯỜI gõ tay trong tài liệu vào-cửa ───────────────
+// Nguyên lý: thứ máy đếm được thì không bao giờ gõ tay. Ở đây KHÔNG sinh được cả
+// trang — README là văn xuôi của người, không phải bảng — nên luật yếu đi đúng một
+// bậc và vẫn cùng hướng: người gõ số thì MÁY kiểm số.
+//
+// Vì sao là một check chứ không phải một lần sửa: đo 2026-08-04, README ghi
+// "9 hook" (thật 10) và "28 test cho hook" (thật 70) — CÙNG LÚC, trong file người
+// mới đọc ĐẦU TIÊN. Hai số sai đó không làm gì hỏng; chúng dạy người đọc rằng tài
+// liệu này không đáng tin, và sau đó họ cũng không đọc phần đáng tin. Sửa hai số
+// là sửa hai lần. KHÔNG sinh cả trang là cố ý: bản sinh-trang ở nơi khác tốn 441
+// dòng + 533 dòng test để chữa đúng lớp lỗi này — với một README một trang thì đó
+// là cái giá của việc phình, trả bằng chính ngân sách mà ratchet đang canh.
+const readmeTxt = exists(repoPath('README.md')) ? readFileSync(repoPath('README.md'), 'utf8') : '';
+if (readmeTxt) {
+  const hooksRun = results.find(r => r.id === 'hooks');
+  // Đếm từ CHÍNH lần chạy này, không hardcode. Suite ĐỎ ⇒ số PASS là một phần chứ
+  // không phải tổng: theo luật ba giá trị đó là "chưa đo được", không phải một số
+  // nhỏ hơn — so một con số thật với một con số phần sẽ báo lệch ở nơi không lệch.
+  const testCount = hooksRun?.status === 'pass' ? (hooksRun.out.match(/^\s*PASS\b/gm) ?? []).length : null;
+  const CLAIMS = [
+    { re: /(\d+)\s+hook\b/,        real: onDisk.length, what: 'hook' },
+    { re: /(\d+)\s+skill\b/,       real: skillTotal,    what: 'skill' },
+    { re: /(\d+)\s+test cho hook/, real: testCount,     what: 'test cho hook' },
+  ];
+  const parts = [];
+  for (const c of CLAIMS) {
+    const m = readmeTxt.match(c.re);
+    // In cả trạng thái "không khai" và "chưa đo được": im lặng KHÔNG được đọc thành
+    // đã kiểm. Xoá con số khỏi README là cách hợp lệ để thoát check này — nhưng nó
+    // phải nhìn thấy được, không phải một check tự tắt mà không ai hay.
+    if (!m) { parts.push(`${c.what}: không khai`); continue; }
+    if (c.real === null) { parts.push(`${c.what}: ${m[1]} vs ? chưa đo`); continue; }
+    if (Number(m[1]) === c.real) { parts.push(`${c.what}: ${m[1]} ✓`); continue; }
+    parts.push(`${c.what}: ${m[1]} ≠ ${c.real}`);
+    advice.push(`README.md ghi "${m[0].trim()}" nhưng đo được ${c.real} — con số máy đếm được thì đừng gõ tay. `
+      + `Đây là tài liệu VÀO-CỬA: một con số sai ở đây dạy người mới rằng tài liệu này không đáng tin`);
+  }
+  console.log(`  README, số máy đếm được:     ${parts.join(' · ')}`);
+}
+
 // Deny rule là lớp 2 cho hai hook glob-tĩnh. Deny rule KHÔNG test được bằng spawn hook,
 // nên chỗ nó được kiểm là ĐÂY — nếu không, xoá nó đi cũng không ai biết.
 const deny = settings.permissions?.deny ?? [];
