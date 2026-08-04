@@ -11,6 +11,30 @@
 
 ---
 
+## 2.7.1 — 2026-08-05
+
+**patch.** Hai cảnh báo **đỏ-do-cấu-trúc** ở project đích — cả hai đều nổ vì HOÀN CẢNH chứ
+không vì vấn đề, và một cái do chính 2.7.0 tạo ra.
+
+- **Cảnh báo "chưa gửi bài học lên template" nổ ở MỌI project vừa áp xong.** Nó đếm bài học
+  `universal`, mà 3 bài SEED đi kèm template đều là `universal` — nên nó nhắc bạn gửi lên
+  template đúng những bài vừa TỪ template đi xuống. Cảnh báo ĐẦU TIÊN bạn thấy mà sai là
+  cảnh báo dạy bạn bỏ qua những cảnh báo sau.
+
+  Ngày tháng **không** giải được: bài seed `0003` có `added` đúng bằng ngày áp template, nên
+  mọi phép so ngày phải chọn giữa *bỏ sót bài tự viết cùng ngày* và *tố giác một bài seed*.
+  Nay `apply-to` ghi thẳng `seededLessons` vào manifest — chính xác, không đoán. Project áp
+  trước 2.7.1 lùi về so ngày và chọn hướng **im lặng**: bỏ sót một lần nhắc chỉ làm chậm một
+  đóng góp, nhắc sai làm hỏng lòng tin vào cả bảng.
+
+- **`/dedupe-scan` bị báo "ứng viên GỠ BỎ" ở mọi project đích.** Nó chỉ được nhắc tới trong
+  `README.md`, mà README là của TEMPLATE và **không được ship**. Nên một skill hoàn toàn
+  bình thường trông như rác ở mọi repo tiêu thụ. Nay `docs/ARCHITECTURE.md` (được ship) nối
+  nó vào đúng chỗ nó thuộc về: phần *dọn dẹp* sau khi đã chặn boilerplate ở nguồn.
+
+Đo lại trên project áp mới hoàn toàn: `apply → setup → init` cho **0 cảnh báo entropy**, chỉ
+còn `AGENTS.md` còn CHANGEME — đúng, đó là việc của người và là bước 4 trong danh sách in ra.
+
 ## 2.7.0 — 2026-08-05
 
 **minor.** Không cần migration. Áp và nâng cấp **không cần bản harness trên máy**; chiều

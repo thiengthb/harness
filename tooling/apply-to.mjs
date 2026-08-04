@@ -272,11 +272,18 @@ mkdirSync(join(manifestPath, '..'), { recursive: true });
 // sai, đúng loại làm người ta ngừng tin bảng chẩn đoán. Gặp thật khi thêm profile ở 2.6.0.
 let prevManifest = {};
 try { prevManifest = JSON.parse(readFileSync(manifestPath, 'utf8')); } catch {}
+// `seededLessons`: bài học ĐI KÈM template, không phải của project. Không ghi lại thì
+// không ai phân biệt được chúng với bài học project tự viết — và `entropy-scan` sẽ nhắc
+// "gửi bài học lên template" cho những bài học VỪA TỪ template đi xuống. Ngày tháng KHÔNG
+// thay thế được: một bài seed `added` đúng ngày áp template trông y hệt một bài tự viết.
+const seededLessons = SEED.filter(r => r.startsWith('knowledge/lessons/'))
+  .flatMap(filesUnder).map(f => f.split('/').pop());
 writeFileSync(manifestPath, JSON.stringify({
   ...prevManifest,
   templateVersion: version,
   appliedAt: new Date().toISOString(),
   source: REPO_ROOT,
+  seededLessons: [...new Set([...(prevManifest.seededLessons ?? []), ...seededLessons])],
   files: hashes,
 }, null, 2) + '\n', 'utf8');
 
