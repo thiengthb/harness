@@ -3,27 +3,27 @@
   "consumers": {
     "sakubun": {
       "id": "sakubun",
-      "harnessVersion": "2.8.1",
-      "lastUpstream": "2026-08-04T21:23:12.330Z",
-      "lastCommit": "8e04599",
+      "harnessVersion": "2.9.0",
+      "lastUpstream": "2026-08-04T22:15:49.210Z",
+      "lastCommit": "546b09e",
       "lessons": 0,
-      "fixlogEntries": 5,
+      "fixlogEntries": 7,
       "firstSeen": "2026-08-04T19:41:51.498Z"
     },
     "sakubun-test": {
       "id": "sakubun-test",
-      "harnessVersion": "2.8.1",
-      "lastUpstream": "2026-08-04T21:23:12.374Z",
-      "lastCommit": "9f5eff7",
+      "harnessVersion": "2.9.0",
+      "lastUpstream": "2026-08-04T22:15:49.250Z",
+      "lastCommit": "ca806a4",
       "lessons": 0,
       "fixlogEntries": 3,
       "firstSeen": "2026-08-04T19:41:51.585Z"
     },
     "warehouse": {
       "id": "warehouse",
-      "harnessVersion": "2.8.1",
-      "lastUpstream": "2026-08-04T21:23:12.416Z",
-      "lastCommit": "c848229",
+      "harnessVersion": "2.9.0",
+      "lastUpstream": "2026-08-04T22:15:49.288Z",
+      "lastCommit": "f7a907a",
       "lessons": 0,
       "fixlogEntries": 9,
       "firstSeen": "2026-08-04T19:41:51.667Z"
