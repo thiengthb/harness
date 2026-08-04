@@ -11,6 +11,18 @@
 
 ---
 
+## 2.7.5 — 2026-08-05
+
+**patch.** Migration `007` hỏi BỘ SO KHỚP THẬT thay vì suy từ hình dạng chuỗi.
+
+Bản đầu neo vào dòng `.env.*` và báo `→ CẦN NGƯỜI` khi không thấy nó. Nhưng một project có
+thể đã tự sửa bằng cách **thu hẹp** pattern (`.env.local`, `.env.production`… thay cho một
+catch-all) — khi đó `.env.example` vốn đã đi qua và không có gì để phủ định. Gặp thật ở
+`warehouse`: migration báo động cho đúng repo **đã sửa đúng**.
+
+Một cảnh báo sai gửi tới người làm đúng là cách nhanh nhất dạy người ta bỏ qua cảnh báo.
+Nay nó gọi `matchAny('.env.example', secrets)` — cùng hàm mà hook thật dùng — rồi mới quyết.
+
 ## 2.7.4 — 2026-08-05
 
 **patch.** Migration `007`: bản sửa của **1.5.0 chưa bao giờ tới đích**.

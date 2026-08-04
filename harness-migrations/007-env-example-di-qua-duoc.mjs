@@ -21,6 +21,8 @@
  * khoá có nghĩa với người đọc. `JSON.parse` + `stringify` giữ được cả hai, nhưng làm mất
  * định dạng (xuống dòng, thụt lề trong mảng) và biến diff thành cả file.
  */
+import { matchAny } from '../tooling/lib/harness.mjs';
+
 export const version = '2.7.4';
 export const description = 'thêm "!**/.env.example" vào paths.secrets — bản sửa 1.5.0 chưa từng tới project đã áp';
 
@@ -37,6 +39,17 @@ export async function up(ctx) {
 
   const before = ctx.readFileSync(p, 'utf8');
   if (before.includes('!**/.env.example')) { ctx.log('paths.secrets: đã có phủ định cho .env.example'); return; }
+
+  // HỎI BỘ SO KHỚP THẬT, đừng suy từ hình dạng chuỗi. Một project có thể đã tự sửa bằng
+  // cách THU HẸP pattern (`.env.local`, `.env.production`… thay cho một catch-all) — khi đó
+  // `.env.example` vốn đã đi qua và không có gì để phủ định. Gặp thật ở `warehouse`.
+  // Bản đầu của migration này báo `CẦN NGƯỜI` cho đúng những repo ĐÃ SỬA ĐÚNG — một cảnh
+  // báo sai gửi tới người làm đúng, và đó là cách nhanh nhất dạy người ta bỏ qua cảnh báo.
+  const secrets = ctx.readJson(p)?.paths?.secrets ?? [];
+  if (!matchAny('.env.example', secrets)) {
+    ctx.log('paths.secrets: `.env.example` vốn đã đi qua (project đã thu hẹp pattern) — không cần phủ định');
+    return;
+  }
 
   // Neo vào DÒNG khai `.env.*`, không neo vào mảng `secrets` nói chung: phủ định phải nằm
   // SAU pattern nó phủ định (luật .gitignore — pattern sau ghi đè pattern trước, xem
