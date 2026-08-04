@@ -1,4 +1,4 @@
-<!-- version: 2026-08-05-c -->
+<!-- version: 2026-08-05-d -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,11 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-05 — Hai cảnh báo đỏ-do-hoàn-cảnh đã tắt (v2.7.1)
+
+Nếu bạn thấy *"chưa gửi bài học lên template"* hoặc *"skill `dedupe-scan` ứng viên GỠ BỎ"*
+ngay sau khi áp harness: đó là dương tính giả, đã sửa. Chạy `apply-to`/`upgrade` một lần.
 
 ## 2026-08-05 — Áp / nâng cấp không cần bản harness trên máy (v2.7.0)
 

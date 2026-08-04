@@ -183,6 +183,10 @@ Agent đọc **một file rẻ** thay vì grep cả repo (đắt). Đưa lệnh 
 | Config lặp giữa package | package config dùng chung |
 | Scaffolding file mới | **generator** — xem `tooling/generators/README.md` |
 
+Phần *dọn dẹp* — cái còn lại sau khi đã chặn ở nguồn — là `/dedupe-scan`: nó tìm những chỗ
+đã trùng rồi, và mỗi lần nó tìm ra một nhóm thì câu hỏi đúng là *"cái gì đáng lẽ phải là
+generator ở bảng trên?"*, không phải *"gộp ba file này lại"*.
+
 > **Đòn bẩy lớn nhất: cho agent một GENERATOR.**
 > Thay vì "viết CRUD cho Product" (agent gõ 200 dòng na ná), bảo nó chạy
 > `gen:resource Product`. Generator do bạn viết một lần, đúng convention 100%, zero drift.
