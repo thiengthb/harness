@@ -10,14 +10,31 @@
     ]
   },
 
+  "$comment_env": "DEV_ID: reservation và telemetry dùng nó để biết dòng nào là của bạn. OTEL_EXPORTER_OTLP_ENDPOINT ở ĐÂY chứ không ở settings.json vì nó khác nhau theo máy/org — settings.json chỉ bật telemetry, endpoint là chuyện của bạn.",
   "env": {
-    "DEV_ID": "CHANGEME-ten-cua-ban"
+    "DEV_ID": "CHANGEME-ten-cua-ban",
+    "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317"
   },
 
   "$comment_statusline": "Hiện repo + branch + worktree + % context. Chống nhầm session khi chạy song song.",
   "statusLine": {
     "type": "command",
     "command": "node tooling/statusline.mjs"
+  },
+
+  "$comment_sandbox_THU_NGHIEM": [
+    "GỠ DẤU `_THU_NGHIEM` và bỏ khối `sandbox` bên dưới vào settings.local.json của bạn để THỬ — MỘT máy, HAI ngày công việc thật.",
+    "Bật sandbox SẼ chặn oan. Chắc chắn, không phải có thể. Đây đúng là knowledge/lessons/0002-guard-ban-nham.md sắp lặp lại; dùng chính bài học đó làm checklist và ghi MỌI lần chặn oan vào `node tooling/fixlog.mjs \"...\"`.",
+    "Nó ở TẦNG 4 (cá nhân) chứ không ở tầng 3 (team) đúng vì lý do đó: một người chịu rủi ro trước, cả đội nhận sau khi có bằng chứng. Đủ hai ngày không chặn oan thì mở PR đưa lên settings.json.",
+    "BỐN ĐIỀU PHẢI BIẾT TRƯỚC: (1) Seatbelt trên macOS, bubblewrap+socat trên Linux/WSL2, KHÔNG có Windows native — đây là lý do CỨNG để WSL2 là bắt buộc, không phải khuyến nghị. (2) Sandbox chỉ áp cho Bash và tiến trình con; Read/Edit/Write built-in và MCP đi theo hệ permission ⇒ protect-* hook vẫn là lớp DUY NHẤT chặn Write/Edit. (3) `autoAllowBashIfSandboxed` mặc định true, nhưng 5 dòng `ask` trong settings.json đều CÓ nội dung nên vẫn hỏi — không mất gì. (4) `sandbox.network.strictAllowlist` chặn host ngoài allowlist KHÔNG HỎI: bật sau, khi allowlist đã ổn định theo bằng chứng.",
+    "SAU KHI SANDBOX ỔN ĐỊNH, THU HẸP dcg.mjs: bỏ `rm -rf`, `shutdown|reboot|mkfs|dd`, fork bomb (sandbox phủ ở tầng OS). GIỮ phần sandbox KHÔNG phủ, vì nó là NGỮ NGHĨA chứ không phải filesystem: `git push --force`, `DROP TABLE`, `kubectl --context prod`, `terraform -auto-approve`."
+  ],
+  "sandbox_THU_NGHIEM": {
+    "enabled": true,
+    "allowUnsandboxedCommands": false,
+    "filesystem": {
+      "deny": ["~/.ssh/**", "~/.aws/**", "~/.config/gh/**"]
+    }
   },
 
   "permissions": {

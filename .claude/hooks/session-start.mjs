@@ -12,7 +12,7 @@
  */
 import { readFileSync, writeFileSync, statSync, unlinkSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { REPO_ROOT, repoPath, git, currentBranch, issueFromBranch, config, limit, readJson, writeJson, exists } from '../../tooling/lib/harness.mjs';
+import { REPO_ROOT, repoPath, git, currentBranch, issueFromBranch, config, limit, readJson, writeJson, exists, hookRan, stateDir } from '../../tooling/lib/harness.mjs';
 
 const lines = [];
 
@@ -79,7 +79,7 @@ try {
   if (existsSync(wn)) {
     const body = readFileSync(wn, 'utf8');
     const version = (body.match(/<!--\s*version:\s*([^\s>]+)\s*-->/) || [])[1];
-    const statePath = repoPath('.claude', 'state', 'whats-new-seen.json');
+    const statePath = join(stateDir(), 'whats-new-seen.json');
     const seen = readJson(statePath, {});
     if (version && seen.version !== version) {
       const excerpt = body.replace(/<!--[\s\S]*?-->/g, '').trim().slice(0, 700);
@@ -89,7 +89,31 @@ try {
   }
 } catch {}
 
-// ── 7. Nhắc nghi thức ────────────────────────────────────────────────────────
+// ── 7. Phiên TRƯỚC có dừng vì tiền/quota không? ───────────────────────────────
+//
+// `observe.mjs` ghi mẩu bánh mì này ở sự kiện `StopFailure`. Nó phải được ĐỌC Ở ĐÂY
+// chứ không in tại chỗ, vì vendor khai StopFailure là fire-and-forget: **output và
+// exit code của hook đó bị BỎ QUA**. Một cảnh báo về TIỀN mà không ai đọc thì bằng
+// không có cảnh báo — nên đây là chỗ duy nhất nó tới được mắt người.
+// In MỘT LẦN rồi xoá: một cảnh báo lặp mãi sẽ bị lọc bỏ đúng lúc nó kêu thật.
+try {
+  const crumb = join(stateDir(), 'last-stop-failure.json');
+  const f = readJson(crumb);
+  if (f?.error) {
+    lines.push('');
+    lines.push(`💸 PHIÊN TRƯỚC DỪNG VÌ: ${f.error}  (${String(f.at).slice(0, 16).replace('T', ' ')})`);
+    if (f.unattended) {
+      lines.push('   Phiên đó KHÔNG có người ngồi xem (scheduled task / webhook / background agent).');
+      lines.push('   KIỂM HOÁ ĐƠN TRƯỚC KHI CHẠY LẠI — một vòng lặp hỏng lúc 3h sáng không tự dừng,');
+      lines.push('   và không ai thấy để dừng nó.');
+    } else {
+      lines.push('   Xem .claude/telemetry/budget-alarm.log · ngưỡng ở harness.config.json → budget.');
+    }
+    unlinkSync(crumb);
+  }
+} catch {}
+
+// ── 8. Nhắc nghi thức ────────────────────────────────────────────────────────
 const c = config();
 lines.push('');
 lines.push(`▶️  Nghi thức: bắt đầu bằng /claim · kết thúc bằng /handoff · trước PR chạy /pre-merge`);
@@ -99,4 +123,5 @@ if (!c.commands?.verify && !c.commands?.test) {
 }
 
 console.log(lines.join('\n'));
+hookRan('session-start', 'pass', branch || '(detached)');
 process.exit(0);

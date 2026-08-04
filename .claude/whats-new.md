@@ -1,4 +1,4 @@
-<!-- version: 2026-08-04-a -->
+<!-- version: 2026-08-04-b -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,28 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-04 — Gate gọi thẳng runner · doctor đổi tên (v2.0.0, BREAKING)
+
+1. **`tooling/doctor.mjs` → `tooling/harness-doctor.mjs`.** `/doctor` là lệnh NATIVE
+   của Claude Code và làm việc khác. Alias còn ở 2.x (có cảnh báo), **xoá ở 3.0.0** —
+   cập nhật CI/runbook ngay. Và `/entropy-sweep` bước 1 giờ giao cho `/doctor` native.
+2. **`.claude/hooks/stop-gate.mjs` đã bị xoá**, `Stop` gọi thẳng
+   `node tooling/gates.mjs --stage stop`. Bản cũ thiếu một nhánh: fail-đóng ở phiên
+   KHÔNG có người ngồi xem. Thêm gate `subagent` (**ngân sách 5 GIÂY** — nhân với tối
+   đa 16 agent song song).
+3. **Đừng cắm `WorktreeCreate`/`WorktreeRemove`.** Chúng là provisioner, không phải
+   observer: một script advisory ở đó làm `claude --worktree` throw, hoặc làm rò rỉ
+   worktree im lặng. `harness-doctor` sẽ chặn nếu bạn thử.
+4. **Auto-memory của Claude Code là CHỈ THỊ, không phải ghi chú** — nó nạp 200 dòng đầu
+   `MEMORY.md` mỗi phiên. Mâu thuẫn với `knowledge/lessons/` là một LỖI. **Không commit
+   nó.** Xem AGENTS.md §Hai bộ nhớ.
+5. Chạy suite hook không còn làm nhiễu telemetry của bạn, và không còn ăn mất thông báo
+   `/whats-new` này.
+
+BREAKING — làm theo thứ tự: `node tooling/upgrade.mjs <đường-dẫn-template> --apply`
+(migration `003` vá tự động, phần cần người thì nó in ra `→ CẦN NGƯỜI:`), rồi
+`node tooling/harness-doctor.mjs`.
 
 ## 2026-08-04 — Self-test không còn đỏ giả ở project đích (v1.5.0)
 

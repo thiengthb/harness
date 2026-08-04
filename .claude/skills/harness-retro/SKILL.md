@@ -19,7 +19,7 @@ harness của một người rất dễ là sở thích cá nhân được đón
 ```
 node tooling/fixlog.mjs --top
 node tooling/fixlog.mjs --list
-cat .claude/telemetry/gate-fails.log | tail -100
+node tooling/harness-doctor.mjs            # DANH MỤC HOOK: cột "N qua · M chặn"
 git log --oneline -50
 gh pr list --state merged --limit 30 --json number,title,additions,deletions
 node tooling/harness-size.mjs
@@ -27,6 +27,26 @@ node tooling/knowledge/lint.mjs
 ```
 
 Thêm: feature nào từng `passes: true` rồi bị đổi lại `false` (đó là verification failure thật).
+
+**Đọc cột `N qua · M chặn` trước khi đọc bất cứ gì khác.** `? chưa đo` **không phải `0`** —
+nó là trạng thái thứ ba. Một hook `0 qua · 0 chặn` trong khi hook khác có số là câu hỏi
+*"nó còn chạy không?"*, không phải bằng chứng *"nó vô dụng"*. Bước 4 bên dưới **bắt buộc**
+đề xuất cắt bỏ, nên nhầm hai cái này là nhầm về hướng nguy hiểm.
+
+### Nguồn thứ hai: auto-memory của Claude Code
+
+Nó nạp **200 dòng đầu `MEMORY.md` MỖI phiên** ⇒ nó là **chỉ thị thật**, dù không ai review nó.
+
+```bash
+node -e "const fs=require('fs'),p=require('path'),os=require('os');const b=p.join(os.homedir(),'.claude','projects');for(const d of fs.existsSync(b)?fs.readdirSync(b):[]){const f=p.join(b,d,'memory','MEMORY.md');if(fs.existsSync(f))console.log('\n== '+d+' ==\n'+fs.readFileSync(f,'utf8'))}"
+```
+
+Đọc nó như **ĐẦU VÀO, không như thẩm quyền** (xem `knowledge/README.md` §"Bước 1 có HAI nguồn"):
+
+- Mục nào **mâu thuẫn** với `knowledge/lessons/` → đó là một **LỖI**, sửa ngay ở một chỗ.
+  Claude được phép chọn tuỳ ý giữa hai chỉ thị xung đột, và không gì báo cho bạn.
+- Mục nào xuất hiện ở **≥2 máy** → ứng viên promote (ngưỡng *"2 lần độc lập"* đã đạt).
+- Mục nào chỉ ở một máy → để nguyên. Nó chưa phải sự thật của đội.
 
 ## Bước 2 — Nhóm theo NGUYÊN NHÂN, không theo triệu chứng
 

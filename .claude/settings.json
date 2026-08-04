@@ -1,5 +1,12 @@
 {
   "$comment": "TẦNG 3 — HARNESS CỦA TEAM. Commit. Chỉ DRI sửa (xem .github/CODEOWNERS). Mọi thứ được phép khác nhau giữa các thành viên thuộc settings.local.json.",
+  "$comment_env": "OTel thay `capo-report --usd` gõ tay: vendor đo được thứ ta không đo được (token, độ trễ, model thật sự dùng). ENDPOINT đi vào settings.local.json — nó khác nhau theo máy/org. KHÔNG bỏ fixlog.mjs: OTel đo MÁY làm gì, fixlog đo NGƯỜI phải sửa tay cái gì — sự kiện chỉ tồn tại trong đầu người, không telemetry nào bắt được, và là tín hiệu đắt nhất trong cả vòng học.",
+  "env": {
+    "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+    "OTEL_METRICS_EXPORTER": "otlp",
+    "OTEL_LOGS_EXPORTER": "otlp"
+  },
+  "$comment_hooks": "MỌI GIẢI THÍCH VỀ HOOK NẰM Ở ĐÂY, KHÔNG nằm trong `hooks` — schema của Claude Code CHỈ nhận tên sự kiện trong đó, và một key `$comment_*` lọt vào là một cảnh báo đỏ trong IDE của mọi thành viên (lớp lỗi giống deny rule không bao giờ được tra cứu: cấu hình nhận vào nhưng không ai đọc).\n[Stop] Gọi THẲNG runner, không qua hook trung gian. `stop-gate.mjs` cũ chỉ là bản sao logic của gates.mjs và thiếu phần fail-đóng ở phiên không người. Một danh sách gate ở hai chỗ là hai cơ hội để chúng lệch nhau. Ngân sách: < 30 giây.\n[SubagentStop] exit 2 = hiện stderr cho subagent VÀ cho nó chạy tiếp — tức là đây là gate thật, không phải lời nhắc. Ngân sách < 5 GIÂY: con số này nhân với tối đa 16 agent song song trong một dynamic workflow. Danh sách gate: harness.config.json → gates.subagent.\n[StopFailure] LỚP KINH TẾ. Matcher `*` là CỐ Ý dù vendor cho lọc theo `error`: một báo động về TIỀN im lặng vì matcher hụt là chế độ hỏng tệ nhất của lớp này. Phân loại money/technical nằm trong observe.mjs, nơi sai thì thấy được. Vendor bỏ qua output và exit code của hook này ⇒ observe.mjs GHI FILE, phiên sau session-start.mjs in ra.\n[InstructionsLoaded] THIẾT BỊ ĐO, không phải gate (vendor: observability-only). Nó trả lời câu mà harness-size.mjs chỉ ƯỚC LƯỢNG: file chỉ thị nào THẬT SỰ nạp, lúc nào, vì sao. Ước lượng bằng grep là chỗ đã sai nhiều lần. ĐIỀU KIỆN THOÁT: thuế context dưới ngưỡng 2 quý liên tiếp thì gỡ.\n[ConfigChange] LỚP HAI cho protect-harness: PreToolUse chỉ thấy Write|Edit, sự kiện này thấy file cấu hình ĐỔI bằng bất cứ đường nào giữa phiên. exit 2 chặn thay đổi vào phiên. CÙNG cửa thoát HARNESS_DRI=1 — hai lớp ở hai sự kiện là phòng thủ chiều sâu; hai cửa thoát khác nhau thì DRI bị chặn ở chỗ không ai ngờ.\n[Setup] Nghi thức dựng môi trường do CC GỌI, harness QUYẾT. Trước đây `node tooling/init.mjs` chỉ tồn tại dưới dạng một dòng trong README — tức là nó chạy khi có người nhớ. init.mjs idempotent và không hỏi gì.\n[KHÔNG CẮM] WorktreeCreate và WorktreeRemove KHÔNG được cắm — chúng là PROVISIONER, không phải observer. WorktreeCreate: stdout PHẢI là đường dẫn worktree, không in ⇒ `claude --worktree` THROW cho cả đội. WorktreeRemove: exit 0 = 'đã xoá xong' ⇒ CC bỏ qua bước xoá của nó ⇒ rò rỉ worktree. FileChanged: không gửi được systemMessage/additionalContext ⇒ agent không nghe được. UserPromptSubmit: exit 2 XOÁ prompt của người dùng. Xem ADR 0002 §Năm chỗ TỪ CHỐI; harness-doctor có check chặn việc cắm lại.",
   "hooks": {
     "SessionStart": [
       {
@@ -8,6 +15,10 @@
           {
             "type": "command",
             "command": "node .claude/hooks/session-start.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/observe.mjs"
           }
         ]
       }
@@ -69,7 +80,71 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/stop-gate.mjs"
+            "command": "node tooling/gates.mjs --stage stop"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node tooling/gates.mjs --stage subagent"
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/observe.mjs"
+          }
+        ]
+      }
+    ],
+    "InstructionsLoaded": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/observe.mjs"
+          }
+        ]
+      }
+    ],
+    "ConfigChange": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/protect-harness.mjs"
+          }
+        ]
+      }
+    ],
+    "Setup": [
+      {
+        "matcher": "init",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node tooling/init.mjs"
+          }
+        ]
+      },
+      {
+        "matcher": "maintenance",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node tooling/harness-doctor.mjs --quick"
           }
         ]
       }
@@ -77,6 +152,7 @@
   },
   "permissions": {
     "$comment": "Deny cứng cho 3 nhóm THẬT SỰ nguy hiểm: production, secret, lịch sử chung. Đừng thêm nhóm thứ 4 mà không có 2 approve — mỗi negative constraint là một khoản thuế context.",
+    "$comment_deny_lop_hai": "Hai dòng Edit(...) cuối là LỚP HAI cho block-generated-edit và protect-feature-files, KHÔNG thay chúng: hai hook đó đọc harness.config.json (paths.generated per-project, và so mã issue với tên nhánh) nên deny rule tĩnh không làm được việc của chúng. Đổi lại, deny rule phủ thêm `sed -i`/`cat >` trong Bash, và tự động thành ranh giới OS khi bật sandbox. CHỈ `Edit(path)` và `Read(path)` được tra cứu cho file — viết `Write(...)`/`Glob(...)` thì CC nhận rule nhưng KHÔNG BAO GIỜ đọc. harness-doctor kiểm cả hai lớp lỗi này, vì deny rule không test được bằng spawn hook.",
     "deny": [
       "Read(./.env)",
       "Read(./.env.*)",
@@ -86,15 +162,20 @@
       "Bash(git push -f:*)",
       "Bash(git reset --hard:*)",
       "Bash(terraform apply *-auto-approve:*)",
-      "Bash(rm -rf /:*)"
+      "Bash(rm -rf /:*)",
+      "Edit(**/*.gen.*)",
+      "Edit(/features/_index.json)"
     ],
+    "$comment_ask": "`Agent(model:opus)` thay `budget.modelTiering` đã chết trong config: model đắt phải có NGƯỜI bấm. Ba giới hạn cần biết: mỗi rule một tham số · so với literal Claude gửi (khớp alias `opus`, không khớp model ID đầy đủ) · tham số bỏ trống thì `Agent(model:*)` KHÔNG khớp.",
     "ask": [
       "Bash(git push:*)",
       "Bash(gh pr merge:*)",
       "Bash(npm publish:*)",
-      "Bash(pnpm publish:*)"
+      "Bash(pnpm publish:*)",
+      "Agent(model:opus)"
     ]
   },
+  "$comment_sandbox": "CHƯA bật, cố ý. Bật sandbox SẼ chặn oan — chắc chắn, không phải có thể. Quy trình bắt buộc trước khi commit nó vào đây: MỘT máy → HAI ngày công việc thật → ghi mọi lần chặn oan (dùng knowledge/lessons/0002-guard-ban-nham.md làm checklist). Khuôn để thử nằm ở .claude/settings.local.example.json. Bốn điều phải biết trước: Seatbelt (macOS) · bubblewrap+socat (Linux/WSL2) · KHÔNG có Windows native (⇒ WSL2 là BẮT BUỘC) · sandbox chỉ áp cho Bash và tiến trình con, nên protect-* hook vẫn là lớp DUY NHẤT chặn Write/Edit.",
   "$comment_worktree": "Cách ly file ở tầng filesystem. sparsePaths ĐẶT Ở settings.local.json (mỗi người một cone theo domain), KHÔNG đặt ở đây — trừ khi mọi task trong repo thuộc cùng một domain. symlinkDirectories ở đây vì nó đúng cho mọi người: không có nó, 5 worktree = 5 lần node_modules.",
   "worktree": {
     "symlinkDirectories": [

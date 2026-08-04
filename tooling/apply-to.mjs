@@ -43,7 +43,7 @@ const HARNESS = [
   'tooling/lib', 'tooling/knowledge', 'tooling/fixtures',
   'tooling/init.mjs', 'tooling/test-hooks.mjs', 'tooling/apply-to.mjs', 'tooling/gates.mjs',
   'tooling/fixlog.mjs', 'tooling/coactivity.mjs', 'tooling/harness-size.mjs',
-  'tooling/capo-report.mjs', 'tooling/doctor.mjs', 'tooling/entropy-scan.mjs',
+  'tooling/capo-report.mjs', 'tooling/harness-doctor.mjs', 'tooling/doctor.mjs', 'tooling/entropy-scan.mjs',
   'tooling/upgrade.mjs',
   'tooling/check-reservations.mjs', 'tooling/check-feature-integrity.mjs',
   'tooling/wt-clean.mjs', 'tooling/statusline.mjs', 'tooling/precommit-scan.mjs',
@@ -114,7 +114,12 @@ if (AUDIT) {
   const covered = new Set([...HARNESS, ...SEED].flatMap(filesUnder));
   // Cố ý không mang đi: nội dung riêng của repo này, artifact sinh ra, hoặc file gốc
   const IGNORE = [
-    /^\.git\//, /^node_modules\//, /^\.harness-pack\//, /^knowledge\/incoming\//,
+    // `\.git(\/|$)` — dấu `$` KHÔNG dư. Trong một WORKTREE, `.git` là một FILE, không
+    // phải thư mục, nên `/^\.git\//` không khớp nó và audit báo "bỏ sót .git". Trạng thái
+    // BÌNH THƯỜNG của phiên harness là ở TRONG worktree (AGENTS.md: một issue = một
+    // worktree) ⇒ không có `$` thì check này đỏ-giả cho gần như mọi người, và eval
+    // `0001-harness-tu-kiem` đỏ theo. Cùng lớp với knowledge/lessons/0003.
+    /^\.git(\/|$)/, /^node_modules\//, /^\.harness-pack\//, /^knowledge\/incoming\//,
     /^\.claude\/(telemetry|state)\//, /^\.vscode\//,
     /^README\.md$/,                                   // README của chính template
     /^knowledge\/index\.json$/,                       // sinh tự động

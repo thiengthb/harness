@@ -7,7 +7,7 @@
  * đặt ở CI thì agent đã đi tiếp 40 phút, context đã trôi, sửa lại tốn 10x.
  */
 import { writeFileSync } from 'node:fs';
-import { hookInput, toolFilePath, toRepoRel, matchAny, pathsFor, runConfigured, spill, telemetry, pass, EXIT_BLOCK } from '../../tooling/lib/harness.mjs';
+import { hookInput, toolFilePath, toRepoRel, matchAny, pathsFor, runConfigured, spill, telemetry, hookRan, pass, EXIT_BLOCK } from '../../tooling/lib/harness.mjs';
 
 const rel = toRepoRel(toolFilePath(hookInput()));
 if (!rel) pass();
@@ -17,7 +17,7 @@ if (matchAny(rel, pathsFor('generated'))) pass();
 if (/(^|\/)node_modules\//.test(rel)) pass();
 
 const r = runConfigured('lintFix', { placeholders: { file: rel }, capture: true });
-if (r.skipped) pass();
+if (r.skipped) { hookRan('post-edit-lint', 'skip', 'chưa khai commands.lintFix'); pass(); }
 
 if (r.status !== 0) {
   const log = spill('lint', (r.stdout || '') + '\n' + (r.stderr || ''));
@@ -28,4 +28,5 @@ if (r.status !== 0) {
   process.exit(EXIT_BLOCK);
 }
 
+hookRan('post-edit-lint', 'pass', rel);
 pass();

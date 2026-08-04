@@ -8,7 +8,7 @@
  * `--force-with-lease` CỐ Ý không bị chặn: đó là biến thể an toàn và agent cần nó
  * để rebase nhánh của chính mình.
  */
-import { hookInput, toolCommand, block, pass, telemetry, config } from '../../tooling/lib/harness.mjs';
+import { hookInput, toolCommand, block, pass, telemetry, hookRan, config } from '../../tooling/lib/harness.mjs';
 
 const cmd = toolCommand(hookInput());
 if (!cmd.trim()) pass();
@@ -42,4 +42,5 @@ if (/\bpackage\.json\b/.test(cmd) && /(>>|>|sed\s+-i|tee)\s/.test(cmd)) {
   console.error('⚠️  Đang sửa package.json bằng shell. Dùng lệnh của package manager thay vì sửa tay.');
 }
 
+hookRan('dcg', 'pass');
 pass();

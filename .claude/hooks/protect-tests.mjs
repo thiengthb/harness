@@ -13,7 +13,7 @@
  * (dùng khi thật sự xoá test đã lỗi thời — và nó nằm trong diff để reviewer thấy).
  */
 import { readFileSync, existsSync } from 'node:fs';
-import { hookInput, toolFilePath, toRepoRel, repoPath, block, pass, telemetry } from '../../tooling/lib/harness.mjs';
+import { hookInput, toolFilePath, toRepoRel, repoPath, block, pass, telemetry, hookRan } from '../../tooling/lib/harness.mjs';
 
 const input = hookInput();
 const rel = toRepoRel(toolFilePath(input));
@@ -62,4 +62,5 @@ if (newA < oldA || newB < oldB) {
   );
 }
 
+hookRan('protect-tests', 'pass', `${rel} ${oldB}→${newB} block`);
 pass();

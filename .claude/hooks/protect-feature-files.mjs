@@ -7,7 +7,7 @@
  * và hook này cưỡng chế "mỗi nhánh chỉ sửa feature của issue mình đang làm".
  */
 import { readFileSync } from 'node:fs';
-import { hookInput, toolFilePath, toRepoRel, currentBranch, issueFromBranch, config, block, pass, repoPath, readJson, telemetry } from '../../tooling/lib/harness.mjs';
+import { hookInput, toolFilePath, toRepoRel, currentBranch, issueFromBranch, config, block, pass, repoPath, readJson, telemetry, hookRan } from '../../tooling/lib/harness.mjs';
 
 const rel = toRepoRel(toolFilePath(hookInput()));
 if (!rel.startsWith('features/')) pass();
@@ -32,4 +32,5 @@ if (target?.issue && target.issue !== issue) {
   );
 }
 
+hookRan('protect-feature-files', 'pass', rel);
 pass();

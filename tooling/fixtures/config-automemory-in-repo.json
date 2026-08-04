@@ -1,0 +1,30 @@
+{
+  "$comment": "FIXTURE cho tooling/test-hooks.mjs — KHÔNG phải config của project nào. Mô phỏng một project đã trỏ `knowledge.autoMemoryDirectory` vào CÂY REPO, tức là đang trên đường commit quan sát chưa kiểm của MỘT người thành chỉ thị cho CẢ ĐỘI. observe.mjs phải HÉT LÊN ở trạng thái này. Trỏ vào bằng HARNESS_CONFIG=<file này>.",
+  "version": 1,
+  "project": {
+    "id": "fixture-automemory",
+    "dri": "@fixture",
+    "integrationBranch": "origin/main",
+    "issuePrefixes": ["FIX"],
+    "platforms": ["core"]
+  },
+  "commands": { "gen": "", "typecheck": "", "test": "", "lintFix": "" },
+  "paths": {
+    "generated": ["**/*.gen.*"],
+    "migrations": ["**/migrations/**"],
+    "secrets": ["**/.env"],
+    "harness": [".claude/settings.json", ".claude/hooks/**", "harness.config.json"],
+    "hot": [],
+    "lintable": ["**/*.ts"],
+    "publicSurface": []
+  },
+  "limits": { "maxSessionsPerPerson": 2, "maxWorktrees": 4, "staleLockMinutes": 5 },
+  "gates": { "stop": [], "subagent": [], "preMerge": [] },
+  "knowledge": {
+    "packName": "fixture-pack",
+    "upstream": "",
+    "exportScopes": ["universal"],
+    "$comment_sai_o_dau": "Đường dẫn TƯƠNG ĐỐI = nằm trong cây repo = sẽ bị commit. Đúng phải là rỗng (mặc định vendor, ngoài repo) hoặc một đường dẫn tuyệt đối.",
+    "autoMemoryDirectory": ".claude/auto-memory"
+  }
+}

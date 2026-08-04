@@ -50,6 +50,26 @@ VÒNG LỚN — giữa các project và template
 
 Bước 3 là bước không được bỏ. **Không có gate thì "cải thiện harness" chỉ là phình harness.**
 
+### Bước 1 có HAI nguồn, và chỉ một trong hai là thẩm quyền
+
+Claude Code có **auto-memory** riêng (`~/.claude/projects/<repo>/memory/`) — nó tự ghi
+quan sát và **nạp 200 dòng đầu `MEMORY.md` MỖI phiên**. Tức là nó là **chỉ thị thật**,
+không phải ghi chú bên lề.
+
+| | auto-memory | `knowledge/lessons/` |
+|---|---|---|
+| Nội dung | quan sát THÔ, được phép sai | quyết định **đã qua gate** |
+| Phạm vi | một máy, một người | cả đội, mang được sang repo khác |
+| Review | không ai | PR |
+| Commit | **không bao giờ** | có |
+
+Nó là tầng **CAPTURE miễn phí** của vòng nhỏ: `/harness-retro` bước 1 đọc `MEMORY.md`
+như một **đầu vào**, không như thẩm quyền. Mục nào xuất hiện ở **≥2 máy** là ứng viên
+promote — đó là cách một bài học `universal` đủ ngưỡng *"2 lần độc lập"*.
+
+**Một sự thật nằm ở cả hai chỗ là một LỖI.** Nếu auto-memory mâu thuẫn với
+`knowledge/lessons/`, Claude được phép chọn tuỳ ý và **không gì báo cho bạn**.
+
 ### Vòng lớn
 
 | Chiều | Lệnh | Ghi vào |

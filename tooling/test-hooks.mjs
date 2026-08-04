@@ -10,9 +10,31 @@
  */
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, rmSync } from 'node:fs';
-import { repoPath, report, exists, git } from './lib/harness.mjs';
+import { join } from 'node:path';
+import { repoPath, report, exists, git, tmpdir } from './lib/harness.mjs';
 
 const BLOCK = 2, OK = 0;
+
+// Suite này spawn hook THẬT trong repo THẬT. Không chuyển đích telemetry thì mỗi lần
+// chạy nó bơm hàng chục dòng `gate-fails` vào `.claude/telemetry/` — và những con số
+// đó là đầu vào của `/harness-retro` bước 4, chỗ bắt buộc đề xuất CẮT BỎ. Bộ đếm bị
+// chính test của nó làm nhiễu là bộ đếm nói dối, và nói dối về hướng nguy hiểm.
+const TEST_ENV = {
+  // MỌI CỬA THOÁT PHẢI ĐÓNG. Suite này assert LOGIC của hook, nên nó phải kiểm soát
+  // môi trường, không được thừa hưởng môi trường của người đang chạy nó. Chính DRI là
+  // người hay chạy suite nhất, và DRI là người duy nhất có `HARNESS_DRI=1` trong env —
+  // nên nếu không xoá ở đây thì mọi case "agent KHÔNG tự sửa harness" chuyển sang xanh-giả
+  // ĐÚNG TRÊN MÁY CỦA NGƯỜI DUY NHẤT sửa được hook. Case nào cần cửa thoát thì tự khai
+  // trong `env` của nó (spread SAU TEST_ENV nên nó thắng).
+  HARNESS_DRI: '',
+  HARNESS_ALLOW_MIGRATION_EDIT: '',
+  HARNESS_ALLOW_SKIPPED_GATES: '',
+  HARNESS_TELEMETRY_DIR: join(tmpdir(), 'harness-test-telemetry'),
+  // Không có dòng này, mỗi lần chạy suite sẽ ăn mất thông báo `/whats-new` của chính
+  // bạn: cơ chế đó cố ý chỉ in MỘT LẦN cho mỗi version, nên "đã in rồi" là trạng thái
+  // không lấy lại được. Test không được phép tiêu thụ trạng thái thật của người dùng.
+  HARNESS_STATE_DIR: join(tmpdir(), 'harness-test-state'),
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BỐN PHẦN BẮT BUỘC của một suite gác
@@ -66,6 +88,7 @@ function mutate(hookFile, apply, input, { mayCrash = false } = {}) {
     writeFileSync(tmp, mutated, 'utf8');
     const r = spawnSync(process.execPath, [tmp], {
       input: JSON.stringify(input), encoding: 'utf8', cwd: repoPath(''),
+      env: { ...process.env, ...TEST_ENV },
     });
     const status = r.status ?? -1;
     const ran = status === OK || status === BLOCK;     // chạy được, dù chặn hay không
@@ -156,6 +179,13 @@ const cases = [
   ['protect-harness.mjs', { tool_input: { file_path: '.claude/hooks/dcg.mjs' } }, BLOCK, 'agent không tự sửa hook'],
   ['protect-harness.mjs', { tool_input: { file_path: 'AGENTS.md' } }, BLOCK, 'agent không tự sửa AGENTS.md'],
   ['protect-harness.mjs', { tool_input: { file_path: 'harness.config.json' } }, BLOCK, 'agent không tự sửa config'],
+  // Cửa thoát DRI: nó là đường DUY NHẤT để bảo trì chính harness bằng agent, nên nó
+  // phải mở được VÀ phải hét lên (im lặng = không audit được). Trước 2.0.0 không có
+  // case nào cho nhánh này — tức là nhánh mà DRI dựa vào hoàn toàn không được kiểm.
+  ['protect-harness.mjs', { tool_input: { file_path: '.claude/settings.json' } }, OK, 'cửa thoát DRI mở được và HÉT LÊN', { HARNESS_DRI: '1' }, /quyền DRI/],
+  // Sự kiện vòng đời KHÔNG có `tool_input` — `ConfigChange` gửi file_path ở CẤP TRÊN.
+  // Không có fallback trong toolFilePath(), lớp phòng thủ thứ hai này pass() im lặng.
+  ['protect-harness.mjs', { hook_event_name: 'ConfigChange', source: 'project_settings', file_path: '.claude/settings.json' }, BLOCK, 'ConfigChange: file_path ở CẤP TRÊN vẫn bị chặn', null, /harness-propose|HARNESS_DRI/],
   ['protect-harness.mjs', { tool_input: { file_path: '.claude/learnings/2026-W31-ai.md' } }, OK, 'ĐỀ XUẤT được phép — đây là đường hợp pháp'],
   ['protect-harness.mjs', { tool_input: { file_path: 'docs/progress/ABC-1.md' } }, OK, 'nhật ký được phép'],
   ['protect-harness.mjs', { tool_input: { file_path: 'src/index.ts' } }, OK, 'code thường được phép'],
@@ -191,11 +221,21 @@ const cases = [
   // Gate bị BỎ QUA phải NÓI RA rằng nó bị bỏ qua. Đây là TRẠNG THÁI THỨ BA:
   // không phải pass, không phải fail — "harness không chạy". Một gate im lặng bỏ
   // qua đọc y hệt một gate đang xanh, và đó là cách một repo tưởng mình có gate.
-  ['stop-gate.mjs', {}, OK, 'gate chưa cấu hình lệnh → bỏ qua, KHÔNG fail, và NÓI RA', { HARNESS_CONFIG: () => repoPath('tooling', 'fixtures', 'config-unconfigured.json') }, /STOP GATE/],
   ['post-edit-lint.mjs', { tool_input: { file_path: 'a.ts' } }, OK, 'lintFix chưa khai → bỏ qua', { HARNESS_CONFIG: () => repoPath('tooling', 'fixtures', 'config-unconfigured.json') }],
   ['post-edit-lint.mjs', { tool_input: { file_path: 'assets/logo.png' } }, OK, 'file không lint được → bỏ qua'],
   ['post-edit-lint.mjs', { tool_input: { file_path: 'packages/x/y.gen.ts' } }, OK, 'file generated → bỏ qua'],
   ['post-edit-lint.mjs', {}, OK, 'không có file_path → bỏ qua'],
+
+  // ── observe.mjs — QUAN SÁT, không bao giờ chặn ở BẤT KỲ sự kiện nào ─────────
+  // Nó nhận 3 sự kiện khác nhau trong MỘT file, nên cái phải khẳng định là: mỗi nhánh
+  // exit 0, và nhánh THIẾT BỊ ĐO phải IM LẶNG (một thiết bị đo bình luận sẽ bị tắt tiếng).
+  ['observe.mjs', { hook_event_name: 'InstructionsLoaded', load_reason: 'session_start', memory_type: 'Project', file_path: 'CLAUDE.md' }, OK, 'InstructionsLoaded: đo và IM LẶNG'],
+  ['observe.mjs', { hook_event_name: 'StopFailure', error: 'rate_limit' }, OK, 'StopFailure (tiền): không chặn, không in (vendor bỏ qua output)'],
+  ['observe.mjs', { hook_event_name: 'StopFailure', error: 'server_error' }, OK, 'StopFailure (kỹ thuật): không chặn, không in'],
+  ['observe.mjs', { hook_event_name: 'SessionStart' }, OK, 'SessionStart: autoMemoryDirectory rỗng → im lặng'],
+  ['observe.mjs', { hook_event_name: 'SessionStart' }, OK, 'autoMemoryDirectory trỏ vào CÂY REPO → HÉT LÊN', { HARNESS_CONFIG: () => repoPath('tooling', 'fixtures', 'config-automemory-in-repo.json') }, /trỏ vào CÂY REPO/],
+  ['observe.mjs', { hook_event_name: 'SuKienVendorMoiThem' }, OK, 'sự kiện KHÔNG nhận ra vẫn exit 0 — không bao giờ chặn'],
+  ['observe.mjs', {}, OK, 'input rác không làm crash'],
 
   // Mọi hook phải sống sót với input rác — agent/harness có thể gửi bất cứ thứ gì
   ['dcg.mjs', { tool_input: null }, OK, 'input rác không làm crash'],
@@ -227,7 +267,7 @@ for (const [hook, input, expect, label, env, msg] of cases) {
 
   const r = spawnSync(process.execPath, [path], {
     input: JSON.stringify(input), encoding: 'utf8', cwd: repoPath(''),
-    env: { ...process.env, ...extra },
+    env: { ...process.env, ...TEST_ENV, ...extra },
   });
   const status = r.status ?? -1;
   const err = (r.stderr ?? '').trim();
@@ -286,13 +326,45 @@ const GATE_CASES = [
 ];
 for (const [env, expect, label, msg] of GATE_CASES) {
   const r = spawnSync(process.execPath, [repoPath('tooling', 'gates.mjs'), '--stage', 'stop'], {
-    encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, CI: '', ...env },
+    encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, ...TEST_ENV, CI: '', ...env },
   });
   const status = r.status ?? -1;
   const both = (r.stdout ?? '') + '\n' + (r.stderr ?? '');
   if (status !== expect) fail.push(`gates.mjs ${label}  →  exit=${status}, mong đợi ${expect}`);
   else if (!msg.test(both)) fail.push(`gates.mjs ${label}  →  thông điệp không khớp ${msg}`);
   else ok.push(`gates.mjs${' '.repeat(19)} ${label}`);
+}
+
+// ─── LỚP KINH TẾ: mẩu bánh mì StopFailure ────────────────────────────────────
+// Vendor BỎ QUA output và exit code của StopFailure, nên nhánh đó không thể assert
+// bằng bộ ba (stdout, stderr, exit). Thứ phải assert là HIỆU QUẢ của nó: cảnh báo về
+// TIỀN có tới được mắt người ở phiên sau hay không. Không có test này thì lớp kinh tế
+// có thể đứt im lặng và mọi thứ khác vẫn xanh.
+{
+  const stateDir = join(tmpdir(), 'harness-test-state-crumb');
+  const crumb = join(stateDir, 'last-stop-failure.json');
+  const env = { ...process.env, ...TEST_ENV, HARNESS_STATE_DIR: stateDir };
+  const fire = (input) => spawnSync(process.execPath, [repoPath('.claude', 'hooks', 'observe.mjs')], {
+    input: JSON.stringify(input), encoding: 'utf8', cwd: repoPath(''), env,
+  });
+  try { rmSync(crumb, { force: true }); } catch {}
+
+  fire({ hook_event_name: 'StopFailure', error: 'billing_error' });
+  if (!exists(crumb)) fail.push('lớp kinh tế: StopFailure(tiền) KHÔNG ghi mẩu bánh mì — cảnh báo sẽ không tới được ai');
+  else ok.push(`observe.mjs${' '.repeat(17)} StopFailure(tiền) ghi mẩu bánh mì`);
+
+  const ss = spawnSync(process.execPath, [repoPath('.claude', 'hooks', 'session-start.mjs')], {
+    input: '{}', encoding: 'utf8', cwd: repoPath(''), env,
+  });
+  const out = (ss.stdout ?? '') + (ss.stderr ?? '');
+  if (!/💸 PHIÊN TRƯỚC DỪNG VÌ: billing_error/.test(out)) fail.push('lớp kinh tế: session-start KHÔNG in mẩu bánh mì — nhánh StopFailure thành chữ chết');
+  else if (exists(crumb)) fail.push('lớp kinh tế: đã in nhưng KHÔNG xoá mẩu bánh mì — cảnh báo lặp mãi sẽ bị lọc bỏ đúng lúc nó kêu thật');
+  else ok.push(`session-start.mjs${' '.repeat(11)} in cảnh báo tiền MỘT LẦN rồi xoá`);
+
+  // Nhánh kỹ thuật KHÔNG được tạo mẩu bánh mì: một cảnh báo hay kêu oan sẽ bị phớt lờ.
+  fire({ hook_event_name: 'StopFailure', error: 'server_error' });
+  if (exists(crumb)) fail.push('lớp kinh tế: server_error (không phải lỗi tiền) cũng tạo cảnh báo — đây là cách cảnh báo bị phớt lờ');
+  else ok.push(`observe.mjs${' '.repeat(17)} lỗi kỹ thuật KHÔNG làm giật mình phiên sau`);
 }
 
 // ─── ③④ MUTANT ───────────────────────────────────────────────────────────────
@@ -322,7 +394,7 @@ for (const [hook, apply, input, label] of MUTANTS) {
   else ok.push(`MUTANT ${hook.padEnd(21)} ${label}`);
 }
 
-console.log(`\n=== HOOK TESTS (${ok.length}/${cases.length + MUTANTS.length + GATE_CASES.length} pass) ===`);
+console.log(`\n=== HOOK TESTS (${ok.length}/${cases.length + MUTANTS.length + GATE_CASES.length + 3} pass) ===`);
 for (const m of ok) console.log('  PASS  ' + m);
 for (const m of fail) console.log('  FAIL  ' + m);
 console.log('');

@@ -23,7 +23,7 @@ $EDITOR harness.config.json      # project.id, dri, và commands.*
 
 # 3. Bootstrap + kiểm
 node tooling/init.mjs
-node tooling/doctor.mjs          # ← lệnh DUY NHẤT bạn cần nhớ
+node tooling/harness-doctor.mjs          # ← lệnh DUY NHẤT bạn cần nhớ
 
 # 4. Điền AGENTS.md — chỉ 3 mục: Project · Lệnh · Gotchas
 ```
@@ -149,7 +149,7 @@ reservations/                advisory lock có TTL
 /handoff       kết thúc sạch — evidence, nhật ký, dọn reservation
 
 node tooling/fixlog.mjs "..."     mỗi lần phải sửa tay việc agent làm (3 giây)
-node tooling/doctor.mjs           kiểm sức khoẻ toàn bộ — một lệnh
+node tooling/harness-doctor.mjs           kiểm sức khoẻ toàn bộ — một lệnh
 ```
 
 ## Vòng học — cái làm harness TỰ TỐT LÊN

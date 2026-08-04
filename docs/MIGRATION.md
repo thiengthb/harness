@@ -56,7 +56,7 @@ Xem `harness-migrations/README.md`.
 3. node tooling/upgrade.mjs <template> --apply
 4. git diff                                          ← đọc từng thay đổi
 5. Xử lý mọi file .new (merge tay rồi xoá)
-6. node tooling/doctor.mjs
+6. node tooling/harness-doctor.mjs
 7. Cập nhật .claude/whats-new.md cho team           ← nửa team sẽ hành xử theo rule cũ nếu bỏ bước này
 8. Commit trên một nhánh riêng, mở PR
 ```
@@ -85,7 +85,7 @@ sửa hook có sẵn. File mới của bạn không nằm trong manifest → kh�
 **2. Mọi thứ đặc thù project đi vào `harness.config.json`.**
 Đó là lý do file này tồn tại. Hook đọc config; sửa config không bao giờ gây conflict.
 
-**3. Chạy `node tooling/doctor.mjs` định kỳ**, không chỉ khi nâng cấp.
+**3. Chạy `node tooling/harness-doctor.mjs` định kỳ**, không chỉ khi nâng cấp.
 Nó phát hiện drift trước khi drift thành nợ.
 
 **4. Giữ manifest.**

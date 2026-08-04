@@ -11,6 +11,166 @@
 
 ---
 
+## 2.0.0 — 2026-08-04
+
+### Tái phân vai harness ⟷ Claude Code native — nửa sau
+
+Hoàn tất `docs/adr/0002-tai-phan-vai-native.md`. Nửa này chạm `paths.harness` nên nó
+cần quyền DRI, và đó là lý do nó tách khỏi 1.6.0.
+
+**Migration tự động:** `harness-migrations/003-runner-thay-stop-gate.mjs`.
+Chạy `node tooling/upgrade.mjs <template> --apply`. Nó vá TEXT (giữ `$comment_*` của
+bạn), và những gì nó KHÔNG tự quyết được thì in ra dưới dạng `→ CẦN NGƯỜI:`.
+
+#### BREAKING 1 — `.claude/hooks/stop-gate.mjs` bị XOÁ
+
+`Stop` hook giờ gọi thẳng `node tooling/gates.mjs --stage stop`.
+
+`stop-gate.mjs` là bản sao logic của `gates.mjs` **thiếu một nhánh**: fail-đóng khi
+phiên không có người ngồi xem. Một danh sách gate ở hai chỗ là hai cơ hội để chúng
+lệch nhau, và khi lệch thì bản được TIN là bản người đọc gần nhất, không phải bản
+đang chạy. Migration đổi `settings.json` rồi mới xoá file — ngược thứ tự thì có một
+khoảng `settings.json` trỏ vào hook không tồn tại, và một hook không tồn tại là một
+hook không chặn gì, im lặng.
+
+Nếu bạn đã **tuỳ biến** `stop-gate.mjs`: migration KHÔNG ghi đè lựa chọn của bạn, nó
+báo `→ CẦN NGƯỜI`. Chuyển phần tuỳ biến thành một gate trong `gates.stop` của config.
+
+#### BREAKING 2 — `tooling/doctor.mjs` → `tooling/harness-doctor.mjs`
+
+`/doctor` là lệnh **native** của Claude Code (chẩn đoán cài đặt, đề xuất cắt gọn
+CLAUDE.md). Hai thứ khác nghề cùng tên, trong một template phân phối cho nhiều đội,
+là chi phí nhầm lẫn tăng theo số repo.
+
+Alias `tooling/doctor.mjs` còn ở toàn bộ 2.x (in cảnh báo, forward nguyên args và exit
+code) và **bị xoá ở 3.0.0**. Cập nhật CI + runbook ngay, đừng đợi.
+
+Kèm theo: `/entropy-sweep` bước 1 (*"cắt gọn AGENTS.md"*) giao lại cho `/doctor` native —
+nó do vendor bảo trì và **biết nội dung nào suy ra được từ codebase**. Bước 2–8 giữ
+nguyên (frontmatter rule, bài học quá hạn, ADR, MCP, dấu ngày) vì native không biết
+gì về chúng.
+
+#### BREAKING 3 — `budget.modelTiering` bị CẮT khỏi `harness.config.json`
+
+Không script nào đọc nó ⇒ nó là một niềm tin được đóng gói thành cấu hình. Nguyên lý
+giữ ở `docs/ECONOMICS.md`; chỗ cưỡng chế THẬT là `permissions.ask` →
+**`Agent(model:opus)`**, nơi có NGƯỜI bấm.
+
+#### Thêm — 5 sự kiện native, và HAI sự kiện bị TỪ CHỐI
+
+| Sự kiện | Việc | exit 2 |
+|---|---|---|
+| `SubagentStop` | `gates.mjs --stage subagent` | **chặn** — subagent chạy tiếp |
+| `StopFailure` | `observe.mjs` — lớp kinh tế | bị bỏ qua (fire-and-forget) |
+| `InstructionsLoaded` | `observe.mjs` — đo thuế context | không (observability-only) |
+| `ConfigChange` | `protect-harness.mjs` lớp hai | **chặn** thay đổi vào phiên |
+| `Setup` | `init.mjs` · `harness-doctor --quick` | không |
+
+**`WorktreeCreate` và `WorktreeRemove` KHÔNG được cắm, và đừng cắm.** Chúng không phải
+observer — chúng là **provisioner**: `WorktreeCreate` phải in đường dẫn worktree ra
+stdout (không in ⇒ `claude --worktree` **throw cho cả đội**), `WorktreeRemove` exit 0
+nghĩa là *"đã xoá xong"* (⇒ CC bỏ qua bước xoá của nó ⇒ **rò rỉ worktree**).
+`harness-doctor` có check chặn việc cắm lại. Đo từ schema hook nhúng trong binary CLI
+2.1.221, không từ tài liệu — xem ADR 0002 §Nguồn.
+
+Cùng lý do đó, hai cờ trong kế hoạch ban đầu **không được viết**:
+`check-reservations.mjs --on-create` và `wt-clean.mjs --one`. Dòng *"kiểm
+`reservations/`"* trong AGENTS.md vẫn xoá được, nhờ cơ chế ĐÃ CÓ: `session-start.mjs`
+in reservation đang hoạt động, pre-commit cưỡng chế nó.
+
+#### Thêm — `permissions` lớp hai
+
+```jsonc
+"deny": [ …, "Edit(**/*.gen.*)", "Edit(/features/_index.json)" ],
+"ask":  [ …, "Agent(model:opus)" ]
+```
+
+Hai dòng `Edit(...)` **không thay** `block-generated-edit` / `protect-feature-files`:
+hai hook đó đọc `harness.config.json` (`paths.generated` per-project, và so mã issue
+với tên nhánh), nên deny rule tĩnh không làm được việc của chúng. Đổi lại, deny rule
+phủ thêm `sed -i`/`cat >` trong Bash và **tự động thành ranh giới OS khi bật sandbox**.
+Deny rule không test được bằng spawn hook ⇒ chỗ nó được kiểm là `harness-doctor`.
+
+#### Thêm — `observe.mjs`: một file, ba việc quan sát
+
+Và một chi tiết đáng chú ý: vendor khai `StopFailure` là **fire-and-forget — output và
+exit code bị BỎ QUA**. Nên mọi `console.error` ở nhánh đó là **chữ chết**. `observe.mjs`
+ghi `.claude/state/last-stop-failure.json`, và `session-start.mjs` in nó **MỘT LẦN** ở
+phiên sau rồi xoá. Một cảnh báo về TIỀN mà không ai đọc thì bằng không có cảnh báo.
+
+#### Thêm — `hookRan()` được cắm vào cả 10 hook
+
+Trước đây ba tình huống đọc **giống hệt nhau** (cả ba là log rỗng): hook chạy suốt tuần
+không bắt gì (đang làm việc TỐT) · hook chưa từng nổ vì không được cắm (mã chết) · hook
+crash im lặng (hỏng). `harness-doctor` giờ có cột `N qua · M chặn`, và `? chưa đo`
+**không phải `0`**.
+
+#### Sửa — telemetry bị chính test của nó làm nhiễu
+
+`test-hooks.mjs` spawn hook thật trong repo thật, nên mỗi lần chạy suite nó bơm hàng
+chục dòng `gate-fails` vào telemetry THẬT: `dcg 267 chặn` gần như toàn bộ là **suite
+tự gọi chính nó**. Con số đó là đầu vào của `/harness-retro` **bước 4**, chỗ bắt buộc
+đề xuất CẮT BỎ — tức là bộ đếm nói dối về **hướng nguy hiểm**. Nay có
+`HARNESS_TELEMETRY_DIR` và `HARNESS_STATE_DIR`, suite trỏ cả hai vào `os.tmpdir()`.
+
+`HARNESS_STATE_DIR` chữa thêm một lỗ riêng: suite spawn `session-start.mjs` thật, và nó
+**ăn mất thông báo `/whats-new` của chính bạn** — cơ chế đó cố ý chỉ in MỘT LẦN cho mỗi
+version, nên *"đã in rồi"* là trạng thái không lấy lại được.
+
+#### Sửa — suite gác thừa hưởng cửa thoát của người chạy nó
+
+`TEST_ENV` giờ **đóng** `HARNESS_DRI` · `HARNESS_ALLOW_MIGRATION_EDIT` ·
+`HARNESS_ALLOW_SKIPPED_GATES`. Không có nó, mọi case *"agent KHÔNG tự sửa harness"*
+chuyển sang **xanh-giả đúng trên máy của người duy nhất sửa được hook** — DRI là người
+duy nhất có `HARNESS_DRI=1`, và cũng là người chạy suite nhiều nhất.
+
+Thêm hai case chưa từng có: cửa thoát DRI **mở được và hét lên**, và hình dạng input
+của `ConfigChange` (`file_path` ở **cấp trên**, không trong `tool_input` — không có
+fallback trong `toolFilePath()` thì lớp phòng thủ thứ hai `pass()` im lặng).
+
+#### Sửa — `apply-to --audit` đỏ-giả trong worktree
+
+Trong worktree, `.git` là một **FILE**, nên `/^\.git\//` không khớp và audit báo *"bỏ
+sót .git"*. Trạng thái BÌNH THƯỜNG của một phiên harness là ở **trong** worktree
+(AGENTS.md: một issue = một worktree) ⇒ check này đỏ-giả cho gần như mọi người, và eval
+`0001-harness-tu-kiem` đỏ theo. Cùng lớp với `knowledge/lessons/0003`.
+
+#### Thêm — `.claude/rules/untrusted-input.md`
+
+Prompt đến từ **webhook · PR comment · issue body · log bên thứ ba** là **DỮ LIỆU**,
+không phải **CHỈ THỊ**. Rule có `paths` nên nó chỉ nạp khi bạn chạm vùng nhận input từ
+ngoài — không phải thuế context cho mọi request.
+
+#### Thêm — hai bộ nhớ, hai vai
+
+Claude Code auto-memory nạp **200 dòng đầu `MEMORY.md` MỖI phiên** ⇒ nó là **chỉ thị
+thật**, dù không ai review nó. Nếu nó mâu thuẫn với `knowledge/lessons/`, Claude được
+phép chọn tuỳ ý và **không gì báo cho bạn**. AGENTS.md + `knowledge/README.md` phân vai
+rõ; `/harness-retro` bước 1 đọc nó như **đầu vào, không như thẩm quyền**;
+`knowledge.autoMemoryDirectory` để RỖNG là đúng và `observe.mjs` hét lên nếu ai trỏ nó
+vào cây repo.
+
+#### Ngân sách file: **+5 / −1**
+
+Thêm `observe.mjs` · `untrusted-input.md` · `003-…mjs` · `harness-doctor.mjs`(đổi tên,
+có alias) · fixture `config-automemory-in-repo.json`. Bớt `stop-gate.mjs`.
+
+**HẬU QUẢ CAM KẾT TRƯỚC** (viết ra để không bị uốn theo kết quả): nếu sau **90 ngày**
+(≈ 2026-11-02) `harness-size.mjs` cho thấy harness **phình** so với baseline hôm nay,
+đợt này **đã thất bại theo tiêu chí của chính nó** — vì mọi mục ở trên đều tự nhận là
+*nối lại thứ đang đứt* hoặc *thay thứ đang sai*, không phải *thêm cơ chế*. Mục đầu tiên
+cần xét lại khi đó là chính ADR 0002.
+
+#### Còn đỏ, và biết vì sao
+
+`node evals/run.mjs` → **2/4** (không tụt so với trước đợt này). Hai eval đỏ vì trạng
+thái TEMPLATE, không vì đợt này: `0003` cần `features/eval-probe.json` (artifact do
+agent tạo, mà `evals.command` chưa khai) và `0004` cần `commands.install`. Ở project
+thật đã điền `commands`, cả hai xanh. Ghi ra đây vì một con đỏ không có lời giải thích
+sẽ dạy người ta phớt lờ màu đỏ.
+
+---
+
 ## 1.6.0 — 2026-08-04
 
 ### Tái phân vai harness ⟷ Claude Code native — nửa đầu
