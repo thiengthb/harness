@@ -14,8 +14,14 @@ AGENT = MODEL + HARNESS
 
 ## Áp lên một project trong 10 phút
 
+**Không cần clone repo này trước:**
+
 ```bash
-# 1. Copy lớp harness vào project của bạn
+npx github:thiengthb/harness init          # trong thư mục project của bạn
+```
+
+```bash
+# 1. Hoặc nếu bạn đã có harness trên máy
 node /đường/dẫn/harness/tooling/apply-to.mjs /đường/dẫn/project-cua-ban --apply
 
 # 2. Trong project đó — PHỎNG VẤN, không phải sửa tay
@@ -40,7 +46,14 @@ rỗng, vì đó chính là trạng thái làm mọi thứ còn lại thành tra
 ```bash
 node tooling/upgrade.mjs /đường/dẫn/harness            # XEM TRƯỚC
 node tooling/upgrade.mjs /đường/dẫn/harness --apply
+
+# hoặc TỪ XA — không cần bản harness trên máy
+node tooling/upgrade.mjs https://github.com/thiengthb/harness --ref v2.7.0 --apply
 ```
+
+Từ xa thì **bắt buộc `--ref`**. Không pin nghĩa là bạn kéo về bất cứ thứ gì đang nằm trên
+nhánh mặc định lúc đó — và một commit sai ở đó vào **mọi** project của bạn cùng lúc, ở lớp
+cơ chế (hook, gate, migration). Cùng luật mà `knowledge/README.md` đã đặt cho pack.
 
 **Không có ghi đè im lặng.** `.claude/harness-manifest.json` lưu hash mọi file cơ chế,
 nên `upgrade` phân biệt được *"bạn đã sửa"* với *"template đã đổi"*:

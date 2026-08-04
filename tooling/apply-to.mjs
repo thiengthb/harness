@@ -158,6 +158,13 @@ if (AUDIT) {
     /^\.git(\/|$)/, /^node_modules\//, /^\.harness-pack\//, /^knowledge\/incoming\//,
     /^\.claude\/(telemetry|state)\//, /^\.vscode\//,
     /^README\.md$/,                                   // README của chính template
+    // `package.json` của TEMPLATE tồn tại chỉ để `npx github:...` chạy được. Project đích
+    // nào cũng có package.json của riêng nó (hoặc cố ý không có, nếu là Python/Go) — copy
+    // đè lên nó là phá dự án, và tạo mới một cái rỗng trong repo Go là để lại rác gây nhầm.
+    /^package\.json$/,
+    // `tooling/cli.mjs` cũng vậy: nó là điểm vào của TEMPLATE (`npx ... init`). Ở project
+    // đích nó không có việc gì làm — apply-to ở đó đã là bản copy rồi.
+    /^tooling\/cli\.mjs$/,
     /^knowledge\/index\.json$/,                       // sinh tự động
     /^features\/example-feature\.json$/,              // ví dụ, không seed
     /^docs\/progress\/[A-Z]/,                         // nhật ký issue thật

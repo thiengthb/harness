@@ -1,4 +1,4 @@
-<!-- version: 2026-08-05-b -->
+<!-- version: 2026-08-05-c -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,16 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-05 — Áp / nâng cấp không cần bản harness trên máy (v2.7.0)
+
+1. **`npx github:thiengthb/harness init`** — không phải clone gì trước.
+2. **`node tooling/upgrade.mjs <URL> --ref v2.7.0 --apply`** — nâng cấp từ xa. `--ref` là
+   BẮT BUỘC; `--ref main` chạy được nhưng bị cảnh báo (nhánh di chuyển, không phải mốc).
+3. **`upstream.mjs` nhận URL** — chiều LÊN của vòng học không còn đòi hai repo cùng một máy.
+   Nó IN RA lệnh push + `gh pr create`, không tự push: ghi vào template là supply-chain vào
+   mọi project khác, cổng đó phải có người.
+4. `entropy-scan` nhắc khi bạn có bài học mang đi được mà **chưa bao giờ** gửi lên template.
 
 ## 2026-08-05 — Phỏng vấn thay cho "nhớ điền config" (v2.6.0)
 

@@ -1,0 +1,8 @@
+{
+  "$comment": "TỒN TẠI CHỈ ĐỂ `npx github:thiengthb/harness init` chạy được — không có dependency, không publish. KHÔNG ship sang project đích (xem IGNORE trong tooling/apply-to.mjs): project nào cũng có package.json của riêng nó, và ghi đè nó là phá dự án. Cố ý KHÔNG có field `version`: `harness.version` là nguồn sự thật duy nhất, hai chỗ ghi version là hai chỗ để chúng lệch nhau.",
+  "name": "@thiengthb/harness",
+  "private": true,
+  "type": "module",
+  "bin": { "harness": "tooling/cli.mjs" },
+  "engines": { "node": ">=20" }
+}
