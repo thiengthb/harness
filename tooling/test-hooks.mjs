@@ -9,9 +9,9 @@
  * Chạy trong CI trên cả 3 OS (.github/workflows/harness-parity.yml).
  */
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, rmSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, report, exists, git, tmpdir } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson } from './lib/harness.mjs';
 
 const BLOCK = 2, OK = 0;
 
@@ -459,7 +459,58 @@ for (const [hook, apply, input, label] of MUTANTS) {
   else ok.push(`MUTANT ${hook.padEnd(21)} ${label}`);
 }
 
-console.log(`\n=== HOOK TESTS (${ok.length}/${cases.length + MUTANTS.length + GATE_CASES.length + 3} pass) ===`);
+// ─── Mọi sự kiện hook phải có ĐƯỜNG PHÂN PHỐI tới repo đã áp template ────────
+//
+// `.claude/settings.json` là SEED: `upgrade.mjs` không bao giờ ghi đè nó, vì project sửa
+// `permissions`, `worktree`, hook riêng của họ. Hệ quả: thêm một sự kiện vào settings.json
+// của TEMPLATE thì repo đã áp KHÔNG BAO GIỜ nhận được — hook nằm đó chết và bạn tưởng guard
+// đang chạy. Chỉ có MIGRATION đi qua được lớp đó.
+//
+// `harness-migrations/README.md` đã ghi luật này từ đầu ("Thêm hook mới → CÓ, migration phải
+// TỰ ĐĂNG KÝ") và `harness-doctor` đã in "N/5 điểm mở rộng native còn TRỐNG". Cả hai đúng, cả
+// hai bị bỏ qua: đo 2026-08-05, cả BA repo tiêu thụ thiếu ĐÚNG 5 sự kiện — kể cả repo chỉ
+// đứng sau template một version. Trong đó có `StopFailure`, tức LỚP KINH TẾ chưa từng được
+// cắm ở bất cứ đâu ngoài template.
+//
+// Nên luật rời khỏi văn xuôi và thành check tất định. Chỉ chạy ở REPO TEMPLATE: ở project
+// đích, `settings.json` là của HỌ và thêm sự kiện riêng là quyền của họ.
+if (repoRole() === 'template') {
+  // Bốn sự kiện có mặt từ bản đầu ⇒ mọi repo đã áp template đều có sẵn, không cần migration.
+  const BASELINE = ['SessionStart', 'PreToolUse', 'PostToolUse', 'Stop'];
+  const events = Object.keys(readJson(repoPath('.claude', 'settings.json'))?.hooks ?? {});
+  const migText = (exists(repoPath('harness-migrations'))
+    ? readdirSync(repoPath('harness-migrations')).filter(f => f.endsWith('.mjs'))
+    : []).map(f => readFileSync(repoPath('harness-migrations', f), 'utf8')).join('\n');
+  // Sự kiện được coi là CÓ đường phân phối khi tên nó xuất hiện trong một migration — kể cả
+  // gián tiếp, vì 008 duyệt `Object.keys(tpl.hooks)` chứ không liệt kê tên. Nên điều kiện
+  // thật là: có migration nào đọc `hooks` của template không.
+  const generic = /Object\.keys\(\s*tpl\.hooks\s*\)/.test(migText);
+  const orphan = events.filter(ev => !BASELINE.includes(ev) && !generic && !migText.includes(ev));
+  if (!events.length) fail.push('settings.json không khai sự kiện hook nào — không có gì để kiểm');
+  else if (orphan.length) {
+    fail.push(`${orphan.length} sự kiện hook KHÔNG có đường tới repo đã áp template: ${orphan.join(' · ')}`
+      + '\n         settings.json là SEED, upgrade.mjs không ghi đè nó. Viết migration cắm chúng vào'
+      + '\n         (khuôn: harness-migrations/008-su-kien-hook-moi-toi-duoc-repo-cu.mjs).');
+  } else {
+    ok.push(`settings.json${' '.repeat(15)} ${events.length} sự kiện, mọi sự kiện ngoài baseline đều có migration phân phối`);
+  }
+}
+
+// SỐ MẪU không phải một phép cộng viết tay. Bản trước in
+// `ok.length / (cases + MUTANTS + GATE_CASES + 3)` và ĐO ĐƯỢC 2026-08-05: **`75/72`** — tử số
+// lớn hơn mẫu số. Tỉ số đó không sai vô hại: mẫu số tồn tại để trả lời "có case nào NGỪNG
+// CHẠY không", và một mẫu số đã trôi thì không trả lời được gì nữa — nó lớn hơn hay nhỏ hơn
+// tổng thật đều đọc như nhau. `+3` là mấy khối assert rời thêm sau mà không ai cộng lại.
+//
+// Hai con số, hai việc khác nhau: TỔNG THẬT là `ok+fail` (mô tả), RATCHET là sàn (cưỡng chế).
+// Sàn là thứ DUY NHẤT ở đây thấy được một case biến mất — nâng nó khi thêm case.
+const RATCHET = 76;
+const total = ok.length + fail.length;
+if (total < RATCHET) {
+  fail.push(`chỉ chạy ${total} khẳng định, sàn là ${RATCHET} — một case đã NGỪNG CHẠY (hook thiếu file? `
+    + `khối bị throw sớm?). Đây là chế độ hỏng mà một suite "xanh 100%" che kín nhất.`);
+}
+console.log(`\n=== HOOK TESTS (${ok.length}/${total} pass, sàn ${RATCHET}) ===`);
 for (const m of ok) console.log('  PASS  ' + m);
 for (const m of fail) console.log('  FAIL  ' + m);
 console.log('');
