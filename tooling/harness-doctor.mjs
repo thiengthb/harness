@@ -252,6 +252,32 @@ console.log(`  skill: ${skillTotal} tổng · ${discoverable} model tự gọi �
 if (discoverable > skillCap) advice.push(`${discoverable} skill trong tầng discovery (trần ${skillCap}) — mỗi cái trả tiền thuê \`description\` MỌI phiên. Thêm \`disable-model-invocation: true\` cho skill nghi thức: chi phí context về 0, không mất chức năng`);
 for (const g of grantsWrite) advice.push(`skill \`${g}\`: thân nói KHÔNG ra thay đổi nhưng \`allowed-tools\` tiền-duyệt Write/Edit. Trường HẠN CHẾ là \`disallowed-tools\` — đây là template, nó DẠY thói quen cho mọi repo nhận nó`);
 
+// ── AI đã tiêu trần skill? ───────────────────────────────────────────────────
+// Trần `maxSkills` được ĐO nhưng không ai NÓI ai đã tiêu nó. Đo thật ở `warehouse`
+// (2026-08-03): `prisma init` tự đổ **9 skill** của Prisma vào `.claude/skills/` và tạo
+// `skills-lock.json` + `.agents/` + `.windsurf/`. Trần của harness là 12 — một lệnh `init`
+// của bên thứ ba vừa ăn gần hết ngân sách discovery, và dòng duy nhất người dùng thấy là
+// `skill: 21 (trần 12)`. Con số đó KHÔNG nói nguyên nhân, nên nó dẫn tới kết luận sai:
+// "harness của mình phình" thay vì "một tool vừa ghi vào .claude/ của mình".
+//
+// Tín hiệu sẵn có: `.claude/harness-manifest.json → files` liệt kê mọi file cơ chế template
+// đã ship, kể cả từng `SKILL.md`. Skill có trên đĩa mà KHÔNG có trong manifest là skill do
+// project hoặc một tool thêm vào. Không đoán theo tên, không cần danh sách phải bảo trì.
+if (mf?.files && skillNames.size) {
+  const shipped = new Set(Object.keys(mf.files)
+    .filter(f => f.startsWith('.claude/skills/'))
+    .map(f => f.split('/')[2]));
+  const added = [...skillNames].filter(n => !shipped.has(n));
+  const TOOL_TELLS = ['skills-lock.json', '.agents', '.windsurf', '.cursor'];
+  const tells = TOOL_TELLS.filter(t => exists(repoPath(t)));
+  if (added.length) {
+    advice.push(`${added.length} skill KHÔNG do template ship: ${added.slice(0, 8).join(' · ')}${added.length > 8 ? ` … +${added.length - 8}` : ''}`
+      + (tells.length ? ` — và có ${tells.join(' · ')} ở gốc repo, dấu vết một tool bên thứ ba tự ghi vào .claude/.` : '')
+      + ` Đây có thể là skill của ĐỘI (tốt) hoặc do một lệnh \`init\` đổ vào (xoá đi). Trần discovery là ${skillCap};`
+      + ` skill nào giữ lại mà không cần model tự gọi thì thêm \`disable-model-invocation: true\` — chi phí context về 0.`);
+  }
+}
+
 const rulesDir = repoPath('.claude', 'rules');
 let rulesNoPaths = 0;
 if (exists(rulesDir)) {

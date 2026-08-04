@@ -11,6 +11,47 @@
 
 ---
 
+## 2.7.6 — 2026-08-05
+
+**patch.** Kết quả của lần DISTILL đầu tiên trên nguyên liệu THẬT từ ba repo tiêu thụ.
+
+### `L0003` lên 10 lần, thấy ở 4 repo độc lập
+
+17 mục fixlog chia thành ba lớp lặp, và **cả ba là cùng một meta-pattern** — chính `L0003`
+(*"self-test của template phải assert LOGIC, không assert cấu hình của project đích"*):
+`apply-to --audit` đỏ ở đích · `test-hooks` bám config mặc định · `paths.secrets` chặn
+`.env.example`. Mỗi lớp ≥2 repo độc lập.
+
+Bằng chứng đắt nhất, nay đã vào lesson: `warehouse` ghi biến thể `paths.migrations`
+**ngày 2026-08-03**, template phát hiện lại **ngày 2026-08-05** và tự gọi là *"lần thứ tư"*.
+Hai ngày, và bằng chứng đã nằm sẵn trên đĩa. Nếu chiều LÊN chạy hôm 08-03 thì ngưỡng
+"2 lần độc lập" đã đạt và bản sửa hạ cánh sớm hơn hai ngày. `seen-in` giờ có 4 repo.
+
+### `harness-doctor` nói AI đã tiêu trần skill
+
+Đo ở `warehouse`: `prisma init` tự đổ **9 skill** của Prisma vào `.claude/skills/` cùng
+`skills-lock.json`, `.agents/`, `.windsurf/`. Trần là 12 — một lệnh `init` của bên thứ ba
+vừa ăn gần hết ngân sách discovery, và dòng duy nhất người dùng thấy là `skill: 21 (trần 12)`.
+Con số đó không nói nguyên nhân, nên nó dẫn tới kết luận SAI: *"harness của mình phình"*
+thay vì *"một tool vừa ghi vào .claude/ của mình"*.
+
+Tín hiệu sẵn có, không cần danh sách phải bảo trì: `.claude/harness-manifest.json → files`
+liệt kê mọi `SKILL.md` template đã ship. Skill có trên đĩa mà không có trong manifest là
+skill project/tool thêm vào — doctor gọi tên chúng, và nói luôn dấu vết tool nếu thấy.
+
+Đây là **computational control**, không phải bài học: một mục fixlog trở thành một check,
+không thành một dòng văn xuôi ai đó sẽ bỏ qua.
+
+### Phân công của vòng học đang chạy ĐÚNG
+
+6 mục còn lại là `stack:nextjs`/`prisma`, mỗi mục **một lần** — dưới ngưỡng. Và khi kiểm thì
+**5/6 đã nằm sẵn trong `AGENTS.md §Gotchas` của chính warehouse**: project tự giữ bài học
+stack ở tầng biểu diễn rẻ nhất, template chỉ cần nửa `universal`. Thứ thiếu suốt từ đầu chỉ
+là **vận chuyển của nửa universal đó**.
+
+Quyết định của cả bốn nhóm ghi ở `knowledge/incoming/DECISIONS.log` — kèm một dòng
+`CORRECTION` cho mục tôi tưởng phải trả về mà project đã làm xong.
+
 ## 2.7.5 — 2026-08-05
 
 **patch.** Migration `007` hỏi BỘ SO KHỚP THẬT thay vì suy từ hình dạng chuỗi.
