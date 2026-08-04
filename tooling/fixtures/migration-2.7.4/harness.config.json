@@ -1,0 +1,158 @@
+{
+  "$comment": "NGU\u1ed2N S\u1ef0 TH\u1eacT c\u1ee7a l\u1edbp harness. M\u1ecdi hook v\u00e0 script trong tooling/ \u0111\u1ecdc file n\u00e0y. \u0110\u00e2y l\u00e0 ch\u1ed7 DUY NH\u1ea4T bi\u1ebft v\u1ec1 stack c\u1ee5 th\u1ec3 \u2014 s\u1eeda file n\u00e0y khi \u00e1p template l\u00ean project m\u1edbi, kh\u00f4ng s\u1eeda hook.",
+  "version": 1,
+  "project": {
+    "id": "fixture-env",
+    "dri": "@CHANGEME",
+    "integrationBranch": "origin/main",
+    "issuePrefixes": [
+      "ABC"
+    ],
+    "platforms": [
+      "core",
+      "web",
+      "ios",
+      "android",
+      "desktop",
+      "api"
+    ]
+  },
+  "$comment_commands": "\u0110\u1ec3 chu\u1ed7i r\u1ed7ng \"\" n\u1ebfu project ch\u01b0a c\u00f3 l\u1ec7nh \u0111\u00f3 \u2014 hook s\u1ebd b\u1ecf qua thay v\u00ec fail. {file} l\u00e0 placeholder cho \u0111\u01b0\u1eddng d\u1eabn file.",
+  "commands": {
+    "install": "",
+    "gen": "",
+    "typecheck": "",
+    "lint": "",
+    "lintFix": "",
+    "test": "",
+    "build": "",
+    "verify": "",
+    "e2e": "",
+    "depcruise": "",
+    "$comment_a11y_perf": "\u0110\u00daNG HAI field n\u00e0y, kh\u00f4ng nhi\u1ec1u h\u01a1n \u2014 v\u00ec `features/_TEMPLATE.json` \u0111\u00f2i `a11y.evidence` v\u00e0 `perf.evidence`, v\u00e0 tr\u01b0\u1edbc 2.2.0 KH\u00d4NG c\u00f3 ch\u1ed7 n\u00e0o sinh ra ch\u00fang. Hai field default-FAIL kh\u00f4ng c\u00f3 \u0111\u01b0\u1eddng h\u1ee3p ph\u00e1p n\u00e0o th\u00e0nh `true` \u21d2 ng\u01b0\u1eddi \u0111ang g\u1ea5p \u0111i\u1ec1n \"n/a\" cho xong, \u0111\u00fang th\u00f3i quen m\u00e0 default-FAIL sinh ra \u0111\u1ec3 di\u1ec7t. KH\u00d4NG th\u00eam `visual`/`coverage`/`seo`: kh\u00f4ng h\u1ee3p \u0111\u1ed3ng n\u00e0o \u0111\u00f2i ch\u00fang, v\u00e0 m\u1ed9t field kh\u00f4ng ai \u0111\u1ecdc l\u00e0 m\u1ed9t ni\u1ec1m tin \u0111\u01b0\u1ee3c \u0111\u00f3ng g\u00f3i th\u00e0nh c\u1ea5u h\u00ecnh \u2014 \u0111\u00f3 l\u00e0 l\u00fd do `budget.modelTiering` b\u1ecb c\u1eaft \u1edf 2.0.0. Mu\u1ed1n T\u1eaeT: xo\u00e1 t\u00ean gate kh\u1ecfi `gates.preMerge`, KH\u00d4NG \u0111\u1ec3 l\u1ec7nh r\u1ed7ng. \"\u0110\u1ed9i t\u00f4i kh\u00f4ng l\u00e0m a11y\" ph\u1ea3i l\u00e0 m\u1ed9t d\u00f2ng diff c\u00f3 ng\u01b0\u1eddi duy\u1ec7t, kh\u00f4ng ph\u1ea3i m\u1ed9t field r\u1ed7ng.",
+    "a11y": "",
+    "perf": ""
+  },
+  "$comment_paths": "Glob theo c\u00fa ph\u00e1p minimatch, \u0111\u01b0\u1eddng d\u1eabn POSIX (d\u00f9ng / k\u1ec3 c\u1ea3 tr\u00ean Windows).",
+  "paths": {
+    "generated": [
+      "**/*.gen.*",
+      "**/generated/**",
+      "**/dist/**",
+      "**/build/**"
+    ],
+    "$comment_migrations": "Migration KH\u00d4NG ph\u1ea3i file generated \u2014 h\u1ea7u h\u1ebft stack sinh KHUNG r\u1ed3i b\u1ea1n vi\u1ebft TH\u00c2N. C\u00e1i nguy hi\u1ec3m l\u00e0 s\u1eeda migration \u0110\u00c3 MERGE: DB l\u1ec7ch im l\u1eb7ng, h\u1ecfng checksum c\u1ee7a migration runner. protect-migrations.mjs ch\u1ec9 ch\u1eb7n \u0111\u00fang ca \u0111\u00f3. \u0110\u1ec3 [] n\u1ebfu project kh\u00f4ng c\u00f3 migration.",
+    "migrations": [
+      "**/migrations/**",
+      "**/migrate/**",
+      "**/db/migrate/**",
+      "**/alembic/versions/**"
+    ],
+    "$comment_secrets": "H\u1ed7 tr\u1ee3 ph\u1ee7 \u0111\u1ecbnh `!glob` (lu\u1eadt .gitignore: pattern sau ghi \u0111\u00e8 pattern tr\u01b0\u1edbc \u2014 xem matchAny trong tooling/lib/harness.mjs). `.env.example` PH\u1ea2I \u0111i qua: tooling/init.mjs copy n\u00f3 th\u00e0nh .env v\u00e0 .gitignore \u0111\u00e3 whitelist n\u00f3.",
+    "secrets": [
+      "**/.env",
+      "**/.env.*",
+      "**/*.pem",
+      "**/secrets/**"
+    ],
+    "harness": [
+      ".claude/settings.json",
+      ".claude/hooks/**",
+      ".claude/rules/**",
+      ".mcp.json",
+      "CLAUDE.md",
+      "AGENTS.md",
+      "harness.config.json",
+      ".github/CODEOWNERS"
+    ],
+    "$comment_hot": "V\u00f9ng n\u00f3ng: file m\u00e0 nhi\u1ec1u ng\u01b0\u1eddi/agent hay ch\u1ea1m c\u00f9ng l\u00fac. \u0110o b\u1eb1ng `node tooling/coactivity.mjs` r\u1ed3i \u0111i\u1ec1n v\u00e0o \u0111\u00e2y.",
+    "hot": [
+      "packages/contracts/**",
+      "**/index.ts",
+      "**/routes.*",
+      "**/i18n/**",
+      "package.json"
+    ],
+    "lintable": [
+      "**/*.ts",
+      "**/*.tsx",
+      "**/*.js",
+      "**/*.jsx",
+      "**/*.mjs"
+    ],
+    "$comment_publicSurface": "\u0110\u1ed5i export \u1edf \u0111\u00e2y = breaking change, ph\u1ea3i li\u1ec7t k\u00ea consumer + label `breaking`.",
+    "publicSurface": [
+      "packages/contracts/**",
+      "packages/core/**",
+      "packages/ports/**"
+    ]
+  },
+  "$comment_limits": "Con s\u1ed1. S\u1eeda theo n\u0103ng l\u1ef1c th\u1eadt c\u1ee7a \u0111\u1ed9i, \u0111\u1eebng \u0111\u1ec3 m\u1eb7c \u0111\u1ecbnh.",
+  "limits": {
+    "maxSessionsPerPerson": 2,
+    "maxWorktrees": 4,
+    "$comment_prLines": "NG\u01af\u1ee0NG C\u1ee6A REPO TEMPLATE, cao h\u01a1n repo s\u1ea3n ph\u1ea9m, v\u00e0 c\u00f3 l\u00fd do \u0111o \u0111\u01b0\u1ee3c. Hi\u1ec7u ch\u1ec9nh theo 6 release harness g\u1ea7n nh\u1ea5t (d\u00f2ng, \u0111\u00e3 tr\u1eeb t\u00e0i li\u1ec7u): 206 \u00b7 428 \u00b7 726 \u00b7 817 \u00b7 909 \u00b7 1299. M\u1ed1c fail 800 c\u0169 \u0111\u00e3 b\u1ecb 3/6 release v\u01b0\u1ee3t qua \u2014 n\u00f3 ch\u01b0a t\u1eebng \u0111\u01b0\u1ee3c hi\u1ec7u ch\u1ec9nh cho repo N\u00c0Y, n\u01a1i m\u1ecdi thay \u0111\u1ed5i harness l\u00e0 \u0111a file b\u1eaft bu\u1ed9c: hook + config + test + changelog + migration ph\u1ea3i h\u1ea1 c\u00e1nh C\u00d9NG L\u00daC (n\u1eeda BREAKING gi\u1eefa hai l\u1ea7n merge \u0111\u1ec3 settings.json tr\u1ecf v\u00e0o hook kh\u00f4ng t\u1ed3n t\u1ea1i). Fail 1500 = release l\u1edbn nh\u1ea5t t\u1eebng c\u00f3 + ~15% headroom; \u0111\u1eb7t 2000 th\u00ec gate kh\u00f4ng bao gi\u1edd n\u1ed5, t\u1ee9c l\u00e0 trang tr\u00ed. CI \u0111\u1ebfm sau khi lo\u1ea1i generated/lockfile V\u00c0 t\u00e0i li\u1ec7u \u2014 nh\u01b0ng KH\u00d4NG lo\u1ea1i AGENTS.md, v\u00ec n\u00f3 n\u1ea1p v\u00e0o m\u1ecdi phi\u00ean c\u1ee7a m\u1ecdi ng\u01b0\u1eddi n\u00ean n\u00f3 l\u00e0 ch\u1ec9 th\u1ecb \u0111ang thi h\u00e0nh. PROJECT \u00c1P TEMPLATE: h\u1ea1 v\u1ec1 400/800. PR nh\u1ecf l\u00e0 c\u00e1ch co c\u1eeda s\u1ed5 conflict, kh\u00f4ng ph\u1ea3i h\u00ecnh th\u1ee9c \u2014 harness-doctor s\u1ebd nh\u1eafc b\u1ea1n.",
+    "prWarnLines": 800,
+    "prFailLines": 1500,
+    "$comment_prWarnFiles": "\u0110o c\u00f9ng 6 release: 19 \u00b7 15 \u00b7 21 \u00b7 10 \u00b7 25 \u00b7 35 file. M\u1ed1c 15 c\u0169 c\u1ea3nh b\u00e1o \u1edf 5/6 release \u2014 m\u1ed9t c\u1ea3nh b\u00e1o n\u1ed5 m\u1ecdi l\u1ea7n l\u00e0 c\u1ea3nh b\u00e1o d\u1ea1y ng\u01b0\u1eddi ta ph\u1edbt l\u1edd n\u00f3. 30 l\u00e0 m\u1ee9c ph\u00e2n bi\u1ec7t \u0111\u01b0\u1ee3c 'release harness b\u00ecnh th\u01b0\u1eddng' v\u1edbi 'PR \u0111ang g\u1ed9p nhi\u1ec1u m\u1ee5c \u0111\u00edch'.",
+    "prWarnFiles": 30,
+    "reservationTtlHours": 8,
+    "staleLockMinutes": 5,
+    "docStaleDays": 90,
+    "$comment_maxSkills": "\u0110\u1ebfm theo t\u1ea7ng DISCOVERY, kh\u00f4ng theo t\u1ed5ng s\u1ed1 file: `disable-model-invocation: true` \u0111\u01b0a chi ph\u00ed context c\u1ee7a m\u1ed9t skill v\u1ec1 0, n\u00ean m\u1ed9t skill nghi th\u1ee9c kh\u00f4ng c\u00f2n c\u1ea1nh tranh v\u1edbi skill kh\u00e1c. harness-doctor \u0111\u1ecdc field n\u00e0y.",
+    "maxSkills": 12
+  },
+  "$comment_gates": "BA stage, M\u1ed8T runner: `node tooling/gates.mjs --stage <stage>`. B\u1ecf t\u00ean gate kh\u1ecfi m\u1ea3ng \u0111\u1ec3 t\u1eaft. gen-clean = ch\u1ea1y `gen` r\u1ed3i ki\u1ec3m git diff r\u1ed7ng. NG\u00c2N S\u00c1CH \u0110\u1ed8 TR\u1ec4 \u2014 stop < 30 gi\u00e2y \u00b7 subagent < 5 GI\u00c2Y \u00b7 preMerge kh\u00f4ng gi\u1edbi h\u1ea1n. \u0110\u1eaft h\u01a1n th\u00ec \u0110\u1ea8Y XU\u1ed0NG CI: m\u1ed9t gate 40 gi\u00e2y \u1edf Stop kh\u00f4ng b\u1ea3o v\u1ec7 th\u00eam g\u00ec so v\u1edbi c\u00f9ng gate \u0111\u00f3 \u1edf CI, n\u00f3 ch\u1ec9 l\u00e0m M\u1eccI l\u01b0\u1ee3t ch\u1eadm \u0111i 40 gi\u00e2y, k\u1ec3 c\u1ea3 l\u01b0\u1ee3t kh\u00f4ng c\u00f3 g\u00ec \u0111\u1ec3 b\u1eaft. \u0110o: `--list --timing`.",
+  "gates": {
+    "stop": [
+      "gen-clean",
+      "typecheck",
+      "test"
+    ],
+    "$comment_subagent": "CH\u1ec8 gate r\u1ebb nh\u1ea5t. Con s\u1ed1 \u1edf \u0111\u00e2y nh\u00e2n v\u1edbi t\u1ed1i \u0111a 16 agent song song trong m\u1ed9t dynamic workflow \u2014 \u0111\u00e2y l\u00e0 ch\u1ed7 harness d\u1ec5 l\u00e0m GI\u1ea2M hi\u1ec7u su\u1ea5t Claude Code nh\u1ea5t.",
+    "subagent": [
+      "typecheck"
+    ],
+    "$comment_preMerge": "`a11y` v\u00e0 `perf` \u1edf \u0110\u00c2Y, kh\u00f4ng \u1edf `stop`: ch\u00fang ch\u1ea1y b\u1eb1ng ph\u00fat, c\u00f2n ng\u00e2n s\u00e1ch Stop l\u00e0 30 GI\u00c2Y. M\u1ed9t gate \u0111\u00fang \u0111\u1eb7t sai t\u1ea7ng \u0111\u1ed9 tr\u1ec5 l\u00e0m ch\u1eadm M\u1eccI l\u01b0\u1ee3t, k\u1ec3 c\u1ea3 l\u01b0\u1ee3t kh\u00f4ng c\u00f3 g\u00ec \u0111\u1ec3 b\u1eaft.",
+    "preMerge": [
+      "gen-clean",
+      "typecheck",
+      "lint",
+      "test",
+      "build",
+      "depcruise",
+      "e2e",
+      "a11y",
+      "perf"
+    ]
+  },
+  "$comment_budget": "L\u1edaP KINH T\u1ebe \u2014 l\u1edbp DUY NH\u1ea4T c\u00f3 th\u1ec3 g\u00e2y thi\u1ec7t h\u1ea1i t\u00e0i ch\u00ednh tr\u1ef1c ti\u1ebfp. M\u1ed9t agent ch\u1ea1y sai 4 gi\u1edd l\u00fac 3h s\u00e1ng ph\u1ea3i b\u1ecb C\u00c1I G\u00cc \u0110\u00d3 d\u1eebng l\u1ea1i; n\u1ebfu c\u00e2u tr\u1ea3 l\u1eddi l\u00e0 't\u00f4i th\u1ee9c d\u1eady v\u00e0 th\u1ea5y' th\u00ec b\u1ea1n ch\u01b0a c\u00f3 l\u1edbp n\u00e0y. Xem docs/ECONOMICS.md.",
+  "budget": {
+    "maxTurnsPerRun": 25,
+    "maxWallClockMinutes": 90,
+    "maxToolCallsPerRun": 200,
+    "monthlyUsdCap": 0,
+    "alertAtPercent": 80,
+    "$comment_da_cat_modelTiering": "`modelTiering` b\u1ecb C\u1eaeT \u1edf 2.0.0 \u2014 kh\u00f4ng script n\u00e0o \u0111\u1ecdc n\u00f3, n\u00ean n\u00f3 l\u00e0 m\u1ed9t ni\u1ec1m tin \u0111\u01b0\u1ee3c \u0111\u00f3ng g\u00f3i th\u00e0nh c\u1ea5u h\u00ecnh. Nguy\u00ean l\u00fd (model m\u1ea1nh v\u00e0o ch\u1ed7 QUY\u1ebeT \u0110\u1ecaNH, model r\u1ebb v\u00e0o ch\u1ed7 TH\u1ef0C THI mechanical) gi\u1eef \u1edf docs/ECONOMICS.md; ch\u1ed7 c\u01b0\u1ee1ng ch\u1ebf TH\u1eacT l\u00e0 .claude/settings.json \u2192 permissions.ask \u2192 `Agent(model:opus)`, n\u01a1i c\u00f3 NG\u01af\u1edcI b\u1ea5m."
+  },
+  "$comment_mcp": "3\u20135 server/project. Tool definition \u0103n context \u1edf M\u1eccI request. T\u1ed5ng tool ph\u01a1i ra: m\u1ee5c ti\u00eau \u2264 15\u201320. CLI lu\u00f4n r\u1ebb h\u01a1n MCP v\u1ec1 token \u2014 c\u00f3 CLI th\u00ec d\u00f9ng CLI. Ch\u1ec9 d\u00f9ng MCP khi c\u1ea7n session b\u1ec1n (browser) ho\u1eb7c schema c\u00f3 c\u1ea5u tr\u00fac m\u00e0 CLI kh\u00f4ng cho.",
+  "mcp": {
+    "maxServers": 5,
+    "maxTools": 20
+  },
+  "$comment_evals": "N\u1ed1i eval v\u1edbi agent. \u0110\u1ec3 r\u1ed7ng = ch\u1ec9 ch\u1ea1y assertion t\u1ea5t \u0111\u1ecbnh, KH\u00d4NG g\u1ecdi agent (g\u1ecdi agent t\u1ed1n ti\u1ec1n, ph\u1ea3i l\u00e0 h\u00e0nh \u0111\u1ed9ng ch\u1ee7 \u0111\u1ed9ng). Placeholder: {prompt} {maxTurns} {maxMinutes} {id}. V\u00ed d\u1ee5: \"claude -p {prompt} --max-turns {maxTurns} --permission-mode auto\"",
+  "evals": {
+    "command": ""
+  },
+  "$comment_knowledge": "C\u01a1 ch\u1ebf mang tr\u00ed tu\u1ec7 qua project kh\u00e1c V\u00c0 ng\u01b0\u1ee3c l\u00ean template. upstream = \u0111\u01b0\u1eddng d\u1eabn t\u1edbi repo template harness; tooling/knowledge/upstream.mjs \u0111\u1ecdc n\u00f3 \u0111\u1ec3 g\u1eedi b\u00e0i h\u1ecdc + gate + diff c\u01a1 ch\u1ebf l\u00ean. R\u1ed7ng th\u00ec ph\u1ea3i truy\u1ec1n \u0111\u01b0\u1eddng d\u1eabn m\u1ed7i l\u1ea7n. Xem knowledge/README.md.",
+  "knowledge": {
+    "packName": "CHANGEME-org-harness-pack",
+    "upstream": "",
+    "exportScopes": [
+      "universal",
+      "stack"
+    ],
+    "$comment_autoMemoryDirectory": "\u0110\u1ec2 R\u1ed6NG l\u00e0 \u0111\u00fang \u2014 m\u1eb7c \u0111\u1ecbnh c\u1ee7a vendor (~/.claude/projects/<repo>/memory/) n\u1eb1m NGO\u00c0I repo, v\u00e0 \u0111\u00f3 l\u00e0 ch\u1ed7 \u0111\u00fang. Auto-memory l\u00e0 quan s\u00e1t TH\u00d4, m\u00e1y-c\u1ee5c-b\u1ed9, \u0111\u01b0\u1ee3c ph\u00e9p sai; nh\u01b0ng n\u00f3 n\u1ea1p 200 d\u00f2ng \u0111\u1ea7u MEMORY.md M\u1ed6I phi\u00ean n\u00ean n\u00f3 l\u00e0 ch\u1ec9 th\u1ecb TH\u1eacT. Tr\u1ecf n\u00f3 v\u00e0o c\u00e2y repo = bi\u1ebfn quan s\u00e1t ch\u01b0a ki\u1ec3m c\u1ee7a M\u1ed8T ng\u01b0\u1eddi th\u00e0nh ch\u1ec9 th\u1ecb cho C\u1ea2 \u0110\u1ed8I. observe.mjs c\u1ea3nh b\u00e1o n\u1ebfu b\u1ea1n l\u00e0m th\u1ebf. Xem AGENTS.md \u00a7Hai b\u1ed9 nh\u1edb v\u00e0 knowledge/README.md.",
+    "autoMemoryDirectory": ""
+  }
+}

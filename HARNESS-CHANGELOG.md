@@ -11,6 +11,28 @@
 
 ---
 
+## 2.7.4 — 2026-08-05
+
+**patch.** Migration `007`: bản sửa của **1.5.0 chưa bao giờ tới đích**.
+
+1.5.0 dạy `matchAny` hiểu phủ định và thêm một dòng phủ định cho `.env.example` vào
+`paths.secrets` của template — nhưng `harness.config.json` là NỘI DUNG của project,
+`upgrade.mjs` không bao giờ đụng vào, và **không ai viết migration**. Nên bản sửa chỉ tới
+project áp SAU 1.5.0.
+
+Đo trên ba repo tiêu thụ thật: **2/3 vẫn thiếu phủ định** — tức là suốt từ 1.5.0 tới nay
+chúng vẫn dính đúng bug mà changelog tuyên bố đã sửa. Triệu chứng đúng như 1.5.0 mô tả:
+`pre-commit` chặn `.env.example`, tức là chặn **commit đầu tiên** của project mới, vì
+`tooling/init.mjs` copy chính file đó thành `.env`.
+
+Migration neo vào DÒNG khai `.env.*`, không neo vào mảng `secrets` nói chung: phủ định phải
+nằm **sau** pattern nó phủ định (luật .gitignore). Đặt nhầm thứ tự thì dòng có mặt mà vô
+tác dụng — một bản vá trông như đã sửa và không sửa gì.
+
+> **Luật, và ca này là bằng chứng:** đổi ngữ nghĩa một field trong `harness.config.json` thì
+> PHẢI có migration. Sửa ở template mà không có migration là sửa cho project TƯƠNG LAI và
+> bỏ rơi project đang chạy — đúng nhóm cần bản sửa nhất.
+
 ## 2.7.3 — 2026-08-05
 
 **patch.** `setup.mjs` chỉ điền chỗ TRỐNG, không ghi đè lệnh người đã khai.
