@@ -11,6 +11,68 @@
 
 ---
 
+## 2.3.0 — 2026-08-04
+
+**minor, có migration** (`harness-migrations/005`).
+
+### Tiêu chí đã đòi bằng chứng từ đầu, nay mới có dụng cụ đo
+
+`features/_TEMPLATE.json` đòi `a11y.evidence` và `perf.evidence`; `ship-feature` bước 7 có
+hàng **a11y** và **perf**. Nhưng `commands` **không có field nào** sinh ra chúng. Hai tiêu
+chí default-FAIL **không có đường hợp pháp nào thành `true`** ⇒ người đang gấp điền `"n/a"`
+cho xong, đúng thói quen mà default-FAIL sinh ra để diệt.
+
+> **Một tiêu chí không có dụng cụ đo thì không phải tiêu chí, nó là một lời nhắc — và lời
+> nhắc bị bỏ qua bởi người đang gấp.**
+
+- `commands.a11y`, `commands.perf` (rỗng) + hai tên đó vào `gates.preMerge`.
+- **Đúng hai field.** Không `visual`/`coverage`/`seo`: không hợp đồng nào đòi chúng, và một
+  field không script nào đọc là **một niềm tin được đóng gói thành cấu hình** — lý do
+  `budget.modelTiering` bị cắt ở 2.0.0.
+- Ở `preMerge`, **không** ở `stop`: a11y/perf chạy bằng phút, ngân sách Stop là **30 giây**.
+- **Muốn tắt thì xoá tên gate khỏi mảng, đừng để lệnh rỗng.** *"Đội tôi không làm a11y"*
+  phải là một dòng diff có người duyệt, không phải một field rỗng.
+
+### `evidence` phải TRỎ TỚI THỨ CÓ THẬT
+
+`check-feature-integrity` có hai lỗ:
+
+1. Chỉ kiểm `evidence` **khác rỗng**, nên `"evidence": "đã chụp rồi"` đi qua sạch — luật
+   *"Tôi đã kiểm tra KHÔNG phải bằng chứng"* bị cưỡng chế ở tầng **cú pháp** mà không ở tầng
+   **tham chiếu**. Một chuỗi không trỏ đi đâu là một câu khẳng định.
+2. Vòng lặp chỉ đi qua `platforms.*`. Nhưng `a11y` và `perf` là **anh em** của `platforms`,
+   không nằm trong nó — nên `a11y.passes = true` với evidence rỗng đi qua **im lặng**. Đúng
+   hai field vừa được thêm dụng cụ đo.
+
+Nay `passes: true` ⇒ `evidence` phải là URL `http(s)` **hoặc** một đường dẫn **tồn tại**.
+URL không bị kiểm tồn tại: repo không được gọi mạng để chấm một PR. Đã thử: cả hai chế độ
+hỏng đều ĐỎ.
+
+### Skill `verify-ui` — bước THẤY
+
+Ba tài liệu **bắt buộc** một ảnh chụp (`DESIGN.md` vòng lặp verify · `AGENTS.md` evidence
+hợp lệ · `rubrics/_TEMPLATE.md` điểm phải kèm ảnh) và **không cơ chế nào tạo ra nó**. Hệ
+quả: `design-evaluator` đang chấm **mã nguồn**, không chấm **giao diện** — và đó là lý do
+cài thêm một skill thẩm mỹ không giải quyết gì: nó thêm ý kiến vào một vòng lặp **không có mắt**.
+
+`verify-ui` là **trình tự**, không phải tri thức: chạy app → chụp **2 viewport** →
+`docs/evidence/<issue>/` → giao `design-evaluator` → mới đổi `features/<id>.json`.
+`disable-model-invocation: true` nên nó tốn **0 token context**.
+
+**Template không ship công cụ chụp, và đó là cố ý** — Playwright/Maestro là tri thức stack.
+
+> **Sửa một khẳng định sai ở 2.1.0:** trần `maxSkills` tính trên **tầng discovery**
+> (skill model tự gọi được), **không** trên tổng số file. Đang **3/12**, nên thêm một skill
+> `disable-model-invocation` không chạm trần. README đã nói sai điều này và đã được sửa.
+
+### Cần làm khi nâng cấp
+
+1. `node tooling/upgrade.mjs <template> --apply` (migration 005 thêm field + gate).
+2. Điền `commands.a11y`/`commands.perf`, **hoặc** xoá hai tên đó khỏi `gates.preMerge`.
+3. Kiểm lại `features/*.json`: `evidence` nào không trỏ tới file có thật hoặc URL sẽ **ĐỎ**.
+
+---
+
 ## 2.2.0 — 2026-08-04
 
 **minor.** Không cần migration.

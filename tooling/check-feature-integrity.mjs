@@ -62,14 +62,38 @@ for (const f of readdirSync(dir).filter(f => f.endsWith('.json') && !f.startsWit
     fail.push(`${rel}: sửa field không được phép → ${changed.join(', ')}\n         Chỉ được đổi: ${[...MUTABLE].join(', ')}. Xoá/sửa step là KHÔNG CHẤP NHẬN ĐƯỢC.`);
   }
 
-  // evidence bắt buộc khi passes=true
-  for (const [plat, v] of Object.entries(now.platforms || {})) {
-    if (v?.passes === true && !v.evidence) {
-      fail.push(`${rel}: platforms.${plat}.passes=true nhưng evidence rỗng. "Tôi đã kiểm tra" không phải bằng chứng.`);
+  // ── evidence bắt buộc khi passes=true, VÀ nó phải TRỎ TỚI THỨ CÓ THẬT ──────
+  //
+  // Hai lỗ trước 2.3.0:
+  //
+  //  1. Chỉ kiểm `evidence` KHÁC RỖNG. Nên `"evidence": "đã chụp rồi"` đi qua sạch —
+  //     luật "Tôi đã kiểm tra KHÔNG phải bằng chứng" bị cưỡng chế ở tầng CÚ PHÁP mà
+  //     không ở tầng THAM CHIẾU. Một chuỗi không trỏ đi đâu là một câu khẳng định.
+  //  2. Vòng lặp chỉ đi qua `platforms.*`. Nhưng `a11y` và `perf` là ANH EM của
+  //     `platforms`, không nằm trong nó — nên `a11y.passes = true` với evidence rỗng
+  //     đi qua im lặng. Đúng hai field mà `commands.a11y`/`commands.perf` vừa được
+  //     thêm để sinh bằng chứng cho.
+  //
+  // URL (`https://` — CI job, dashboard) KHÔNG kiểm tồn tại: repo không được phép gọi
+  // mạng để chấm một PR. Còn lại coi là đường dẫn trong repo và PHẢI tồn tại.
+  const criteria = { ...(now.platforms || {}) };
+  for (const k of ['a11y', 'perf']) if (now[k] !== undefined) criteria[k] = now[k];
+  const beforeCrit = { ...(before?.platforms || {}) };
+  for (const k of ['a11y', 'perf']) if (before?.[k] !== undefined) beforeCrit[k] = before[k];
+
+  for (const [name, v] of Object.entries(criteria)) {
+    if (v?.passes !== true) continue;
+    const ev = String(v.evidence ?? '').trim();
+    if (!ev) {
+      fail.push(`${rel}: ${name}.passes=true nhưng evidence rỗng. "Tôi đã kiểm tra" không phải bằng chứng.`);
+      continue;
     }
-    if (v?.passes === true && before?.platforms?.[plat]?.passes === false) {
-      ok.push(`${rel}: ${plat} false → true (evidence: ${v.evidence})`);
+    if (!/^https?:\/\//.test(ev) && !exists(repoPath(ev))) {
+      fail.push(`${rel}: ${name}.evidence trỏ tới "${ev}" — KHÔNG tồn tại trong repo.\n`
+        + `         Bằng chứng phải là đường dẫn có thật (docs/evidence/<issue>/... — xem skill \`verify-ui\`) hoặc URL http(s).`);
+      continue;
     }
+    if (beforeCrit?.[name]?.passes === false) ok.push(`${rel}: ${name} false → true (evidence: ${ev})`);
   }
 }
 
