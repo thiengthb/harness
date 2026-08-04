@@ -45,6 +45,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync, cpSync, readdirSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { tmpdir } from 'node:os';
 import { repoPath, report, exists } from './lib/harness.mjs';
 
@@ -140,7 +141,12 @@ const files = existsSync(MIG_DIR)
 if (!files.length) na.push('không có migration nào để test');
 
 for (const f of files) {
-  const mod = await import(join(MIG_DIR, f));
+  // pathToFileURL: BẮT BUỘC, không phải trang trí. Trên Windows `join()` cho
+  // `D:\\a\\repo\\harness-migrations\\003.mjs`, và `import()` đọc `D:` là PROTOCOL
+  // ⇒ ERR_UNSUPPORTED_ESM_URL_SCHEME. Lớp lỗi XANH trên Linux/macOS, ĐỎ trên Windows —
+  // `upgrade.mjs` đã làm đúng từ đầu, file này thì không, và job `parity (windows-latest)`
+  // bắt được ngay ở PR đầu tiên. Đó chính là lý do suite này phải chạy trên cả 3 OS.
+  const mod = await import(pathToFileURL(join(MIG_DIR, f)).href);
   const label = `${f} (v${mod.version ?? '?'})`;
   if (typeof mod.up !== 'function') { fail.push(`${label}: không export \`up()\``); continue; }
   if (!mod.version || !mod.description) { fail.push(`${label}: thiếu \`version\`/\`description\` — upgrade.mjs đọc hai field này`); continue; }
@@ -173,7 +179,7 @@ for (const f of files) {
       const mFile = join(MIG_DIR, `.mutant.tmp.${mod.version}.mjs`);
       try {
         writeFileSync(mFile, mutated, 'utf8');
-        const mMod = await import(`${mFile}?t=${mod.version}`);
+        const mMod = await import(`${pathToFileURL(mFile).href}?t=${mod.version}`);
         const { bad: mBad } = await contract(mMod, `${work}-mutant`, fixture);
         if (mBad.length) ok.push(`MUTANT ${label}: regex greedy ⇒ ${mBad[0].slice(0, 62)}… — hợp đồng ĐỎ ĐƯỢC`);
         else fail.push(`MUTANT ${label}: SỐNG SÓT — regex ăn cả file mà hợp đồng vẫn xanh. Nhìn PHẠM VI của check trước khi nhìn logic`);
