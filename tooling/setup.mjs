@@ -276,8 +276,19 @@ next.project.dri = answers.dri || next.project.dri;
 next.project.issuePrefixes = answers.issuePrefix.split(',').map(s => s.trim()).filter(Boolean);
 next.project.platforms = answers.platforms.split(',').map(s => s.trim()).filter(Boolean);
 
+// CHỈ ĐIỀN CHỖ TRỐNG. Lệnh đã có trong config là lệnh NGƯỜI đã khai — có thể kèm cờ, cờ
+// môi trường, hoặc một wrapper mà không phép phát hiện nào đoán ra được. Ghi đè nó là lấy
+// một giá trị ĐÚNG thay bằng một giá trị SUY RA.
+//
+// Ca này không hiếm mà là ca THƯỜNG: cả ba repo tiêu thụ hiện có đều đã khai tay 8–9 lệnh
+// trước khi `setup.mjs` tồn tại. Một công cụ chỉ an toàn với repo trống là công cụ không
+// dùng được ở đúng nơi cần nó.
+const overwritten = [];
 for (const [k, v] of Object.entries(d.stack?.cmds ?? {})) {
-  if (k in next.commands) next.commands[k] = v;
+  if (!(k in next.commands)) continue;
+  const cur = String(next.commands[k] ?? '').trim();
+  if (!cur) { next.commands[k] = v; continue; }
+  if (cur !== v) overwritten.push(`commands.${k}: GIỮ \`${cur}\` (phát hiện ra \`${v}\` — không ghi đè)`);
 }
 if (d.migrations.length) next.paths.migrations = d.migrations.map(x => `${x}/**`);
 else next.paths.migrations = [];
@@ -370,7 +381,7 @@ const gatesAffected = Object.entries(next.gates ?? {})
   .filter(([, miss]) => miss.length);
 
 const ok = changed.length ? changed : ['không có gì đổi'];
-const warn = [];
+const warn = [...overwritten];
 for (const [stage, miss] of gatesAffected) {
   warn.push(`gates.${stage}: ${miss.join(', ')} KHÔNG có lệnh → ${miss.length} gate trong stage này không tồn tại`);
 }
