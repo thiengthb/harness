@@ -1,4 +1,4 @@
-<!-- version: 2026-08-04-b -->
+<!-- version: 2026-08-04-c -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,20 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-04 — CI không còn xanh giả (v2.1.0)
+
+1. **Job `verify` giờ chạy `node tooling/gates.mjs --stage preMerge`.** Trước đó nó là
+   `echo "CHANGEME"`, tức LUÔN XANH — trong khi `docs/BRANCH-PROTECTION.md` dạy đặt nó
+   thành check bắt buộc. Mỗi `commands` còn rỗng giờ làm **CI ĐỎ**, không im lặng nữa.
+2. **Job `e2e` bị XOÁ** — `e2e` là một gate trong `gates.preMerge` nên nó chạy ở
+   `verify`. **Bỏ `e2e` khỏi required status checks**, không thì PR treo mãi ở
+   *"Expected — waiting for status"*.
+3. **`security` quét secret THẬT**: `node tooling/precommit-scan.mjs --all` (mọi file
+   được track) + SCA tất định khi có lockfile. Không có lockfile thì nó nói `n/a` ra
+   miệng — `n/a` không phải *"không có lỗ hổng"*.
+4. `ci.yml` của TEMPLATE có `HARNESS_ALLOW_SKIPPED_GATES: '1'`. **Repo của bạn phải
+   không có dòng đó** — migration 004 xoá, và `harness-doctor` báo CHẶN nếu nó còn.
 
 ## 2026-08-04 — Gate gọi thẳng runner · doctor đổi tên (v2.0.0, BREAKING)
 

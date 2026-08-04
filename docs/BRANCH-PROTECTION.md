@@ -14,7 +14,7 @@ không phải một cấu hình.
 # Cấu hình ĐANG áp — tái lập được, không phải mô tả
 gh api -X PUT repos/<owner>/<repo>/branches/main/protection --input - <<'JSON'
 { "required_status_checks": { "strict": true,
-    "contexts": ["guards","verify","e2e","security","no-bash-in-harness",
+    "contexts": ["guards","verify","security","no-bash-in-harness",
                  "parity (ubuntu-latest)","parity (macos-latest)","parity (windows-latest)"] },
   "enforce_admins": true,
   "required_pull_request_reviews": null,
@@ -67,10 +67,10 @@ người không làm nổi khi có 20 PR mở.
 ☑ Require review from Code Owners
 ☑ Dismiss stale approvals when new commits are pushed
 ☑ Require status checks to pass:
-      guards          (hook tests, feature integrity, PR size, lockfile)
-      verify          (gen-clean + typecheck TOÀN REPO + lint + test + build)
-      e2e
-      security
+      guards          (hook tests, migration tests, feature integrity, PR size, lockfile)
+      verify          (MỘT lệnh: node tooling/gates.mjs --stage preMerge
+                       → gen-clean · typecheck TOÀN REPO · lint · test · build · depcruise · e2e)
+      security        (quét secret toàn bộ file được track + SCA)
       harness-parity  (khi PR chạm .claude/ hoặc tooling/)
 ☑ Require branches to be up to date before merging
 ☑ Require merge queue          ← ★

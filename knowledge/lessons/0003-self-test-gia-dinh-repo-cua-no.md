@@ -8,7 +8,7 @@ status: active
 owner: "@dri"
 added: 2026-08-04
 expires-review: 2027-02-04
-occurrences: 6
+occurrences: 8
 evidence:
   - "harness v1.4.0 áp lên project `sakubun`: `tooling/test-hooks.mjs` 49/52 pass. Cả 3 case đỏ đều assert trạng thái CHƯA cấu hình — `stop-gate · gate chưa cấu hình lệnh`, `post-edit-lint · lintFix chưa khai`, `block-secrets · .env.example`. Điền `commands` (việc SỐ 1 mà README yêu cầu) là điều kiện làm chúng đỏ."
   - "Cùng lớp: `apply-to.mjs --audit` đối chiếu HARNESS/SEED với cây file của TEMPLATE, nhưng `doctor.mjs` và `harness-parity.yml` chạy nó ở MỌI project đích — sakubun nhận 'thiếu 351 file', 351 file đó là source của chính nó."
@@ -16,8 +16,11 @@ evidence:
   - "Cùng lớp, 2026-08-04 (v2.0.0): `apply-to.mjs --audit` IGNORE dùng `/^\\.git\\//` — cần dấu `/` cuối. Trong WORKTREE thì `.git` là một FILE, nên audit báo 'bỏ sót .git' và eval 0001 đỏ theo. Mà worktree là trạng thái BÌNH THƯỜNG theo AGENTS.md (một issue = một worktree). Cùng một check, lần thứ hai giả định sai về hình dạng repo."
   - "Cùng lớp, 2026-08-04 (v2.0.0): `limits.prWarnLines/prFailLines` 400/800 hiệu chỉnh cho repo SẢN PHẨM nhưng áp lên chính repo TEMPLATE — nơi mọi thay đổi harness là đa file bắt buộc. Đo 6 release: 3/6 vượt mốc fail, 5/6 vượt mốc warn số file. Gate tự fail chính công việc bình thường của repo nó đang gác."
   - "Cùng lớp, 2026-08-04 (v2.0.0): check CODEOWNERS trong harness-doctor dùng `coText.includes('@dri')` trên CẢ FILE, nên một comment GIẢI THÍCH về placeholder bị tính là DÙNG placeholder. `fmKeys()` cách đó 60 dòng trong cùng file đã có comment 'văn xuôi NHẮC tới một key không phải là KHAI nó' — cùng bài học, hai chỗ, một chỗ đã học."
+  - "Cùng lớp, 2026-08-04 (v2.1.0): `snapshot()` trong `test-migrations.mjs` đi theo DANH SÁCH PATH CỨNG (`JSON_FILES` + `.claude/hooks`). Migration 004 là cái đầu tiên chạm một file ngoài danh sách (`.github/workflows/ci.yml`) và nhận `③ idempotent đạt` trong khi ③ chưa từng nhìn vào file nó sửa. Một hợp đồng có PHẠM VI khai một lần rồi không ai khẳng định lại sẽ cho màu xanh RỖNG đúng lúc nó được cần nhất. Sửa: `walk('.')` toàn cây, trừ `.git`."
+  - "Cùng lớp, 2026-08-04 (v2.1.0): engine mutant của `test-migrations.mjs` quyết định 'có regex lazy để đột biến không' trên SOURCE ĐẦY ĐỦ, nên một comment GIẢI THÍCH rằng migration cố ý KHÔNG dùng `[\\s\\S]` lazy bị đọc thành code. Đột biến áp vào văn xuôi ⇒ hành vi không đổi ⇒ suite báo `MUTANT SỐNG SÓT` về một migration ĐÚNG. Neo vào CODE, đừng neo vào comment giải thích code — bản sửa quyết định trên bản đã bỏ comment."
 artifacts:
   - "tooling/lib/harness.mjs — config() đọc HARNESS_CONFIG"
+  - "tooling/test-migrations.mjs — snapshot() đi toàn cây; quyết định mutant trên bản bỏ comment; điều kiện ⑤ do migration tự khai `expect`"
   - "tooling/fixtures/config-unconfigured.json"
   - "tooling/fixtures/config-automemory-in-repo.json"
   - "tooling/test-migrations.mjs — hợp đồng 4 điều kiện + mutant, cho code ghi vào repo KHÁC"

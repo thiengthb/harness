@@ -57,16 +57,33 @@ const countComments = (dir) => JSON_FILES
   .map(f => (existsSync(join(dir, f)) ? (readFileSync(join(dir, f), 'utf8').match(/\$comment/g) || []).length : 0))
   .reduce((a, b) => a + b, 0);
 
-/** Ảnh chụp nội dung — để so idempotent mà không cần git. */
+/**
+ * Ảnh chụp nội dung — để so idempotent mà không cần git.
+ *
+ * ĐI TOÀN BỘ CÂY, không đi theo danh sách path cứng. Bản đầu chỉ đi
+ * `[...JSON_FILES, '.claude/hooks']`, và migration 004 — cái ĐẦU TIÊN chạm một file
+ * không phải JSON (`.github/workflows/ci.yml`) — nhận `③ idempotent đạt` mà điều kiện
+ * ③ chưa từng nhìn vào file nó sửa. Một hợp đồng có PHẠM VI khai một lần rồi không ai
+ * khẳng định lại sẽ cho ra màu xanh RỖNG đúng lúc nó được cần nhất.
+ *
+ * Lần thứ ba lớp lỗi này nổ trong repo (xem knowledge/lessons/0003): khi một mutant
+ * sống sót hoặc một check xanh đáng ngờ, **nhìn PHẠM VI trước khi nhìn logic.**
+ */
 function snapshot(dir) {
   const out = {};
   const walk = (rel) => {
     const abs = join(dir, rel);
     if (!existsSync(abs)) return;
-    if (statSync(abs).isDirectory()) { for (const e of readdirSync(abs)) walk(join(rel, e)); return; }
+    if (statSync(abs).isDirectory()) {
+      for (const e of readdirSync(abs)) {
+        if (rel === '.' && e === '.git') continue;   // `git init` của prepare(), không phải của migration
+        walk(rel === '.' ? e : join(rel, e));
+      }
+      return;
+    }
     out[rel] = readFileSync(abs, 'utf8');
   };
-  for (const f of [...JSON_FILES, join('.claude', 'hooks')]) walk(f);
+  walk('.');
   return out;
 }
 
@@ -126,6 +143,39 @@ async function contract(mod, work, fixture) {
   const after = countComments(work);
   if (after < before) bad.push(`④ mất ${before - after} \`$comment\` (${before}→${after}) — regex ăn quá nhiều`);
 
+  // ⑤ KẾT QUẢ MONG ĐỢI do chính migration khai — chỉ kiểm khi nó khai.
+  //
+  // VÌ SAO KHÔNG PHẢI MỘT HEURISTIC. Bản đầu của điều kiện này đo BYTE: "không file nào
+  // teo hơn một nửa". Tôi thử nó bằng cách cho regex của 004 ăn tới cuối file — chế độ
+  // hỏng THẬT của vá-TEXT — và nó **không bắt được**: đoạn bị ăn chỉ ~40% file nên
+  // ngưỡng 50% lọt. Điều kiện ③ cũng không bắt, vì sau khi ăn xong lần hai không còn gì
+  // để ăn ⇒ idempotent. Giữ một check vừa THẤT BẠI phép thử của chính nó là giữ đồ trang
+  // trí, nên nó bị bỏ chứ không được nới ngưỡng.
+  //
+  // Bài học rút ra và đáng ghi: **một hợp đồng tổng quát có SÀN.** Bốn điều kiện kia áp
+  // cho mọi migration vì chúng nói về thứ mọi migration chia sẻ (không throw, JSON còn
+  // đọc được, chạy lại được, không mất `$comment`). "Regex có ăn quá nhiều không" thì
+  // phụ thuộc file nào và định dạng gì — không có parser cho mọi định dạng, và thêm
+  // dependency chỉ để test là cái giá sai. Chỗ duy nhất biết câu trả lời là MIGRATION.
+  //
+  //   export const expect = { file: '...', mustContain: [...], mustNotContain: [...] };
+  //
+  // Khai là TỰ NGUYỆN, và khi không khai thì suite NÓI RA (`n/a`) chứ không tính là đạt.
+  if (mod.expect) {
+    const e = mod.expect;
+    const p = join(work, e.file);
+    if (!existsSync(p)) bad.push(`⑤ ${e.file} không còn tồn tại sau up()`);
+    else {
+      const txt = readFileSync(p, 'utf8');
+      for (const s of e.mustContain ?? []) {
+        if (!txt.includes(s)) bad.push(`⑤ ${e.file} MẤT đoạn phải giữ: "${s}" — regex ăn quá nhiều`);
+      }
+      for (const s of e.mustNotContain ?? []) {
+        if (txt.includes(s)) bad.push(`⑤ ${e.file} CÒN đoạn phải xoá: "${s}" — regex không khớp`);
+      }
+    }
+  }
+
   const snap1 = snapshot(work);
   try { await mod.up(makeCtx(work, [])); }
   catch (e) { bad.push(`③ lần chạy thứ hai THROW — ${String(e.message || e).slice(0, 80)}`); return { bad, logs1, before, after }; }
@@ -166,13 +216,30 @@ for (const f of files) {
       warn.push(`${label}: chưa có fixture \`tooling/fixtures/migration-${mod.version}/\` — chỉ kiểm được nhánh "đã ở trạng thái đích", KHÔNG kiểm được đường đi CŨ→MỚI`);
       continue;
     }
-    if (!bad.length) ok.push(`${label}: fixture CŨ→MỚI · ①②③④ đạt · $comment ${before}→${after}`);
+    // Nhãn phải nói ĐÚNG đã kiểm mấy điều kiện: ⑤ chỉ chạy khi migration khai `expect`.
+    // Viết "①②③④⑤ đạt" cho một migration không khai là cách một suite tuyên bố đã kiểm
+    // thứ nó chưa kiểm — cùng lỗi với việc gộp `n/a` vào `pass`.
+    if (!bad.length) {
+      ok.push(`${label}: fixture ${fixture ? 'CŨ→MỚI' : 'no-op'} · ${mod.expect ? '①②③④⑤' : '①②③④ (⑤ n/a: không khai `expect`)'} đạt · $comment ${before}→${after}`);
+    }
 
     // ── MUTANT: lazy → greedy. Đây là chế độ hỏng THẬT của cách vá-TEXT, và nó chứng
     // minh hợp đồng ②④ không phải trang trí. Mutation KHÔNG đổi gì ⇒ migration này
     // không dùng regex lazy ⇒ `n/a`, KHÔNG phải pass (đừng gộp hai giá trị đó).
+    // QUYẾT ĐỊNH "có gì để đột biến không" trên bản ĐÃ BỎ COMMENT.
+    //
+    // Bản đầu quyết định trên source đầy đủ, và migration 004 — file có comment GIẢI
+    // THÍCH rằng nó cố ý KHÔNG dùng `[\s\S]` lazy — bị đọc thành "có regex lazy". Đột
+    // biến áp vào văn xuôi, hành vi không đổi, contract xanh, và suite báo
+    // `MUTANT SỐNG SÓT`. Một dương tính giả tự tin, và hướng nó nói dối là hướng tệ
+    // hơn: nó tố giác một migration đúng.
+    //
+    // Cùng bẫy với `@vi` tag của tool-catalog: **neo vào CODE, đừng neo vào comment
+    // giải thích code.** Bản bỏ comment chỉ dùng để QUYẾT ĐỊNH — đột biến vẫn áp lên
+    // source đầy đủ, nên một lần strip sai không làm sai kết quả chạy.
     const src = readFileSync(join(MIG_DIR, f), 'utf8');
-    const mutated = src.replaceAll('[\\s\\S]*?', '[\\s\\S]*');
+    const codeOnly = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+    const mutated = codeOnly.includes('[\\s\\S]*?') ? src.replaceAll('[\\s\\S]*?', '[\\s\\S]*') : src;
     if (mutated === src) {
       na.push(`${label}: không có regex lazy để đột biến — mutant KHÔNG áp dụng được (khác với "đã bị giết")`);
     } else {

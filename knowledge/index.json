@@ -45,9 +45,10 @@
       "representation": "test",
       "status": "active",
       "added": "2026-08-04",
-      "occurrences": 6,
+      "occurrences": 8,
       "artifacts": [
         "tooling/lib/harness.mjs — config() đọc HARNESS_CONFIG",
+        "tooling/test-migrations.mjs — snapshot() đi toàn cây; quyết định mutant trên bản bỏ comment; điều kiện ⑤ do migration tự khai `expect`",
         "tooling/fixtures/config-unconfigured.json",
         "tooling/fixtures/config-automemory-in-repo.json",
         "tooling/test-migrations.mjs — hợp đồng 4 điều kiện + mutant, cho code ghi vào repo KHÁC",
