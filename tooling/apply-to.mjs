@@ -166,6 +166,10 @@ if (AUDIT) {
     // đích nó không có việc gì làm — apply-to ở đó đã là bản copy rồi.
     /^tooling\/cli\.mjs$/,
     /^knowledge\/index\.json$/,                       // sinh tự động
+    // Sổ consumer là dữ liệu của TEMPLATE về consumer CỦA NÓ. Một repo tiêu thụ không có
+    // consumer nào, nên ship sổ sang đó là ship danh sách của người khác — và
+    // `consumers.mjs` ở đó cũng tự bỏ qua (nó chỉ chạy khi repoRole() === 'template').
+    /^knowledge\/consumers\.json$/,
     /^features\/example-feature\.json$/,              // ví dụ, không seed
     /^docs\/progress\/[A-Z]/,                         // nhật ký issue thật
     /^\.claude\/learnings\/(?!_TEMPLATE)/,            // learnings thật

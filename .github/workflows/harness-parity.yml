@@ -44,6 +44,19 @@ jobs:
 
       # Hook phải chạy được với `node` TRẦN, trước cả khi install.
       # Nếu bước này fail, hook của bạn có dependency ngoài — vi phạm Parity Contract.
+      # Một file `.mjs` chưa từng được CI CHẠY vẫn có thể ship LỖI CÚ PHÁP. Gặp thật ba lần
+      # trong một ngày: một glob `**/` hoặc `../*/` trong block comment chứa `*/` và ĐÓNG
+      # COMMENT SỚM. Lỗi đó không lộ ra cho tới khi có người chạy đúng file đó — có thể là
+      # người dùng, ở project của họ. `node --check` mọi file là kiểm rẻ nhất cho cả lớp.
+      - name: Mọi .mjs parse được
+        shell: bash
+        run: |
+          bad=0
+          for f in $(git ls-files '*.mjs'); do
+            node --check "$f" || { echo "::error file=$f::không parse được"; bad=1; }
+          done
+          exit $bad
+
       - name: Hook chạy được không cần dependency
         run: node tooling/test-hooks.mjs
 
