@@ -96,11 +96,28 @@ const packManifest = (() => {
 })();
 const originTag = `${packManifest.sourceProject || item.pack}@${packManifest.sourceCommit || '?'}`;
 
+/**
+ * Sổ quyết định — NGOÀI `knowledge/incoming/`, và đó là toàn bộ điểm của đường dẫn này.
+ *
+ * `knowledge/incoming/` nằm trong `REQUIRED_IGNORE` (đúng: pack là snapshot được sinh lại mỗi
+ * lần chạy `upstream --apply`, không phải nguồn). Nhưng bản trước ghi sổ VÀO thư mục đó, nên
+ * sổ cũng bị ignore — và đo 2026-08-05 nó chưa từng được track: toàn bộ lịch sử MERGE/ACCEPT/
+ * RETURN/REJECT của vòng học chỉ tồn tại trên MỘT máy, không ai review được, và mất khi đổi máy.
+ *
+ * Sổ này là thứ trả lời *"pack đó đã bị từ chối chưa, vì sao?"* — câu mà nếu không trả lời
+ * được thì cùng một pack sẽ được duyệt lại mãi. Nó phải là dữ liệu của ĐỘI.
+ *
+ * KHÔNG sửa bằng `!knowledge/incoming/DECISIONS.log`: git KHÔNG re-include được một file mà
+ * THƯ MỤC CHA đã bị loại — đo bằng `git check-ignore` ngày 2026-08-05 (xem `REQUIRED_UNIGNORE`
+ * trong `lib/harness.mjs`). Cách duy nhất đúng là để sổ ra ngoài thư mục bị ignore.
+ */
+export const DECISIONS_PATH = ['knowledge', 'DECISIONS.log'];
+
 function decisionLog(action, note) {
   const line = [new Date().toISOString(), action, item.ref, originTag, note].join('\t') + '\n';
   try {
-    appendFileSync(repoPath('knowledge', 'incoming', 'DECISIONS.log'), line, 'utf8');
-  } catch (e) { warn.push(`không ghi được DECISIONS.log: ${e.message}`); }
+    appendFileSync(repoPath(...DECISIONS_PATH), line, 'utf8');
+  } catch (e) { warn.push(`không ghi được knowledge/DECISIONS.log: ${e.message}`); }
 }
 
 // ── --reject ─────────────────────────────────────────────────────────────────
@@ -110,7 +127,7 @@ if (REJECT) {
   decisionLog('REJECT', REJECT);
   ok.push(`đã ghi quyết định BỎ: ${item.data.title}`);
   ok.push(`lý do: ${REJECT}`);
-  ok.push('file vẫn ở incoming/ — xoá tay nếu muốn. DECISIONS.log giữ lịch sử.');
+  ok.push('file vẫn ở incoming/ — xoá tay nếu muốn. knowledge/DECISIONS.log (được COMMIT) giữ lịch sử.');
   process.exit(report('ACCEPT', { ok, warn, fail }) ? 0 : 1);
 }
 

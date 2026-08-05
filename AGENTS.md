@@ -27,6 +27,7 @@ Cấu hình harness: `harness.config.json` — mọi lệnh, ngưỡng, vùng n�
 | Chạy app | CHANGEME |
 | Chạy gate (stop / subagent / preMerge) | `node tooling/gates.mjs --stage <stage>` |
 | Xem gate nào ĐANG THẬT SỰ chạy + độ trễ | `node tooling/gates.mjs --list --timing` |
+| **Việc gì đang tới hạn + mọi năng lực harness có** | `node tooling/rituals.mjs --all` |
 | Kiểm sức khoẻ lớp harness | `node tooling/harness-doctor.mjs` |
 
 ## Gotchas
@@ -127,6 +128,19 @@ Mọi thứ trong harness của team **phải** chạy trên Ubuntu 22+, macOS 1
 | Nhiều repo cùng lúc | `docs/MULTI-PROJECT.md` |
 | Có gì đó sai mà chưa gọi tên được | `docs/ANTI-PATTERNS.md` |
 | Mang trí tuệ sang project khác | `knowledge/README.md` |
+
+## Nghi thức: đừng nhớ, hãy đọc
+
+Bạn **không cần nhớ** nghi thức nào. SessionStart in ra việc nào ĐANG tới hạn kèm số đo, và
+`node tooling/rituals.mjs --all` liệt kê **mọi** năng lực của harness cùng trạng thái
+(`tới hạn` / `ổn` / `?` = chưa đo được).
+
+Phần máy làm được thì máy đã làm: sự có mặt của phiên được ghi tự động, nên chồng lấn giữa hai
+phiên trên cùng máy được **phát hiện mà không ai phải gõ `/claim`**. `/claim` giữ lại đúng phần
+cần phán đoán — đọc nhật ký cũ, đặt chỗ vùng nóng cho cả đội, quyết phạm vi.
+
+> Vì sao mục này tồn tại: đo 2026-08-05, `/claim` và `/handoff` **chưa chạy lần nào** dù dòng
+> nhắc chúng được in ở mọi phiên. Một nhắc nhở nói mọi thứ ở mọi lúc thì không nói gì ở lúc nào.
 
 ## Khi bạn học được điều gì
 

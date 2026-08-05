@@ -9,7 +9,7 @@
  * Chạy trong CI trên cả 3 OS (.github/workflows/harness-parity.yml).
  */
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, rmSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, rmSync, readdirSync, cpSync } from 'node:fs';
 import { join } from 'node:path';
 import { repoPath, report, exists, git, tmpdir, repoRole, readJson } from './lib/harness.mjs';
 
@@ -353,6 +353,95 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   else ok.push(`gates.mjs${' '.repeat(19)} ${label}`);
 }
 
+// ─── gen-clean: CHẨN ĐOÁN phải đúng, không chỉ MÀU phải đúng ─────────────────
+//
+// Gate này exit 2 được, nên theo luật của repo nó phải có test. Nhưng thứ đáng test không
+// phải màu — mà là CÂU nó nói. Đo ở `sakubun`, HAI lần độc lập (fixlog 08-04, lên qua
+// `upstream`): cây bẩn vì một đợt nâng harness nằm dở, rồi vì một session song song đang áp
+// template. Cả hai lần gate nói *"bạn quên chạy gen"*, và cả hai lần người dùng đi tìm ở
+// generator — chỗ không có gì sai. Một chẩn đoán sai đắt hơn không chẩn đoán.
+//
+// HỘP ĐEN trên một cây TỐI THIỂU, không phải trên repo này: `REPO_ROOT` suy ra từ vị trí của
+// `lib/harness.mjs`, nên chỉ cần copy `tooling/` sang thư mục tạm là gates.mjs ở đó coi thư
+// mục tạm là repo. Cách này còn cho phép làm cây BẨN thật mà không chạm repo thật.
+{
+  const work = join(tmpdir(), `harness-genclean-${process.pid}`);
+  const gsh = (...a) => spawnSync('git', a, { cwd: work, encoding: 'utf8' });
+  try {
+    rmSync(work, { recursive: true, force: true });
+    cpSync(repoPath('tooling'), join(work, 'tooling'), { recursive: true });
+    writeFileSync(join(work, 'nguon.txt'), 'nguồn\n', 'utf8');
+    writeFileSync(join(work, 'sinh-ra.txt'), 'output cũ\n', 'utf8');
+    gsh('init', '-q', '.');
+    gsh('config', 'user.email', 'test@harness'); gsh('config', 'user.name', 'harness test');
+    gsh('add', '-A'); gsh('commit', '-q', '-m', 'nền');
+
+    const cfg = (gen) => {
+      const p = join(work, `cfg-${gen.length}.json`);
+      writeFileSync(p, JSON.stringify({
+        $comment: 'FIXTURE của test gen-clean trong tooling/test-hooks.mjs',
+        project: { id: 'fixture-genclean', dri: '@fixture', integrationBranch: 'origin/main', issuePrefixes: ['FIX'], platforms: ['core'] },
+        commands: { gen }, paths: { generated: ['sinh-ra.txt'], harness: ['tooling/**'] },
+        limits: {}, gates: { stop: ['gen-clean'] }, budget: {}, knowledge: {}, evals: { command: '' },
+      }, null, 2) + '\n', 'utf8');
+      return p;
+    };
+    const runStop = (gen, extraEnv = {}) => {
+      const r = spawnSync(process.execPath, [join(work, 'tooling', 'gates.mjs'), '--stage', 'stop'], {
+        encoding: 'utf8', cwd: work,
+        env: { ...process.env, ...TEST_ENV, CI: '', HARNESS_CONFIG: cfg(gen), ...extraEnv },
+      });
+      return { status: r.status ?? -1, out: (r.stdout ?? '') + '\n' + (r.stderr ?? '') };
+    };
+
+    // ① Cây bẩn TỪ TRƯỚC, `gen` không đổi gì ⇒ mục đích của gate ĐẠT.
+    writeFileSync(join(work, 'nguon.txt'), 'nguồn đã sửa\n', 'utf8');
+    const a = runStop('node -e "process.exit(0)"');
+    if (a.status !== OK) {
+      fail.push(`gates.mjs gen-clean         cây bẩn từ trước mà gen không đổi gì → exit=${a.status}, mong đợi 0`);
+    // Neo vào câu KHẲNG ĐỊNH SAI (`bạn quên chạy gen`), không vào cụm từ `quên chạy gen`:
+    // chính dòng `note` mới có chứa cụm đó dưới dạng PHỦ ĐỊNH (`KHÔNG phải "quên chạy gen"`),
+    // nên neo vào cụm từ làm test bắt đúng bản sửa của mình. Bắt được ngay khi viết, và nó là
+    // ví dụ nhỏ của cùng bài học đã có trong repo: neo vào CODE/khẳng định, đừng neo vào chữ.
+    } else if (/bạn quên chạy gen/.test(a.out)) {
+      fail.push('gates.mjs gen-clean         VẪN khẳng định "bạn quên chạy gen" khi gen không đổi gì — chẩn đoán bịa ra, đúng ca sakubun gặp 2 lần');
+    } else if (!/bẩn TỪ TRƯỚC/.test(a.out)) {
+      fail.push('gates.mjs gen-clean         không nói cây đã bẩn từ trước — im lặng ở đây là mời một chẩn đoán sai lần sau');
+    } else {
+      ok.push(`gates.mjs${' '.repeat(19)} cây bẩn TỪ TRƯỚC + gen không đổi gì → PASS và nói ĐÚNG nguyên nhân`);
+    }
+
+    // ② `gen` LÀM BẨN thêm một file khác ⇒ đây mới là "quên chạy gen", và phải ĐỎ.
+    // Cây vẫn còn `nguon.txt` bẩn từ ① — nên case này chứng minh phép so là DELTA, không
+    // phải phép đếm: nếu đếm thì ① cũng đã đỏ.
+    const b = runStop('node -e "require(\'fs\').writeFileSync(\'sinh-ra.txt\',\'output mới\\n\')"');
+    if (b.status !== BLOCK) {
+      fail.push(`gates.mjs gen-clean         gen LÀM ĐỔI file sinh ra → exit=${b.status}, mong đợi 2 (đây đúng là "quên chạy gen")`);
+    } else if (!/quên chạy gen/.test(b.out) || !/sinh-ra\.txt/.test(b.out)) {
+      fail.push('gates.mjs gen-clean         đỏ nhưng KHÔNG nêu tên file mà gen đã đổi — agent bị chặn mà phải đoán');
+    } else {
+      ok.push(`gates.mjs${' '.repeat(19)} gen ĐỔI file sinh ra → ĐỎ, nêu tên file (phép so là DELTA, không phải đếm)`);
+    }
+
+    // ③ Phiên KHÔNG người, 0 gate bị bỏ qua, chỉ có cảnh báo ⇒ KHÔNG được fail-đóng.
+    // Nhánh fail-đóng khoá vào "gate bị BỎ QUA". Bản trước kiểm `warn.length`, nên một
+    // phiên không người chỉ CHẬM (hoặc chỉ có `note` của ①) vẫn exit 2 kèm thông báo nói
+    // rằng gate bị bỏ qua — fail-đóng bắn nhầm, và nó dạy người ta đặt
+    // HARNESS_ALLOW_SKIPPED_GATES=1 vì một lý do không liên quan.
+    writeFileSync(join(work, 'nguon.txt'), 'bẩn lần nữa\n', 'utf8');
+    const c = runStop('node -e "process.exit(0)"', { CI: '1' });
+    if (c.status !== OK) {
+      fail.push(`gates.mjs fail-đóng         phiên không người + 0 gate bỏ qua + chỉ cảnh báo → exit=${c.status}, mong đợi 0`);
+    } else if (/gate bị BỎ QUA/.test(c.out)) {
+      fail.push('gates.mjs fail-đóng         nói "gate bị BỎ QUA" trong khi mọi gate đều CHẠY — fail-đóng khoá vào warn thay vì vào số gate bỏ qua');
+    } else {
+      ok.push(`gates.mjs${' '.repeat(19)} phiên không người + cảnh báo mà 0 gate bỏ qua → KHÔNG fail-đóng`);
+    }
+  } finally {
+    try { rmSync(work, { recursive: true, force: true }); } catch {}
+  }
+}
+
 // ─── LỚP KINH TẾ: mẩu bánh mì StopFailure ────────────────────────────────────
 // Vendor BỎ QUA output và exit code của StopFailure, nên nhánh đó không thể assert
 // bằng bộ ba (stdout, stderr, exit). Thứ phải assert là HIỆU QUẢ của nó: cảnh báo về
@@ -470,6 +559,93 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   }
 }
 
+// ─── NUL trong file nguồn: kênh REVIEW là kênh không máy nào đo ──────────────
+//
+// 2026-08-05 một byte NUL đi vào `tooling/harness-doctor.mjs`, qua PR, qua 7 job CI trên 3 OS,
+// ra tag v2.9.0, rồi sang cả ba repo tiêu thụ. `node --check` xanh (NUL nằm trong template
+// literal), mọi suite xanh, `apply-to --audit` xanh. Thứ nó phá: `git diff` in "Binary files
+// differ" ⇒ file KHÔNG REVIEW ĐƯỢC, và `grep`/`rg` bỏ qua nó ⇒ file VÔ HÌNH với mọi lần tìm
+// code. Phát hiện được chỉ vì `rg` trả rỗng bất thường trên một file 650 dòng.
+//
+// Test này khẳng định `precommit-scan --all` — lưới cuối ở CI — CÓ bắt ca đó. Dùng file TẠM
+// được `git add -N` (intent-to-add) thì không cần: `--all` đọc `git ls-files`, nên ta khẳng
+// định trực tiếp trên cây hiện tại VÀ trên một mutant.
+{
+  const r = spawnSync(process.execPath, [repoPath('tooling', 'precommit-scan.mjs'), '--all'], {
+    encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, ...TEST_ENV },
+  });
+  const clean = (r.status ?? 1) === 0;
+  // MUTANT: chèn NUL thật vào một bản sao rồi kiểm bằng CHÍNH biểu thức mà guard dùng.
+  // Không ghi vào cây thật — `--all` đọc `git ls-files`, nên một file tạm sẽ không được xem;
+  // thứ cần chứng minh là ĐIỀU KIỆN, và điều kiện đó phải đỏ được.
+  const SOURCE_EXT = /\.(mjs|cjs|js|jsx|ts|tsx|md|json|ya?ml|toml|css|scss|html|sql|sh|ps1|txt)$/i;
+  // NUL xay dung bang String.fromCharCode(0), KHONG viet escape truc tiep vao nguon:
+  // chinh cach viet do la nguyen nhan cua ca bug nay (mot cong cu ghi file co the
+  // chuyen `\u0000` thanh BYTE that, va no da lam dung vay hai lan trong mot gio).
+  const NUL_CHAR = String.fromCharCode(0);
+  const mutantCaught = Boolean('x.mjs'.match(SOURCE_EXT)) && ('a' + NUL_CHAR + 'b').includes(NUL_CHAR);
+  const binaryIgnored = !'logo.png'.match(SOURCE_EXT);
+  if (!clean) fail.push(`precommit-scan --all  →  cây hiện tại có file nguồn chứa NUL: ${(r.stdout || '').split('\n').find(l => /NUL/.test(l)) ?? 'xem output'}`);
+  else if (!mutantCaught) fail.push('precommit-scan         điều kiện bắt NUL KHÔNG đỏ được với một file .mjs chứa NUL — guard là trang trí');
+  else if (!binaryIgnored) fail.push('precommit-scan         guard NUL bắt cả file BINARY THẬT (.png) — nó sẽ đỏ ở mọi repo có ảnh');
+  else ok.push(`precommit-scan.mjs${' '.repeat(10)} 0 file nguồn chứa NUL; điều kiện đỏ được với .mjs và KHÔNG bắt .png`);
+}
+
+// ─── rituals.mjs: BA GIÁ TRỊ, và "tới hạn" phải kèm SỐ ĐO ────────────────────
+//
+// Khẳng định vào `evaluate()` — hàm THUẦN — bằng trạng thái DỰNG SẴN. Không dựng repo giả:
+// trạng thái git ở project đích là của HỌ, và một suite đọc nó sẽ đỏ theo cách không ai sửa
+// được (knowledge/lessons/0003). Đây cũng là lý do `rituals.mjs` tách `collect()` khỏi
+// `evaluate()` ngay từ đầu.
+{
+  const { evaluate } = await import('./rituals.mjs');
+  const base = {
+    issue: '', progressExists: false, commitsSinceProgress: 0, ahead: 0, integrationBranch: 'origin/main',
+    fixlogTotal: 0, fixlogRepeated: 0, learningsNewerThanLessons: 0,
+    skillCount: 5, maxSkills: 12, worktrees: 1, maxWorktrees: 4, pendingPacks: 0,
+  };
+  const get = (state, id) => evaluate({ ...base, ...state }).find(r => r.id === id);
+
+  // ① Trạng thái sạch ⇒ không có gì tới hạn. Một bảng lúc nào cũng đỏ thì bị tắt tiếng.
+  const clean = evaluate(base);
+  if (clean.some(r => r.state === 'due')) {
+    fail.push(`rituals.mjs${' '.repeat(17)} trạng thái sạch mà vẫn có ${clean.filter(r => r.state === 'due').length} mục tới hạn: ${clean.filter(r => r.state === 'due').map(r => r.id).join(' · ')}`);
+  } else if (clean.some(r => r.state === '?')) {
+    fail.push('rituals.mjs                 trạng thái ĐỦ mà vẫn có mục `?` — `?` phải dành cho KHÔNG ĐO ĐƯỢC');
+  } else {
+    ok.push(`rituals.mjs${' '.repeat(17)} trạng thái sạch ⇒ 0 mục tới hạn, 0 mục \`?\` (${clean.length} nghi thức)`);
+  }
+
+  // ② `null` là KHÔNG ĐO ĐƯỢC ⇒ `?`, KHÔNG được thành `ok`. Đây là chỗ một bảng điều khiển
+  //    hay nói dối theo hướng dễ chịu: chưa nhìn thì báo ổn.
+  const nulls = [['ahead', 'pre-merge'], ['fixlogTotal', 'harness-retro'], ['skillCount', 'entropy-sweep'],
+    ['worktrees', 'wt'], ['pendingPacks', 'accept-packs'], ['learningsNewerThanLessons', 'knowledge-promote']];
+  const wrong = nulls.filter(([k, id]) => get({ [k]: null }, id)?.state !== '?');
+  if (wrong.length) fail.push(`rituals.mjs${' '.repeat(17)} ${wrong.length} nghi thức coi \`null\` (không đo được) là trạng thái BÌNH THƯỜNG: ${wrong.map(w => w[1]).join(' · ')}`);
+  else ok.push(`rituals.mjs${' '.repeat(17)} \`null\` ⇒ \`?\` ở cả ${nulls.length} nghi thức đo bằng số (không gộp "chưa nhìn" vào "ổn")`);
+
+  // ③ Nhánh không suy ra được issue ⇒ `?`, không phải "ok, không có gì để nhận".
+  if (get({ issue: null }, 'claim')?.state !== '?') {
+    fail.push('rituals.mjs                 nhánh không suy ra được issue mà /claim vẫn báo `ok` — im lặng đúng lúc không biết');
+  } else ok.push(`rituals.mjs${' '.repeat(17)} nhánh không theo quy ước ⇒ /claim là \`?\`, không phải \`ok\``);
+
+  // ④ Mọi mục TỚI HẠN phải kèm SỐ ĐO. Một dòng "nên chạy X" không có số là lời khuyên, và
+  //    lời khuyên chung chính là thứ dòng nhắc tĩnh cũ đã làm — trong 100% số phiên, vô hiệu.
+  const dues = evaluate({ ...base, issue: 'SKB-1', ahead: 3, fixlogRepeated: 2, fixlogTotal: 7,
+    learningsNewerThanLessons: 1, skillCount: 13, worktrees: 9, pendingPacks: 3 }).filter(r => r.state === 'due');
+  const noNumber = dues.filter(r => !/\d/.test(r.why));
+  if (dues.length < 6) fail.push(`rituals.mjs${' '.repeat(17)} trạng thái đầy vi phạm mà chỉ ${dues.length} mục tới hạn — có nghi thức không phản ứng`);
+  else if (noNumber.length) fail.push(`rituals.mjs${' '.repeat(17)} ${noNumber.length} mục tới hạn KHÔNG có số đo trong \`why\`: ${noNumber.map(r => r.id).join(' · ')}`);
+  else ok.push(`rituals.mjs${' '.repeat(17)} ${dues.length} mục tới hạn, mục nào cũng kèm SỐ ĐO trong \`why\``);
+
+  // ⑤ MUTANT: một `check` throw thì phải thành `?`, KHÔNG được làm sập cả bảng. `rituals` được
+  //    gọi từ SessionStart — một exception ở đó làm mất TOÀN BỘ định hướng đầu phiên.
+  const broken = evaluate(null);
+  if (!Array.isArray(broken) || broken.length !== clean.length || !broken.every(r => r.state === '?')) {
+    fail.push('rituals.mjs                 trạng thái RỖNG làm bảng sập hoặc cho ra trạng thái khác `?` — SessionStart sẽ mất toàn bộ định hướng');
+  } else ok.push(`rituals.mjs${' '.repeat(17)} MUTANT: state rỗng ⇒ ${broken.length} mục \`?\`, bảng KHÔNG sập`);
+}
+
 // ─── ③④ MUTANT ───────────────────────────────────────────────────────────────
 // Mỗi mutant tiêu vào PHẠM VI của check trước, không phải logic của nó.
 const MUTANTS = [
@@ -567,7 +743,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 78;
+const RATCHET = 87;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

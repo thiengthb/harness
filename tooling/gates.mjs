@@ -28,7 +28,7 @@
  * Gate chưa khai báo lệnh bị BỎ QUA và NÓI RA. Nó không phải pass, không phải fail:
  * nó là "harness không chạy". Một gate xanh mà một nửa bị bỏ qua thì KHÔNG phải xanh.
  */
-import { config, runConfigured, git, spill, telemetry, report, unattended, exists, repoPath } from './lib/harness.mjs';
+import { config, runConfigured, git, spill, telemetry, report, unattended, exists, repoPath, matchAny, pathsFor } from './lib/harness.mjs';
 
 const argv = process.argv.slice(2);
 const arg = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
@@ -42,13 +42,45 @@ const COMPOSITE = {
   // im lặng nhất trong repo có code sinh: build vẫn xanh trên máy bạn vì output cũ
   // còn nằm đó, và vỡ ở CI hoặc ở máy người tiếp theo.
   'gen-clean': () => {
+    // ĐO CÂY TRƯỚC KHI CHẠY GEN. Bản trước chỉ đo SAU, nên mọi cây bẩn đều bị gán một
+    // nguyên nhân duy nhất: *"bạn quên chạy gen sau khi sửa nguồn"*. Câu đó đúng ở đúng
+    // MỘT ca, và sai ở mọi ca còn lại.
+    //
+    // Đo được ở `sakubun`, HAI lần độc lập trong hai ngày (fixlog 08-04, đi lên qua
+    // `upstream`): lần đầu cây bẩn vì một đợt nâng harness 2.7.5→2.7.9 nằm dở, lần sau vì
+    // một SESSION SONG SONG đang áp template 2.8.x lúc 04:13:45. Cả hai lần gate nói người
+    // dùng quên chạy `gen`, và cả hai lần họ đi tìm ở generator — chỗ không có gì sai.
+    //
+    // Một chẩn đoán sai đắt hơn không chẩn đoán: nó gửi người ta đi sai hướng với sự tự tin
+    // của một cái máy. Nên phép so đúng là DELTA — chỉ những file mà CHÍNH `gen` làm bẩn
+    // mới chứng minh được "quên chạy gen".
+    const dirtySet = () => new Set(
+      git(['status', '--porcelain', '--untracked-files=no']).stdout.split('\n').filter(Boolean)
+        .map(l => l.slice(3).trim()));
+    const before = dirtySet();
+
     const gen = runConfigured('gen', { capture: true });
     if (gen.skipped) return { skipped: true, why: 'chưa khai báo commands.gen' };
     if (gen.status !== 0) return { status: 1, detail: `lệnh gen fail (${spill('gen', gen.stdout + gen.stderr)})` };
-    const dirty = git(['status', '--porcelain', '--untracked-files=no']).stdout.split('\n').filter(Boolean);
-    return dirty.length
-      ? { status: 1, detail: `chạy gen xong git vẫn dirty (${dirty.length} file) → bạn quên chạy gen sau khi sửa nguồn` }
-      : { status: 0 };
+
+    const after = dirtySet();
+    const byGen = [...after].filter(f => !before.has(f));
+    if (byGen.length) {
+      return { status: 1, detail: `chạy gen xong ${byGen.length} file ĐỔI: ${byGen.slice(0, 5).join(' · ')}`
+        + `${byGen.length > 5 ? ` … +${byGen.length - 5}` : ''} → bạn quên chạy gen sau khi sửa nguồn` };
+    }
+    if (!before.size) return { status: 0 };
+
+    // `gen` không đổi gì ⇒ output sinh ĐANG đúng, tức mục đích của gate này ĐẠT. Cây bẩn
+    // vì việc khác, và việc khác không phải phạm vi của gate này — nhưng im lặng thì lần
+    // sau lại là một chẩn đoán bịa ra. Nên: pass, kèm câu NÓI ĐÚNG cái đang thấy.
+    const layer = (f) => (matchAny(f, pathsFor('harness')) ? 'harness' : matchAny(f, pathsFor('generated')) ? 'generated' : 'khác');
+    const groups = {};
+    for (const f of before) (groups[layer(f)] ??= []).push(f);
+    const desc = Object.entries(groups).map(([k, v]) => `${v.length} ${k}`).join(' · ');
+    return { status: 0, note: `gen KHÔNG đổi gì (output sinh đang đúng) nhưng cây đã bẩn TỪ TRƯỚC: ${desc}.`
+      + (groups.harness ? ' Lớp `harness` bẩn thường là một đợt nâng cấp nằm dở, hoặc một SESSION SONG SONG đang áp template — kiểm `git log --oneline -3` và `git status` trước khi kết luận.' : '')
+      + ' Đây KHÔNG phải "quên chạy gen".' };
   },
 };
 
@@ -62,7 +94,7 @@ function runGate(name) {
     const detail = r.detail ?? `FAIL → ${spill(name, (r.stdout || '') + '\n' + (r.stderr || ''))}`;
     return { name, state: 'fail', ms, detail };
   }
-  return { name, state: 'pass', ms };
+  return { name, state: 'pass', ms, note: r.note };
 }
 
 // ── --list : gate nào đang THẬT SỰ chạy ──────────────────────────────────────
@@ -104,13 +136,19 @@ const gates = config().gates?.[stage] ?? [];
 if (!gates.length) process.exit(0);
 
 const ok = [], warn = [], fail = [];
+// ĐẾM RIÊNG số gate BỊ BỎ QUA. Nhánh fail-đóng ở cuối file khoá vào "gate bị bỏ qua", nhưng
+// bản trước kiểm `warn.length` — hai thứ khác nhau, và chúng đã lệch: cảnh báo VƯỢT NGÂN SÁCH
+// độ trễ cũng đi vào `warn`, nên một phiên không người chỉ CHẬM (mọi gate PASS) vẫn exit 2 với
+// thông báo nói rằng gate bị bỏ qua. Đó là fail-đóng bắn nhầm — và nó dạy đúng thứ tệ nhất:
+// đặt `HARNESS_ALLOW_SKIPPED_GATES=1` để cho qua, tức tắt lớp bảo vệ vì một lý do không liên quan.
+let skipped = 0;
 let totalMs = 0;
 for (const name of gates) {
   const r = runGate(name);
   totalMs += r.ms;
-  if (r.state === 'skip') warn.push(`${name}: ${r.why} — BỎ QUA (đây không phải pass)`);
+  if (r.state === 'skip') { warn.push(`${name}: ${r.why} — BỎ QUA (đây không phải pass)`); skipped++; }
   else if (r.state === 'fail') { fail.push(`${name}: ${r.detail}`); telemetry('gate-fails', [`gates:${stage}`, name]); }
-  else ok.push(`${name} (${r.ms}ms)`);
+  else { ok.push(`${name} (${r.ms}ms)`); if (r.note) warn.push(`${name}: ${r.note}`); }
 }
 
 const budget = STAGE_BUDGET_MS[stage] ?? Infinity;
@@ -126,8 +164,8 @@ if (fail.length) {
 
 // Phiên KHÔNG có người ngồi xem thì một gate bị bỏ qua là rủi ro thật, không phải
 // một dòng cảnh báo ai đó sẽ đọc. Không ai đọc. Fail đóng, đừng fail mở.
-if (warn.length && unattended() && process.env.HARNESS_ALLOW_SKIPPED_GATES !== '1') {
-  console.error(`\n⛔ Phiên KHÔNG có người ngồi xem và ${warn.length} gate bị BỎ QUA.`);
+if (skipped && unattended() && process.env.HARNESS_ALLOW_SKIPPED_GATES !== '1') {
+  console.error(`\n⛔ Phiên KHÔNG có người ngồi xem và ${skipped} gate bị BỎ QUA.`);
   console.error('   Ở phiên có người, dòng cảnh báo là đủ — có người đọc nó. Ở đây thì không.');
   console.error('   Khai đủ lệnh trong harness.config.json, hoặc đặt HARNESS_ALLOW_SKIPPED_GATES=1 nếu đây là chủ ý.');
   process.exit(2);

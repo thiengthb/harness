@@ -11,6 +11,111 @@
 
 ---
 
+## 2.10.0 — 2026-08-05
+
+**minor.** Năng lực của harness **tự hiện ra khi tới hạn**, thay vì chờ người nhớ. Cộng một
+byte NUL đã ship ở 2.9.0 và một chẩn đoán sai do consumer báo lên.
+
+### Vấn đề: một năng lực phải NHỚ mới dùng được thì nằm im
+
+Đo trên repo này: `reservations/` chỉ có `README.md`, `docs/progress/` chỉ có hai file khuôn —
+`/claim` và `/handoff` **chưa chạy lần nào** kể từ khi harness ra đời, dù `session-start.mjs`
+in đúng dòng *"bắt đầu bằng /claim · kết thúc bằng /handoff"* ở **mọi** phiên.
+
+Dòng đó không sai. Nó nói **mọi thứ ở mọi lúc**, nên nó không nói gì ở lúc nào cả. Cùng lớp
+với `harness-doctor` in *"5/5 điểm mở rộng native còn TRỐNG"* suốt nhiều version mà không ai
+đóng, và với 22 nhóm fixlog trên 4 repo mà 0 bài học được promote.
+
+Và cái giá không phải lý thuyết: cùng ngày, hai phiên song song commit lên một nhánh ở
+`sakubun` và một `git add -A` cuốn theo file sản phẩm của phiên kia.
+
+### `tooling/rituals.mjs` — suy ra việc tới hạn từ TRẠNG THÁI
+
+```
+node tooling/rituals.mjs         chỉ việc ĐANG tới hạn (SessionStart gọi bản này)
+node tooling/rituals.mjs --all   mọi năng lực + trạng thái + VÌ SAO
+```
+
+Ba luật:
+
+1. **Tự động trước, nhắc sau.** `session-start.mjs` ghi sự có mặt của phiên **tự động** ⇒
+   chồng lấn hai phiên trên cùng máy được phát hiện **không cần ai gõ `/claim`**. `/claim` giữ
+   phần cần phán đoán (đọc nhật ký cũ, đặt chỗ cho cả đội, quyết phạm vi).
+   Liveness bằng `process.kill(ppid, 0)`, **không** bằng TTL: bản đầu dùng TTL 120 phút và
+   cảnh báo **sai** ngay khi thử — khởi động lại phiên trong cửa sổ đó thì bản ghi cũ vẫn
+   "còn tươi". Một cảnh báo sai mỗi lần restart là đúng loại nhiễu tính năng này diệt.
+   Ghi vào `stateDir()` (không commit), **không** vào `reservations/`: một hook tự ghi file
+   được commit sẽ làm cây bẩn ở mọi phiên.
+2. **Nhắc phải có SỐ ĐO.** *"Nên chạy /harness-retro"* là lời khuyên; *"3 nhóm fixlog đã ≥2
+   lần"* là một việc. Test khẳng định **mọi** mục tới hạn có chữ số trong `why`.
+3. **Ba giá trị.** `due` / `ok` / `?`. `null` (không đo được) ⇒ `?` ở cả 6 nghi thức đo bằng
+   số — gộp "chưa nhìn" vào "ổn" là cách một bảng điều khiển nói dối theo hướng dễ chịu.
+
+`evaluate()` là **hàm thuần** tách khỏi `collect()`, nên test khẳng định logic bằng trạng thái
+dựng sẵn thay vì dựng repo giả — điều kiện để suite chạy được ở project đích (`lessons/0003`).
+Một `check` throw ⇒ `?`, **không** làm sập bảng: nó được gọi từ SessionStart.
+
+### Byte NUL đã ship ở 2.9.0 — hỏng theo cách mọi cái máy nói "ổn"
+
+Một separator viết thành **byte NUL thật** trong `tooling/harness-doctor.mjs` đi qua PR #27,
+qua **7 job CI trên 3 OS**, ra tag **v2.9.0**, rồi sang **cả ba repo tiêu thụ**.
+
+| Lớp kiểm | Kết quả |
+|---|---|
+| `node --check` | **xanh** — NUL nằm trong template literal, JS hợp lệ |
+| `test-hooks` · `test-migrations` · `entropy-scan` · `apply-to --audit` | **xanh** |
+| `precommit-scan` | **xanh** — dòng `includes(NUL) → continue` coi nó là "binary, bỏ qua" |
+
+Thứ nó phá là kênh **không cái máy nào đo**: `git diff` in *"Binary files differ"* ⇒ file
+**không review được**; `grep`/`rg` bỏ qua ⇒ file **vô hình** với mọi lần tìm code. Phát hiện
+được chỉ vì `rg` trả rỗng bất thường trên một file 650 dòng.
+
+Nay `precommit-scan` **FAIL** khi file có **đuôi nguồn** chứa NUL (phân biệt bằng ĐUÔI FILE,
+không bằng nội dung — *"trông như binary"* chính là triệu chứng). Chạy cả ở pre-commit và ở CI
+qua `--all`. Guard bắt lại tôi **lần thứ hai trong cùng một giờ**, khi chính bản vá viết một
+NUL nữa vào `test-hooks.mjs` — nên nó đã được chứng minh bằng hai ca thật, không phải bằng
+fixture.
+
+### `gen-clean` thôi chẩn đoán sai — 2 lần độc lập, do consumer báo lên
+
+`sakubun` ghi fixlog **hai lần trong hai ngày**: cây bẩn vì một đợt nâng harness nằm dở, rồi
+vì một session song song đang áp template. Cả hai lần gate nói *"bạn quên chạy gen sau khi sửa
+nguồn"*, và cả hai lần người dùng đi tìm ở generator — chỗ không có gì sai. **Một chẩn đoán
+sai đắt hơn không chẩn đoán:** nó gửi người ta đi sai hướng với sự tự tin của một cái máy.
+
+Nay gate đo cây **trước** khi chạy `gen` và chỉ khẳng định *"quên chạy gen"* cho những file mà
+**chính `gen`** làm bẩn (phép **DELTA**, không phải phép đếm). Cây bẩn từ trước ⇒ **PASS** kèm
+phân loại lớp (`harness` / `generated` / `khác`) và một câu nói rõ *đây KHÔNG phải "quên chạy
+gen"*. Ba test hộp đen trên một cây tối thiểu, gồm ca chứng minh phép so là delta.
+
+### Sổ quyết định của vòng học chưa từng được commit
+
+`accept.mjs` ghi `DECISIONS.log` vào **`knowledge/incoming/`** — thư mục nằm trong
+`REQUIRED_IGNORE` (đúng: pack là snapshot, `upstream --apply` sinh lại mỗi lần). Nên sổ thừa
+hưởng luôn cái ignore. Đo: `git ls-files knowledge/incoming/DECISIONS.log` → **0**.
+
+Toàn bộ lịch sử MERGE / ACCEPT / RETURN / REJECT của vòng học chỉ tồn tại trên **một máy**,
+không đi qua review, và mất khi đổi máy. Sổ đó là thứ trả lời *"pack này đã bị từ chối chưa, vì
+sao?"* — không trả lời được thì cùng một pack được duyệt lại mãi, tức **bước quyết định của
+vòng học không có bộ nhớ**.
+
+Không sửa được bằng `!knowledge/incoming/DECISIONS.log`: git **không** re-include được file mà
+thư mục cha đã bị loại — cùng phép đo sinh ra `REQUIRED_UNIGNORE` ở 2.5.0. Một dòng `!` như vậy
+trông như đã sửa và không sửa gì cả. Nên sổ **đổi chỗ**: `knowledge/DECISIONS.log`, được commit.
+`harness-migrations/009` chuyển sổ cũ sang và **gộp** thay vì ghi đè. Nó nằm trong `IGNORE` của
+`apply-to` — ship lịch sử quyết định của repo này sang repo khác thì bên nhận đọc như thể mình
+đã từ chối những thứ chưa từng thấy.
+
+### Và một bug fail-đóng lộ ra khi thêm kênh `note`
+
+Nhánh fail-đóng cho phiên không người khoá vào `warn.length`, nhưng **ý** nó là *"gate bị BỎ
+QUA"*. Hai thứ đó đã lệch: cảnh báo **vượt ngân sách độ trễ** cũng vào `warn`, nên một phiên
+không người chỉ **chậm** (mọi gate PASS) vẫn `exit 2` kèm thông báo nói rằng gate bị bỏ qua —
+và nó dạy đúng thứ tệ nhất: đặt `HARNESS_ALLOW_SKIPPED_GATES=1` vì một lý do không liên quan.
+Nay khoá vào số gate bị bỏ qua, có test.
+
+`RATCHET` 78 → **87**. Kiểm ở cả hai vai: template 87/87 · consumer 86/86 + 1 n/a.
+
 ## 2.9.0 — 2026-08-05
 
 **minor.** Ba khoảng trống xác minh bị đóng. Không đổi hành vi runtime nào.

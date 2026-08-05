@@ -182,7 +182,7 @@ template là đường supply-chain vào **mọi** project khác.
 Nhưng "chờ người duyệt" mà không có hạn thì thành "không bao giờ", và `incoming/`
 tích thành bãi rác ai cũng tưởng là backlog. `entropy-scan.mjs` nhắc khi một pack
 chờ hơn 30 ngày; `accept.mjs --reject "lý do"` ghi quyết định BỎ vào
-`knowledge/incoming/DECISIONS.log` để lần sau pack đó lại đến bạn không duyệt lại
+`knowledge/DECISIONS.log` (được commit — `incoming/` thì không) để lần sau pack đó lại đến bạn không duyệt lại
 cùng một thứ.
 
 Khi có ≥2 repo, tách `.harness-pack/` thành **một repo trung tâm** và cho các repo

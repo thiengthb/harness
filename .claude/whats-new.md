@@ -1,4 +1,4 @@
-<!-- version: 2026-08-05-g -->
+<!-- version: 2026-08-05-h -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,22 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-05 — Không cần nhớ nghi thức nữa (v2.10.0)
+
+SessionStart giờ in **việc nào đang tới hạn kèm số đo**, thay cho dòng nhắc tĩnh cũ. Xem hết
+mọi năng lực harness có (và trạng thái từng cái):
+
+```
+node tooling/rituals.mjs --all
+```
+
+Và sự có mặt của phiên được ghi **tự động**: hai phiên trên cùng một nhánh sẽ được cảnh báo
+mà không ai phải gõ `/claim`. Cảnh báo đó nói thẳng: **đừng `git add -A`** — nó cuốn theo file
+của phiên kia (xảy ra thật hôm nay).
+
+**Nếu bạn từng thấy `gen-clean` nói "bạn quên chạy gen"** mà không hiểu vì sao: nó đã sai. Nay
+nó chỉ nói câu đó cho file mà CHÍNH `gen` làm bẩn; cây bẩn vì lý do khác thì nó nói ra lý do.
 
 ## 2026-08-05 — LỚP KINH TẾ của bạn có thể chưa từng bật (v2.8.0)
 

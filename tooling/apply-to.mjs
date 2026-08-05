@@ -170,6 +170,12 @@ if (AUDIT) {
     // consumer nào, nên ship sổ sang đó là ship danh sách của người khác — và
     // `consumers.mjs` ở đó cũng tự bỏ qua (nó chỉ chạy khi repoRole() === 'template').
     /^knowledge\/consumers\.json$/,
+    // Sổ quyết định của vòng học là lịch sử CỦA REPO NÀY — pack nào đã MERGE/REJECT và vì sao.
+    // Ship nó sang project khác là ship quyết định của người khác, và tệ hơn: bên nhận sẽ đọc
+    // nó như thể mình đã từ chối những thứ mình chưa từng thấy. `accept.mjs` ở đó tự ghi sổ
+    // riêng. (Sổ này nằm NGOÀI `knowledge/incoming/` từ 2.10.0 — trong đó thì nó bị ignore và
+    // chưa từng được commit ở đâu.)
+    /^knowledge\/DECISIONS\.log$/,
     /^features\/example-feature\.json$/,              // ví dụ, không seed
     /^docs\/progress\/[A-Z]/,                         // nhật ký issue thật
     /^\.claude\/learnings\/(?!_TEMPLATE)/,            // learnings thật

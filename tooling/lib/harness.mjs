@@ -491,7 +491,7 @@ export const MECHANISM_PATHS = [
   'tooling/apply-to.mjs', 'tooling/upgrade.mjs', 'tooling/gates.mjs', 'tooling/setup.mjs',
   'tooling/fixlog.mjs', 'tooling/coactivity.mjs', 'tooling/harness-size.mjs',
   'tooling/capo-report.mjs', 'tooling/harness-doctor.mjs', 'tooling/doctor.mjs',
-  'tooling/entropy-scan.mjs',
+  'tooling/entropy-scan.mjs', 'tooling/rituals.mjs',
   'tooling/check-reservations.mjs', 'tooling/check-feature-integrity.mjs',
   'tooling/wt-clean.mjs', 'tooling/statusline.mjs', 'tooling/precommit-scan.mjs',
   '.githooks', 'evals/run.mjs', 'evals/fixtures',
