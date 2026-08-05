@@ -1,8 +1,13 @@
 {
   "$comment": "Bản rà Claude Code gần nhất. Nghi thức `claude-code-drift` so `reviewedVersion` với version đang chạy. Đừng sửa tay — dùng `node tooling/rituals.mjs --reviewed-claude-code \"<thấy gì>\"`.",
-  "reviewedVersion": "2.1.221",
-  "reviewedAt": "2026-08-05T07:31:47.073Z",
+  "reviewedVersion": "2.1.222",
+  "reviewedAt": "2026-08-05T22:55:41.038Z",
   "history": [
+    {
+      "version": "2.1.222",
+      "at": "2026-08-05T22:55:41.038Z",
+      "found": "2.1.222 (patch) rà 2026-08-06: KHÔNG có mục nào Claude Code ra sẵn làm thứ harness tự viết thành thừa — trả lời cho câu hỏi duy nhất của nghi thức là KHÔNG. Ba mục đổi NỀN mà harness đứng lên, đều theo hướng có lợi: (1) 'PreToolUse auto-allow hooks bypassing tool restrictions in background agent tasks' được vá — cả lớp gác của harness là PreToolUse, nên trước bản này guard có thể bị vòng qua trong tác vụ nền (summaries/compaction/renames); (2) worktree-isolated session + subagent không còn chạy được lệnh git phá huỷ lên main checkout — GIAO NHAU với dcg.mjs nhưng KHÔNG thay thế: dcg chặn ở mọi phiên kể cả chính main checkout, native chỉ cô lập phiên worktree, nên GIỮ dcg.mjs; (3) skill có disable-model-invocation giờ được bảo 'nhờ người chạy' thay vì tự diễn lại workflow — đúng chế độ hỏng của /harness-propose. Đã kiểm: repo không nhắc 'ultraplan' (bản này xoá feature đó) nên không có tham chiếu chết. Tập sự kiện hook trong binary 2.1.222 không đổi so với bản rà 2.1.221 (13 tên, 5 slot NATIVE_SLOTS vẫn đầy, bẫy WorktreeCreate/Remove vẫn đúng). Nguồn: CHANGELOG anthropics/claude-code + grep tên sự kiện trong bin/claude.exe đã cài."
+    },
     {
       "version": "2.1.221",
       "at": "2026-08-05T07:31:47.073Z",

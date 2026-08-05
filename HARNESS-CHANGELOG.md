@@ -66,6 +66,15 @@ xong. Doctor giờ đọc cả hai nguồn, và **không gộp chúng**:
 Đường dẫn thư mục là **một hằng số ở `lib`** (`TEST_TELEMETRY_DIR`), không phải chuỗi viết
 tay hai nơi, và có test chặn việc quay lại viết tay.
 
+**Và bằng chứng phải MỚI.** `tmpdir()` sống dai hơn một lần chạy, nên nếu chỉ đọc thư mục đó
+mà không hỏi *"dòng này từ bao giờ"*, thì một lần chạy suite **hôm qua** vẫn đọc là `suite ✓`
+hôm nay — kể cả khi hôm nay suite crash, bị gỡ khỏi danh sách check, hay ai đó đảo thứ tự hai
+bước. Đó lại đúng lớp lỗi mà cả mục này sinh ra để diệt, chỉ đổi chỗ đứng. `tallyLines()` chỉ
+đếm dòng sinh ra **sau mốc bắt đầu của chính tiến trình đang hỏi**, nên `suite ✓` có nghĩa hẹp
+và kiểm được: *hook này đã spawn thành công TRONG lần chạy này*. Mất bằng chứng thì tụt về `?`,
+không tụt thành một lời khẳng định sai. Dấu thời gian không đọc được cũng **không** được đếm —
+`?` không được cộng vào một con số.
+
 **Nó tìm ra ngay một cái thật:** `protect-feature-files.mjs` không để lại dòng nào ở **cả
 hai** nơi. Nhánh chặn `features/_index.json` — guard chống single-writer — gọi `block()`
 mà **không** gọi `telemetry('gate-fails')` trước đó, và `block()` không tự ghi sổ. Nó chặn
@@ -119,7 +128,7 @@ tên thì migration nhắc tên bịa nào cũng lọt.
 | `harness-doctor` → "Nên làm" | 19 | **4** (mọi mục còn lại đều hành động được) |
 | trong đó dương tính giả | 15 | **0** |
 | `rituals --all` → mục `?` | 1 (không đo được) | **0** — và lộ ra 1 việc thật |
-| `test-hooks.mjs` | sàn 101 | **106 khẳng định, sàn 106** (+5) |
+| `test-hooks.mjs` | sàn 101 | **108 khẳng định, sàn 108** (+7) |
 
 Không có file nào trong `.claude/hooks/**` bị sửa ở bản này.
 

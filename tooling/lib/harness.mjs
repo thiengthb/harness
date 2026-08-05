@@ -785,6 +785,39 @@ export const TEST_TELEMETRY_DIR = join(tmpdir(), 'harness-test-telemetry');
 export const TEST_STATE_DIR = join(tmpdir(), 'harness-test-state');
 
 /**
+ * Đếm dòng telemetry theo khoá — HÀM THUẦN trên TEXT, không đọc đĩa.
+ *
+ * `sinceMs` là thứ khiến hàm này đáng tách ra. `harness-doctor` dùng telemetry của suite làm
+ * bằng chứng "hook chạy được, không crash im lặng" — nhưng thư mục đó nằm ở `tmpdir()` và
+ * SỐNG DAI hơn một lần chạy. Không lọc theo thời gian thì một lần chạy suite hôm qua vẫn đọc
+ * là "suite ✓" hôm nay, kể cả khi hôm nay suite KHÔNG chạy, chạy hỏng, hay bị ai đó gỡ khỏi
+ * danh sách check. Tức là đúng lúc bằng chứng cần nói "tôi không biết" thì nó nói "ổn".
+ *
+ * Lọc theo mốc bắt đầu của tiến trình đang hỏi ⇒ "suite ✓" chỉ có nghĩa **hook này đã được
+ * spawn thành công TRONG chính lần chạy này**. Và nó hỏng về phía an toàn: đảo thứ tự các
+ * bước trong doctor thì bằng chứng biến mất thành `?`, không biến thành một lời khẳng định sai.
+ *
+ * Dấu thời gian không đọc được ⇒ KHÔNG đếm khi có `sinceMs`. "Không biết dòng này từ bao giờ"
+ * là `?`, và một `?` không được cộng vào một con số.
+ */
+export function tallyLines(text, { field = 2, sinceMs = 0 } = {}) {
+  const m = new Map();
+  for (const line of String(text).split('\n')) {
+    const p = line.split('|');
+    if (p.length < field + 2) continue;
+    if (sinceMs) {
+      const t = Date.parse(p[0]);
+      if (!Number.isFinite(t) || t < sinceMs) continue;
+    }
+    const key = p[field], sub = p[field + 1];
+    const e = m.get(key) ?? {};
+    e[sub] = (e[sub] ?? 0) + 1;
+    m.set(key, e);
+  }
+  return m;
+}
+
+/**
  * Ghi một dòng vào log telemetry. `kind` = tên file không đuôi.
  *
  * BẤT BIẾN: việc ghi chép KHÔNG BAO GIỜ được đổi kết quả của hook. Log không ghi

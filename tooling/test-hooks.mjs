@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, rmSync, readdirSync, cpSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines } from './lib/harness.mjs';
 
 const BLOCK = 2, OK = 0;
 
@@ -828,6 +828,35 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   } else if (/harness-test-telemetry/.test(docSrc)) {
     fail.push(`harness-doctor.mjs${' '.repeat(10)} viết tay chuỗi 'harness-test-telemetry' — dùng hằng số TEST_TELEMETRY_DIR ở lib, hai bản sao sẽ lệch`);
   } else ok.push(`harness-doctor.mjs${' '.repeat(10)} đọc telemetry của suite qua hằng số chung, không phải chuỗi viết tay`);
+
+  // ④ BẰNG CHỨNG CŨ KHÔNG PHẢI BẰNG CHỨNG. `TEST_TELEMETRY_DIR` nằm ở `tmpdir()` và sống dai
+  //    hơn một lần chạy. Không lọc theo thời gian thì một lần chạy suite HÔM QUA vẫn đọc là
+  //    "suite ✓" hôm nay — kể cả khi hôm nay suite crash hoặc bị gỡ khỏi danh sách check. Cái
+  //    gác im lặng lúc đó được báo là ổn, đúng lớp lỗi mà cả cơ chế này sinh ra để diệt.
+  const T0 = Date.parse('2026-08-06T10:00:00.000Z');
+  const LOG = [
+    '2026-08-05T09:00:00.000Z|p|cu-rich|pass|',        // trước mốc ⇒ KHÔNG tính
+    '2026-08-06T10:00:01.000Z|p|moi-chay|pass|',       // sau mốc  ⇒ tính
+    'khong-phai-ngay|p|mo-ho|pass|',                    // không đọc được ngày ⇒ KHÔNG tính
+    '',                                                 // dòng rỗng ⇒ bỏ qua, không ném
+  ].join('\n');
+  const fresh = tallyLines(LOG, { sinceMs: T0 });
+  const allTime = tallyLines(LOG, {});
+  const badT = [];
+  if (fresh.has('cu-rich')) badT.push('dòng CŨ hơn mốc vẫn được đếm là bằng chứng');
+  if (!fresh.has('moi-chay')) badT.push('dòng MỚI hơn mốc bị bỏ');
+  if (fresh.has('mo-ho')) badT.push('dấu thời gian không đọc được vẫn được đếm — `?` bị cộng vào một con số');
+  if (!allTime.has('cu-rich') || allTime.size !== 3) badT.push('không có `sinceMs` thì phải đếm TOÀN BỘ lịch sử (telemetry thật dùng đường này)');
+  if (badT.length) fail.push(`lib/harness.mjs${' '.repeat(13)} tallyLines() sai: ${badT.join(' · ')}`);
+  else ok.push(`lib/harness.mjs${' '.repeat(13)} tallyLines(): bằng chứng CŨ hơn lần chạy hiện tại KHÔNG được tính, dấu thời gian hỏng cũng không`);
+
+  // ⑤ Và mốc đó phải được chụp TRƯỚC khi doctor chạy các suite — nếu chụp sau, mọi dòng của
+  //    chính lần chạy này đều "cũ hơn mốc" và cột bằng chứng im vĩnh viễn.
+  const iRun = docSrc.indexOf('const RUN_STARTED');
+  const iSuite = docSrc.indexOf('for (const c of checks)');
+  if (iRun < 0 || iSuite < 0) fail.push(`harness-doctor.mjs${' '.repeat(10)} không tìm thấy \`RUN_STARTED\` hoặc vòng chạy suite — neo của check này đã trôi, sửa neo thay vì xoá check`);
+  else if (iRun > iSuite) fail.push(`harness-doctor.mjs${' '.repeat(10)} \`RUN_STARTED\` bị chụp SAU khi chạy suite ⇒ mọi dòng của lần chạy này đều bị coi là cũ, cột bằng chứng im vĩnh viễn`);
+  else ok.push(`harness-doctor.mjs${' '.repeat(10)} \`RUN_STARTED\` chụp trước khi chạy suite`);
 }
 
 // ─── ③④ MUTANT ───────────────────────────────────────────────────────────────
@@ -1059,7 +1088,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 106;
+const RATCHET = 108;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

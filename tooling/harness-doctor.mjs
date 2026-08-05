@@ -17,9 +17,12 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, TEST_TELEMETRY_DIR } from './lib/harness.mjs';
+import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, TEST_TELEMETRY_DIR } from './lib/harness.mjs';
 
 const QUICK = process.argv.includes('--quick');
+// PHẢI chụp TRƯỚC khi chạy các suite bên dưới: nó là mốc phân biệt "telemetry suite của lần
+// chạy NÀY" với "telemetry còn sót từ lần trước". Xem mục BẰNG CHỨNG THỨ HAI ở danh mục hook.
+const RUN_STARTED = Date.now();
 const cfg = config();
 
 const checks = [
@@ -416,18 +419,9 @@ for (const [event, groups] of Object.entries(settings.hooks ?? {})) {
 // im lặng (hỏng). `hookRan()` ghi nhánh cho-qua; `gate-fails` ghi nhánh chặn.
 // KHÔNG có dữ liệu là `?` (CHƯA ĐO ĐƯỢC), KHÔNG phải `0` — gộp hai cái đó là cách một
 // cái gác đang làm việc bị đề xuất xoá.
-const tally = (file, field = 2, dir = repoPath('.claude', 'telemetry')) => {
-  const m = new Map();
-  if (!exists(join(dir, file))) return m;
-  for (const line of readFileSync(join(dir, file), 'utf8').split('\n')) {
-    const p = line.split('|');
-    if (p.length < field + 2) continue;
-    const key = p[field], sub = p[field + 1];
-    const e = m.get(key) ?? {};
-    e[sub] = (e[sub] ?? 0) + 1;
-    m.set(key, e);
-  }
-  return m;
+const tally = (file, field = 2, dir = repoPath('.claude', 'telemetry'), sinceMs = 0) => {
+  if (!exists(join(dir, file))) return new Map();
+  return tallyLines(readFileSync(join(dir, file), 'utf8'), { field, sinceMs });
 };
 const hookRuns = tally('hook-runs.log');
 const hookBlocks = tally('gate-fails.log');
@@ -449,8 +443,15 @@ const hookBlocks = tally('gate-fails.log');
 //   · telemetry THẬT  → "hook đã GẶP CA CỦA NÓ trong việc thật"
 //   · telemetry SUITE → "hook CHẠY ĐƯỢC, không crash im lặng" (nhưng ca thật chưa tới)
 // Chỉ khi KHÔNG có cả hai thì im lặng mới là một câu hỏi — và lúc đó lời khuyên mới có việc.
-const suiteRuns = tally('hook-runs.log', 2, TEST_TELEMETRY_DIR);
-const suiteBlocks = tally('gate-fails.log', 2, TEST_TELEMETRY_DIR);
+//
+// CHỈ ĐẾM DÒNG CỦA CHÍNH LẦN CHẠY NÀY (`RUN_STARTED`). Thư mục kia nằm ở `tmpdir()` và sống
+// dai hơn một lần chạy, nên không lọc thì một lần chạy suite HÔM QUA vẫn đọc là "suite ✓"
+// hôm nay — kể cả khi hôm nay suite crash, bị gỡ khỏi danh sách check, hay ai đó đảo thứ tự
+// hai bước. Đó lại đúng lớp lỗi mà cả mục này sinh ra để diệt, chỉ đổi chỗ đứng.
+// Lọc theo mốc thì nó hỏng về phía an toàn: mất bằng chứng ⇒ tụt về `?`, không thành lời
+// khẳng định sai.
+const suiteRuns = tally('hook-runs.log', 2, TEST_TELEMETRY_DIR, RUN_STARTED);
+const suiteBlocks = tally('gate-fails.log', 2, TEST_TELEMETRY_DIR, RUN_STARTED);
 
 const applyTo = exists(repoPath('tooling', 'apply-to.mjs')) ? readFileSync(repoPath('tooling', 'apply-to.mjs'), 'utf8') : '';
 // Khớp cả '.claude/hooks' (thư mục) lẫn '.claude/hooks/x.mjs' (file lẻ). Bản đầu
