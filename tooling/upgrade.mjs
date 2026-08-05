@@ -251,9 +251,22 @@ for (const f of conflict) {
 // Bước copy ở trên vừa thay chính file này. Chạy lại một lần bằng bản mới: nó có danh sách
 // mới, thấy các file kia, và mang chúng sang. Migration idempotent theo hợp đồng (điều kiện
 // ③ của test-migrations) nên chạy lại là an toàn. `HARNESS_UPGRADE_PHASE2` chặn vòng lặp.
-if (!process.env.HARNESS_UPGRADE_PHASE2 && (add.includes('tooling/upgrade.mjs') || safe.includes('tooling/upgrade.mjs'))) {
-  console.log(`\n  ↻ Bản \`tooling/upgrade.mjs\` vừa được cập nhật. Chạy lại bằng bản MỚI để nó`
-    + ` mang nốt những file mà danh sách CŨ không biết đến.\n`);
+// ĐIỀU KIỆN NỔ PHẢI LÀ "DANH SÁCH ĐÃ ĐỔI", KHÔNG PHẢI "upgrade.mjs ĐÃ ĐỔI".
+//
+// Bản 2.7.2 khoá vào `tooling/upgrade.mjs`, nhưng `MECHANISM_PATHS` sống trong
+// `tooling/lib/harness.mjs`. Hai file khác nhau ⇒ có bản phát hành thêm file cơ chế mới mà
+// KHÔNG chạm `upgrade.mjs` ⇒ pha 2 không nổ ⇒ file mới không bao giờ sang.
+//
+// Xảy ra thật khi phát hành v2.10.0: `tooling/rituals.mjs` là file mới, `upgrade.mjs` không
+// đổi, nên cả BA repo tiêu thụ nhận `test-hooks.mjs` bản mới (có `import './rituals.mjs'`)
+// mà KHÔNG nhận `rituals.mjs` → `ERR_MODULE_NOT_FOUND`, suite vỡ ngay sau khi nâng cấp.
+// Cùng lớp với nghịch lý bootstrap ở 2.7.2, chỉ khác chỗ neo — và cái neo cũ trỏ vào file
+// KHÔNG chứa thông tin quyết định.
+const LIST_OWNERS = ['tooling/upgrade.mjs', 'tooling/lib/harness.mjs'];
+const listChanged = LIST_OWNERS.filter(f => add.includes(f) || safe.includes(f));
+if (!process.env.HARNESS_UPGRADE_PHASE2 && listChanged.length) {
+  console.log(`\n  ↻ ${listChanged.join(' + ')} vừa được cập nhật (đây là nơi giữ DANH SÁCH file cơ chế).`
+    + ` Chạy lại bằng bản MỚI để nó mang nốt những file mà danh sách CŨ không biết đến.\n`);
   const r = run('node', [repoPath('tooling', 'upgrade.mjs'), ...args], {
     cwd: REPO_ROOT, capture: false, env: { HARNESS_UPGRADE_PHASE2: '1' },
   });
@@ -334,6 +347,38 @@ if (dangling.length) {
   fail.push(`.claude/settings.json gọi ${dangling.length} file KHÔNG TỒN TẠI: ${dangling.join(' · ')}`);
   fail.push('  Nâng cấp đã để repo ở trạng thái HỎNG (hook ném lỗi giữa phiên, hoặc im lặng không chặn gì).');
   fail.push(`  Sửa: node ${join(TPL, 'tooling', 'apply-to.mjs')} ${REPO_ROOT} --apply --update`);
+}
+
+// ── KIỂM TOÀN VẸN 2: `import` tương đối nào trỏ vào hư không? ────────────────
+//
+// Con trỏ trong `settings.json` không phải loại con trỏ duy nhất. File cơ chế `import` LẪN
+// NHAU, và một file mới tới trong khi thứ nó import thì không là đúng cách nâng cấp để lại
+// một repo hỏng — lần này KHÔNG có hook nào sai, chỉ là `ERR_MODULE_NOT_FOUND` khi ai đó
+// chạy suite.
+//
+// Xảy ra thật ở v2.10.0: `test-hooks.mjs` bản mới `import './rituals.mjs'`, `rituals.mjs`
+// không sang được (xem điều kiện nổ pha 2 ở trên), và cả BA repo tiêu thụ vỡ suite. Điều kiện
+// nổ pha 2 đã được sửa; check này bắt CẢ LỚP, kể cả những cách hỏng chưa gặp.
+//
+// Chỉ quét `import ... from './x.mjs'` và `import('./x.mjs')` — tức đường dẫn TƯƠNG ĐỐI trong
+// lớp cơ chế. Package name và built-in (`node:fs`) không phải việc của check này.
+{
+  const bad = [];
+  for (const rel of filesUnder(REPO_ROOT, 'tooling').concat(filesUnder(REPO_ROOT, '.claude/hooks'), filesUnder(REPO_ROOT, 'evals'))) {
+    if (!rel.endsWith('.mjs')) continue;
+    let src = '';
+    try { src = readFileSync(repoPath(rel), 'utf8'); } catch { continue; }
+    const dir = dirname(repoPath(rel));
+    for (const m of src.matchAll(/(?:from|import)\s*\(?\s*['"](\.[^'"]+)['"]/g)) {
+      const target = resolve(dir, m[1]);
+      if (!existsSync(target)) bad.push(`${rel} → ${m[1]}`);
+    }
+  }
+  if (bad.length) {
+    fail.push(`${bad.length} \`import\` trỏ vào file KHÔNG TỒN TẠI sau nâng cấp: ${bad.slice(0, 6).join(' · ')}${bad.length > 6 ? ` … +${bad.length - 6}` : ''}`);
+    fail.push('  Đây là nghịch lý bootstrap: một file cơ chế MỚI tới mà thứ nó import thì không.');
+    fail.push(`  Sửa: chạy lại \`node ${join(TPL, 'tooling', 'upgrade.mjs')}\` một lần nữa — bản mới đã nằm trong project.`);
+  }
 }
 
 if (existsSync(repoPath('harness.version'))) writeFileSync(repoPath('harness.version'), tplVersion + '\n');

@@ -11,6 +11,38 @@
 
 ---
 
+## 2.10.1 — 2026-08-05
+
+**patch.** Nghịch lý bootstrap, hình dạng thứ hai: điều kiện nổ pha 2 neo vào **file không
+chứa thông tin quyết định**.
+
+`v2.10.0` thêm `tooling/rituals.mjs` (file mới) và sửa `tooling/test-hooks.mjs` để `import` nó.
+`tooling/upgrade.mjs` **không đổi**. Hệ quả ở cả **ba** repo tiêu thụ: `test-hooks.mjs` bản mới
+sang được, `rituals.mjs` thì **không** ⇒ `ERR_MODULE_NOT_FOUND`, suite vỡ ngay sau khi nâng cấp.
+
+Lý do: bản 2.7.2 cho pha 2 nổ khi **`tooling/upgrade.mjs`** được cập nhật — nhưng danh sách file
+cơ chế (`MECHANISM_PATHS`) sống trong **`tooling/lib/harness.mjs`**. Hai file khác nhau, nên một
+bản phát hành thêm file cơ chế mà không chạm `upgrade.mjs` thì pha 2 im lặng không chạy. Cái neo
+cũ trỏ vào file **không chứa** thông tin quyết định điều kiện.
+
+Nay điều kiện là *"danh sách đã đổi"*: pha 2 nổ khi `upgrade.mjs` **hoặc** `lib/harness.mjs`
+được cập nhật.
+
+### Và một guard cho CẢ LỚP, không riêng ca đã gặp
+
+Con trỏ trong `settings.json` không phải loại con trỏ duy nhất — file cơ chế `import` lẫn nhau.
+Sau nâng cấp, `upgrade.mjs` giờ kiểm **mọi `import` tương đối** trong `tooling/`,
+`.claude/hooks/`, `evals/` và **FAIL** nếu có cái trỏ vào hư không, kèm câu sửa (chạy lại
+upgrade một lần nữa — bản mới đã nằm trong project).
+
+### Điều đáng ghi về phép xác minh
+
+`v2.10.0` đã được kiểm ở **cả hai vai** (template 87/87 · bản sao consumer 86/86) và vẫn ship
+lỗi này. Vì bản sao vai-consumer là một **bản copy đầy đủ** — nó có `rituals.mjs`. Nghĩa là
+phép kiểm hai-vai chứng minh **LOGIC** chạy đúng ở cả hai vai; nó **không** chứng minh được
+**PHÂN PHỐI**. Thứ duy nhất chứng minh phân phối là chạy `upgrade` thật lên một repo thật đang
+đứng ở version cũ — và đó đúng là thứ đã bắt được lỗi này.
+
 ## 2.10.0 — 2026-08-05
 
 **minor.** Năng lực của harness **tự hiện ra khi tới hạn**, thay vì chờ người nhớ. Cộng một
