@@ -349,44 +349,30 @@ if (dangling.length) {
   fail.push(`  Sửa: node ${join(TPL, 'tooling', 'apply-to.mjs')} ${REPO_ROOT} --apply --update`);
 }
 
-// ── KIỂM TOÀN VẸN 2: `import` tương đối nào trỏ vào hư không? ────────────────
+// ── KIỂM TOÀN VẸN 2: file cơ chế nào có ở TEMPLATE mà KHÔNG có ở đây? ───────
 //
-// Con trỏ trong `settings.json` không phải loại con trỏ duy nhất. File cơ chế `import` LẪN
-// NHAU, và một file mới tới trong khi thứ nó import thì không là đúng cách nâng cấp để lại
-// một repo hỏng — lần này KHÔNG có hook nào sai, chỉ là `ERR_MODULE_NOT_FOUND` khi ai đó
-// chạy suite.
+// Bản 2.10.1 làm việc này bằng cách quét `import` trong nguồn. Đó là một PROXY, và nó bắn nhầm
+// HAI lần liền: lần đầu khớp đoạn comment giải thích chính nó, lần sau khớp CHUỖI trong fixture
+// test (`"import a from './that.mjs'"`). Lần thứ hai không sửa được bằng cách bỏ comment — một
+// regex trên văn bản nguồn KHÔNG phân biệt được `import` thật với một string trông giống nó, và
+// không có parser nào ở đây để phân biệt.
 //
-// Xảy ra thật ở v2.10.0: `test-hooks.mjs` bản mới `import './rituals.mjs'`, `rituals.mjs`
-// không sang được (xem điều kiện nổ pha 2 ở trên), và cả BA repo tiêu thụ vỡ suite. Điều kiện
-// nổ pha 2 đã được sửa; check này bắt CẢ LỚP, kể cả những cách hỏng chưa gặp.
+// Nên bỏ proxy và ĐO TRỰC TIẾP thứ cần biết. Câu hỏi thật không phải *"có import nào treo
+// không"* mà là *"file cơ chế nào lẽ ra phải sang mà chưa sang"* — và câu đó có câu trả lời
+// CHÍNH XÁC, không cần đoán: so danh sách file cơ chế ở TEMPLATE với cây ở ĐÂY.
 //
-// Chỉ quét đường dẫn TƯƠNG ĐỐI trong lớp cơ chế. Package name và built-in (`node:fs`) không
-// phải việc của check này.
-//
-// BỎ COMMENT TRƯỚC KHI KHỚP. Bản đầu quét cả văn xuôi, và nó bắn nhầm ngay lần chạy thật đầu
-// tiên: chính đoạn comment Ở ĐÂY nêu ví dụ một đường dẫn tương đối, nên check báo
-// `tooling/upgrade.mjs` import một file không tồn tại. Neo vào CODE, đừng neo vào comment
-// GIẢI THÍCH code — bài học đã có trong repo này (engine mutant của `test-migrations`, check
-// CODEOWNERS của `harness-doctor`), và đây là lần thứ ba.
-//
-// Bỏ block comment và comment CẢ DÒNG; KHÔNG bỏ `//` giữa dòng — làm vậy sẽ cắt cả URL trong
-// chuỗi. `import` không bao giờ nằm sau một `//` giữa dòng, nên phạm vi này là đủ.
+// Phép này mạnh hơn proxy theo cả hai chiều: nó bắt file thiếu KỂ CẢ khi chưa ai import nó
+// (proxy mù hoàn toàn với ca đó), và nó không có false positive nào để mà lọc.
 {
-  const bad = [];
-  for (const rel of filesUnder(REPO_ROOT, 'tooling').concat(filesUnder(REPO_ROOT, '.claude/hooks'), filesUnder(REPO_ROOT, 'evals'))) {
-    if (!rel.endsWith('.mjs')) continue;
-    let src = '';
-    try { src = readFileSync(repoPath(rel), 'utf8'); } catch { continue; }
-    src = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
-    const dir = dirname(repoPath(rel));
-    for (const m of src.matchAll(/(?:from|import)\s*\(?\s*['"](\.[^'"]+)['"]/g)) {
-      const target = resolve(dir, m[1]);
-      if (!existsSync(target)) bad.push(`${rel} → ${m[1]}`);
+  const missing = [];
+  for (const group of MECHANISM) {
+    for (const rel of filesUnder(TPL, group)) {
+      if (!existsSync(repoPath(rel))) missing.push(rel);
     }
   }
-  if (bad.length) {
-    fail.push(`${bad.length} \`import\` trỏ vào file KHÔNG TỒN TẠI sau nâng cấp: ${bad.slice(0, 6).join(' · ')}${bad.length > 6 ? ` … +${bad.length - 6}` : ''}`);
-    fail.push('  Đây là nghịch lý bootstrap: một file cơ chế MỚI tới mà thứ nó import thì không.');
+  if (missing.length) {
+    fail.push(`${missing.length} file cơ chế có ở template mà KHÔNG có ở đây: ${missing.slice(0, 6).join(' · ')}${missing.length > 6 ? ` … +${missing.length - 6}` : ''}`);
+    fail.push('  Đây là nghịch lý bootstrap: danh sách file cơ chế nằm trong chính lớp đang được nâng cấp.');
     fail.push(`  Sửa: chạy lại \`node ${join(TPL, 'tooling', 'upgrade.mjs')}\` một lần nữa — bản mới đã nằm trong project.`);
   }
 }

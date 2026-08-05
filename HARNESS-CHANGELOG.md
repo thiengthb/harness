@@ -11,6 +11,36 @@
 
 ---
 
+## 2.10.3 — 2026-08-05
+
+**patch.** Bỏ **proxy**, đo **trực tiếp**. Guard chống nghịch lý bootstrap không còn quét
+`import` trong nguồn.
+
+Bản 2.10.1 kiểm bằng cách quét `import` tương đối. Nó bắn nhầm **hai lần liền**:
+
+| Lần | Khớp phải cái gì |
+|---|---|
+| 2.10.1 | đoạn **comment** giải thích chính nó, nêu ví dụ một đường dẫn tương đối |
+| 2.10.2 | **chuỗi trong fixture test** — `"import a from './that.mjs'"` |
+
+Lần thứ hai **không sửa được bằng cách bỏ comment**: một regex trên văn bản nguồn **không phân
+biệt được** `import` thật với một string trông giống nó, và ở đây không có parser nào để phân
+biệt. Cố lọc thêm chỉ là thêm một lớp đoán lên một phép đoán.
+
+Câu hỏi thật không phải *"có `import` nào treo không"* mà là ***"file cơ chế nào lẽ ra phải sang
+mà chưa sang"*** — và câu đó có câu trả lời **chính xác**: so danh sách file cơ chế ở template
+với cây ở đích. Không parser, không regex, không false positive.
+
+Phép trực tiếp còn **mạnh hơn** proxy theo cả hai chiều: nó bắt file thiếu **kể cả khi chưa ai
+import nó** (proxy mù hoàn toàn với ca đó), và nó không có gì để mà lọc.
+
+> Bài học chung: khi một check phải lọc false positive **lần thứ hai**, vấn đề thường không nằm
+> ở bộ lọc mà ở chỗ nó **đang đo một thứ khác** với thứ cần biết. Ba lần sửa bộ lọc thì đắt hơn
+> một lần đổi phép đo.
+
+`RATCHET` 88 → **87** (test của proxy bị bỏ cùng proxy — giữ lại là giữ một test cho code không
+còn tồn tại).
+
 ## 2.10.2 — 2026-08-05
 
 **patch.** Guard `import` mới của 2.10.1 **bắn nhầm vào comment của chính nó**.
