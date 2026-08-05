@@ -1,0 +1,9 @@
+{
+  "$comment": "FIXTURE của migration 010. NEO: files[\".claude/skills/whats-new/SKILL.md\"] phải là sha ĐÚNG của file đó — sai sha thì migration coi là \"người dùng đã sửa\" và KHÔNG xoá, fixture xanh mà không kiểm gì. Sinh lại bằng scratchpad/make-fixture-2.11.0.mjs nếu đổi nội dung skill.",
+  "templateVersion": "2.10.4",
+  "appliedAt": "2026-08-05T00:00:00.000Z",
+  "files": {
+    ".claude/skills/whats-new/SKILL.md": "e7b00694f34b12c5",
+    ".claude/skills/cua-project/SKILL.md": "1648d1f0ee7f6250"
+  }
+}

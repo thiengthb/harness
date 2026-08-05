@@ -484,6 +484,50 @@ export function repoRole() {
   return 'unknown';
 }
 
+/**
+ * BIA MỘ — thứ template đã BỎ, và phải được bỏ luôn ở project đã áp.
+ *
+ * Lớp phân phối biết THÊM và biết SỬA, nhưng cho tới 2.11.0 nó KHÔNG biết XOÁ. Hệ quả đo được
+ * 2026-08-05: `/whats-new` bị cắt khỏi template ở **v2.4.0** (commit `21834ca`) và vẫn nằm ở
+ * **cả ba** repo tiêu thụ — sáu version sau. Nó đẩy cả ba lên 13 skill trên trần 12, nên
+ * `entropy-scan` báo đỏ ở mọi phiên về một thứ mà project KHÔNG gây ra và KHÔNG sửa được bằng
+ * cách nâng cấp.
+ *
+ * Đây là chiều ngược của lỗ hổng đã sửa ở 2.8.0 (sự kiện hook mới không tới được repo cũ):
+ * cùng một nguyên nhân — lớp phân phối chỉ đồng bộ MỘT CHIỀU.
+ *
+ * VÌ SAO PHẢI LÀ DANH SÁCH TƯỜNG MINH, không phải suy luận "có ở đích mà không có ở template".
+ * Phép suy luận đó KHÔNG phân biệt được ba thứ: (a) harness đã bỏ, (b) project tự thêm,
+ * (c) một công cụ khác cài vào (`prisma init` đổ 9 skill vào `.claude/skills/` — có thật, xem
+ * fixlog của `warehouse`). Xoá theo suy luận là xoá cả (b) và (c). Bia mộ thì chỉ nói về (a),
+ * và mỗi dòng phải ghi VERSION nào đã bỏ để còn tra lại được.
+ */
+/**
+ * KHOÁ NHÓM của một dòng fixlog — 6 từ đầu dài hơn 3 ký tự, đã chuẩn hoá.
+ *
+ * Ở ĐÂY vì nó có BA nơi dùng: `fixlog.mjs --top` (hiển thị), `rituals.mjs` (đếm nhóm ≥2 lần),
+ * và `fixlog.mjs --close` (đóng một nhóm). Ba bản sao của một phép nhóm là ba cơ hội để chúng
+ * lệch nhau — và khi lệch, `--close` sẽ đóng một khoá mà `--top` không bao giờ sinh ra, tức
+ * nút "đã xử lý" bấm vào không có tác dụng và không có gì báo.
+ *
+ * Bản sao thứ hai đã tồn tại từ 2.10.0 kèm một comment tiên đoán đúng chuyện này. Comment
+ * không ngăn được bản sao thứ ba; gộp lại thì ngăn được.
+ */
+export function fixlogKey(text) {
+  return String(text).toLowerCase()
+    .replace(/[^a-z0-9à-ỹ\s]/gi, ' ')
+    .split(/\s+/).filter(w => w.length > 3).slice(0, 6).join(' ');
+}
+
+export const REMOVED_PATHS = [
+  {
+    path: '.claude/skills/whats-new',
+    since: '2.4.0',
+    why: 'Thông báo harness đã do `session-start.mjs` in tự động mỗi phiên (đọc `.claude/whats-new.md`). '
+      + 'Một skill phải GỌI mới chạy thì không bao giờ được gọi đúng lúc cần — và nó tiêu một suất trong trần skill.',
+  },
+];
+
 export const MECHANISM_PATHS = [
   '.claude/hooks', '.claude/skills', '.claude/agents',
   'tooling/lib', 'tooling/knowledge', 'tooling/fixtures',
