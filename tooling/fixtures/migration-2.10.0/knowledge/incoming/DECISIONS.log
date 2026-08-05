@@ -1,0 +1,2 @@
+2026-08-04T20:03:09.830Z	MERGE	fixlog(fixture)	upstream@abc123	DÒNG-CŨ-PHẢI-SỐNG-SÓT — fixture của migration 009: dòng này nằm ở sổ CŨ (trong vùng ignore) và phải có mặt ở sổ MỚI sau up()
+2026-08-04T20:04:11.811Z	REJECT	fixlog(fixture)	upstream@abc123	dòng thứ hai, để kiểm việc gộp không mất dòng nào

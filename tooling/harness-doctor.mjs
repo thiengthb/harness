@@ -376,7 +376,7 @@ for (const [event, groups] of Object.entries(settings.hooks ?? {})) {
 // thật là 2.5 giây, nhân với tối đa 16 agent song song. Không có gì báo, vì cả hai đăng ký
 // đều hợp lệ.
 {
-  const sig = (ev, cmd) => `${ev} ${String(cmd).trim()}`;
+  const sig = (ev, cmd) => `${ev}\u0000${String(cmd).trim()}`;
   const inShared = new Set();
   for (const [ev, groups] of Object.entries(settings.hooks ?? {})) {
     for (const g of groups ?? []) for (const h of g.hooks ?? []) inShared.add(sig(ev, h.command));

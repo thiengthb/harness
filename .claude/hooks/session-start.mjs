@@ -113,11 +113,91 @@ try {
   }
 } catch {}
 
-// ── 8. Nhắc nghi thức ────────────────────────────────────────────────────────
+// ── 8. SỰ CÓ MẶT CỦA PHIÊN — tự động, không cần ai gõ lệnh ───────────────────
+//
+// `/claim` tồn tại để đóng cửa sổ chồng lấn giữa hai phiên. Đo 2026-08-05: `reservations/`
+// chỉ có `README.md` — nó CHƯA CHẠY LẦN NÀO, dù dòng nhắc "/claim" được in ở mọi phiên. Và
+// cửa sổ đó đã mở thật cùng ngày: hai phiên song song commit lên MỘT nhánh ở `sakubun`, và
+// một `git add -A` cuốn theo file sản phẩm của phiên kia — file chưa tồn tại lúc đọc
+// `git status`, đã tồn tại lúc `git add`.
+//
+// Nên phần MÁY LÀM ĐƯỢC thì máy làm: ghi sự có mặt của phiên này, và phát hiện phiên khác.
+// Không cần người nhớ gì. `/claim` giữ lại đúng phần cần PHÁN ĐOÁN (đọc nhật ký cũ, đặt chỗ
+// vùng nóng cho cả ĐỘI, quyết phạm vi) — phần đó không tự động hoá được, và nó được nhắc ở
+// mục 9 chỉ khi thật sự tới hạn.
+//
+// Ghi vào `stateDir()` (máy-cục-bộ, gitignore) chứ KHÔNG vào `reservations/` (được commit):
+// một hook tự ghi file được commit sẽ làm cây bẩn ở mọi phiên, và `gen-clean` sẽ báo về nó.
+// Đổi lại, phát hiện này chỉ thấy phiên TRÊN CÙNG MÁY — mà đó đúng là ca đã xảy ra.
+// Chồng lấn giữa hai MÁY vẫn cần `reservations/`, tức vẫn cần người.
+// PID của PHIÊN là `process.ppid`, không phải `process.pid`. Hook chạy trong một process con
+// chết ngay sau khi in — ghi `process.pid` thì mọi bản ghi đều là của một process đã chết, và
+// phép kiểm còn sống không nói được gì. `ppid` là process Claude Code, sống bằng đúng phiên.
+//
+// Và phép kiểm là LIVENESS THẬT (`process.kill(pid, 0)`), không phải TTL đoán theo thời gian.
+// Bản đầu dùng TTL 120 phút và nó cảnh báo SAI ngay khi thử: khởi động lại phiên trong cửa sổ
+// đó thì bản ghi của phiên CŨ vẫn "còn tươi" ⇒ báo "có phiên khác cùng nhánh" trong khi không
+// có. Một cảnh báo sai mỗi lần khởi động lại là đúng loại nhiễu mà mục này ra đời để diệt.
+// TTL giữ lại làm LƯỚI CUỐI cho ca pid bị hệ điều hành cấp lại sau reboot.
+try {
+  const dir = join(stateDir(), 'sessions');
+  mkdirSync(dir, { recursive: true });
+  const ttlMin = limit('sessionPresenceMinutes', 240);
+  const myPid = process.ppid;
+  writeJson(join(dir, `${myPid}.json`), { pid: myPid, branch: branch || '(detached)', cwd: REPO_ROOT, at: new Date().toISOString() });
+
+  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  const others = [];
+  for (const f of readdirSync(dir)) {
+    if (f === `${myPid}.json` || !f.endsWith('.json')) continue;
+    const p = join(dir, f);
+    const s = readJson(p);
+    const ageMin = (Date.now() - statSync(p).mtimeMs) / 60000;
+    if (!s?.pid || !alive(s.pid) || ageMin > ttlMin) { try { unlinkSync(p); } catch {} continue; }
+    if (s.branch) others.push({ ...s, ageMin: Math.round(ageMin) });
+  }
+  const sameBranch = others.filter(o => o.branch === branch);
+  if (sameBranch.length) {
+    lines.push('');
+    lines.push(`⚠️  ${sameBranch.length} phiên KHÁC đang ở CÙNG nhánh \`${branch}\` (${sameBranch.map(o => `pid ${o.pid}, ${o.ageMin} phút trước`).join(' · ')})`);
+    lines.push('   KHÔNG dùng `git add -A` — nó sẽ cuốn theo file của phiên kia. Stage theo đường dẫn.');
+    lines.push('   Xảy ra thật 2026-08-05: file chưa tồn tại lúc `git status`, đã tồn tại lúc `git add`.');
+  } else if (others.length) {
+    lines.push('');
+    lines.push(`ℹ️  ${others.length} phiên khác trên máy này, nhánh khác: ${others.map(o => o.branch).join(' · ')} (trần ${limit('maxSessionsPerPerson', 2)}/người)`);
+  }
+} catch {}
+
+// ── 9. VIỆC ĐANG TỚI HẠN — suy ra từ trạng thái, không nhắc theo lịch ────────
+//
+// Bản trước in một dòng tĩnh: "bắt đầu bằng /claim · kết thúc bằng /handoff · trước PR chạy
+// /pre-merge". Dòng đó không sai, nhưng nó nói MỌI THỨ ở MỌI LÚC — nên nó không nói gì ở lúc
+// nào cả, và bằng chứng là hai trong ba nghi thức đó chưa từng chạy.
+//
+// `tooling/rituals.mjs` suy ra việc nào ĐANG tới hạn kèm SỐ ĐO. IMPORT, không spawn: một
+// process node nữa ở mỗi phiên là ~60ms không cần trả.
 const c = config();
 lines.push('');
-lines.push(`▶️  Nghi thức: bắt đầu bằng /claim · kết thúc bằng /handoff · trước PR chạy /pre-merge`);
-lines.push(`   Trần song song: ${limit('maxSessionsPerPerson', 2)} session/người. Không tự sửa .claude/settings.json — dùng /harness-propose.`);
+try {
+  const { evaluate, collect } = await import('../../tooling/rituals.mjs');
+  const res = evaluate(collect());
+  const due = res.filter(r => r.state === 'due');
+  const unknown = res.filter(r => r.state === '?');
+  if (due.length) {
+    lines.push(`▶️  ${due.length} việc ĐANG TỚI HẠN:`);
+    for (const r of due.slice(0, 3)) lines.push(`   ▸ ${r.cmd}  —  ${r.why}`);
+    if (due.length > 3) lines.push(`   … và ${due.length - 3} nữa`);
+  } else {
+    lines.push(`▶️  Không có nghi thức nào tới hạn (${res.length} mục đã kiểm).`);
+  }
+  if (unknown.length) lines.push(`   ? ${unknown.length} mục KHÔNG đo được — chúng không phải "ổn".`);
+  lines.push(`   Xem hết ${res.length} năng lực + vì sao: node tooling/rituals.mjs --all`);
+} catch (e) {
+  // FAIL OPEN và NÓI RA. Một hook chỉ IN thì không được phép làm vỡ phiên; nhưng im lặng ở
+  // đây biến "bảng điều khiển hỏng" thành "không có việc nào tới hạn" — đúng chiều dễ chịu.
+  lines.push(`▶️  ⚠️  không tính được việc tới hạn (${String(e.message || e).slice(0, 60)}) — chạy tay: node tooling/rituals.mjs --all`);
+}
+lines.push(`   Không tự sửa .claude/settings.json — dùng /harness-propose.`);
 if (!c.commands?.verify && !c.commands?.test) {
   lines.push(`   ⚠️  harness.config.json chưa khai báo lệnh verify/test — gate đang rỗng. Đây là việc số 1 cần làm.`);
 }

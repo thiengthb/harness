@@ -29,6 +29,9 @@ if (!staged.length && !ALL) process.exit(0);
 
 const fail = [], warn = [], ok = [];
 
+/** Đuôi file NGUỒN — những file mà con người ĐỌC và REVIEW. Một byte NUL ở đây là lỗi, không phải "binary". */
+const SOURCE_EXT = /\.(mjs|cjs|js|jsx|ts|tsx|md|json|ya?ml|toml|css|scss|html|sql|sh|ps1|txt)$/i;
+
 // SECRET_PATTERNS ở `lib/harness.mjs` — MỘT nguồn. Bản cũ ở đây có 5 pattern trong khi
 // `block-secrets.mjs` có 7: thiếu Slack token và JWT. Và tầng NÀY là tầng duy nhất thấy
 // thứ NGƯỜI gõ tay (hook PreToolUse chỉ thấy thứ agent ghi), nên hai pattern thiếu ở đây
@@ -51,7 +54,31 @@ for (const f of staged) {
   if (!existsSync(abs)) continue;
   let content = '';
   try { content = readFileSync(abs, 'utf8'); } catch { continue; }   // binary → bỏ qua
-  if (content.includes('\u0000')) continue;
+
+  // ── NUL trong một file NGUỒN: hỏng theo cách mọi cái máy đều nói "ổn" ──────
+  //
+  // Xảy ra thật 2026-08-05, và nó ĐÃ SHIP: một separator viết thành byte NUL thật trong
+  // `tooling/harness-doctor.mjs` đi qua PR #27, qua 7 job CI trên 3 OS, ra tag v2.9.0, rồi
+  // sang cả BA repo tiêu thụ. Không có gì bắt được:
+  //   · `node --check` XANH — NUL nằm trong một template literal, JS hợp lệ.
+  //   · `test-hooks`, `test-migrations`, `entropy-scan`, `apply-to --audit` XANH.
+  //   · Chính dòng `includes('\u0000') → continue` cũ Ở ĐÂY coi nó là "file binary, bỏ qua"
+  //     — tức lớp quét secret cũng thôi đọc file đó.
+  //
+  // Thứ nó phá là kênh mà không cái máy nào đo: `git diff` in "Binary files differ", nên file
+  // KHÔNG REVIEW ĐƯỢC nữa; `grep`/`rg` bỏ qua nó, nên nó VÔ HÌNH với mọi lần tìm code. Tôi
+  // phát hiện chỉ vì `rg` bất ngờ trả về rỗng trên một file 650 dòng.
+  //
+  // Nên: với file có đuôi NGUỒN, một byte NUL là FAIL — không phải "bỏ qua vì binary".
+  // Cách phân biệt là ĐUÔI FILE, không phải nội dung: "trông như binary" chính là triệu chứng.
+  if (content.includes('\u0000')) {
+    if (SOURCE_EXT.test(rel)) {
+      fail.push(`${rel}: có byte NUL trong file NGUỒN — \`git diff\` sẽ in "Binary files differ" và file này `
+        + `KHÔNG REVIEW ĐƯỢC nữa; \`grep\`/\`rg\` cũng bỏ qua nó.\n`
+        + `         \`node --check\` vẫn xanh nên không test nào bắt được. Sửa: thay byte NUL bằng escape \`\\u0000\`.`);
+    }
+    continue;   // đã báo (hoặc đúng là file binary) → không quét secret theo dòng nữa
+  }
 
   // Quét THEO DÒNG để hỗ trợ marker miễn trừ.
   //
