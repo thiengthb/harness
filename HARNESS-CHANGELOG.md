@@ -11,6 +11,36 @@
 
 ---
 
+## 2.10.2 — 2026-08-05
+
+**patch.** Guard `import` mới của 2.10.1 **bắn nhầm vào comment của chính nó**.
+
+Nó quét cả văn xuôi, và đoạn comment giải thích check đó có nêu ví dụ một đường dẫn tương đối
+(`'./x.mjs'`) — nên ở lần chạy thật đầu tiên nó tố chính `tooling/upgrade.mjs` import một file
+không tồn tại, ở cả ba repo tiêu thụ.
+
+**Neo vào CODE, đừng neo vào comment GIẢI THÍCH code.** Đây là lần thứ **ba** của cùng bài học
+trong repo này — engine mutant của `test-migrations` (v2.1.0), check CODEOWNERS của
+`harness-doctor` (v2.0.0), và bây giờ. Lần này nó được một **test** với 4 ca (comment cả dòng,
+block comment, `import()` động thật, package name), không phải một comment nữa: hai lần trước
+đều đã có comment cảnh báo, và comment không ngăn được lần thứ ba.
+
+Phép lọc bỏ block comment và comment **cả dòng**; **không** bỏ `//` giữa dòng — làm vậy sẽ cắt
+cả URL trong chuỗi, và `import` không bao giờ nằm sau một `//` giữa dòng.
+
+`RATCHET` 87 → **88**.
+
+### Ghi nhận: guard NUL tìm ra một ca THẬT trong code sản phẩm
+
+Ở `sakubun`, `lib/import-schema.ts:210` dùng NUL làm separator (`itemKey`) và viết nó thành
+**byte thật** — đúng cùng lỗi mà harness vừa mắc. Comment ngay trên đó ghi *"NUL-joined so it
+can't collide"*, nên separator là **cố ý**; chỉ cách viết là sai, và cái giá giống hệt: file đó
+`git diff` in *"Binary files differ"* nên **không review được**, `rg`/`grep` bỏ qua nó.
+
+Bản sửa giữ nguyên hành vi 100% (`\u0000` trong template literal cho ra đúng ký tự đó). Không
+sửa từ đây: đó là code sản phẩm của repo khác và repo đó đang có một phiên làm việc với file đã
+staged.
+
 ## 2.10.1 — 2026-08-05
 
 **patch.** Nghịch lý bootstrap, hình dạng thứ hai: điều kiện nổ pha 2 neo vào **file không
