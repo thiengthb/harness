@@ -1,4 +1,4 @@
-<!-- version: 2026-08-05-i -->
+<!-- version: 2026-08-06-a -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,22 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-06 — Công cụ đo vừa bị đo (v2.13.0)
+
+**Nếu repo bạn chưa khai lệnh nào thật trong `harness.config.json → commands`, `harness-doctor`
+giờ sẽ CHẶN ở chỗ trước đây nó cho ✓.** Không phải hồi quy: `$comment_a11y_perf` — một dòng
+chú thích — đang được đếm là "1 lệnh đã khai", nên nhánh cảnh báo *"GATE KHÔNG TỒN TẠI"* chưa
+từng chạy ở bất kỳ repo nào. Điền `commands.verify` / `test` / `typecheck`, hoặc đọc lý do
+trong `HARNESS-CHANGELOG.md` §2.13.0 ①.
+
+Ba thứ nữa thôi nói dối: lời khuyên *"chạy `test-hooks.mjs` để lấy bằng chứng"* (suite ghi
+telemetry sang thư mục khác — chạy bao nhiêu lần cũng không đổi gì); nghi thức
+`claude-code-drift` đứng `?` trên mọi máy cài bằng npm; và `init.mjs` gọi placeholder của
+template là FAIL trong khi `harness-doctor` gọi đúng cái đó là ĐÚNG.
+
+`harness-doctor` → "Nên làm": **19 → 4**, và 15 dòng biến mất là 15 dòng **không ai được phép
+làm**. Không hook nào bị sửa.
 
 ## 2026-08-05 — Gác ném lỗi giờ CHẶN, không im lặng cho qua (v2.12.0)
 

@@ -9,10 +9,10 @@
  * Chạy trong CI trên cả 3 OS (.github/workflows/harness-parity.yml).
  */
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, rmSync, readdirSync, cpSync } from 'node:fs';
+import { readFileSync, writeFileSync, rmSync, readdirSync, cpSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands } from './lib/harness.mjs';
 
 const BLOCK = 2, OK = 0;
 
@@ -34,11 +34,14 @@ const TEST_ENV = {
   // chuyển sang xanh-giả trên máy của người đang phải mở cửa thoát đó để đi tiếp — tức là
   // đúng lúc suite cần nói thật nhất.
   HARNESS_FAIL_OPEN: '',
-  HARNESS_TELEMETRY_DIR: join(tmpdir(), 'harness-test-telemetry'),
+  // Hằng số ở `lib`, KHÔNG viết tay ở đây: `harness-doctor` ĐỌC đúng thư mục này như nguồn
+  // bằng chứng thứ hai ("hook có chạy được không, hay crash im lặng?"). Hai chuỗi viết tay
+  // lệch nhau thì doctor đọc thư mục rỗng và kết luận sai về hook vừa chạy xong.
+  HARNESS_TELEMETRY_DIR: TEST_TELEMETRY_DIR,
   // Không có dòng này, mỗi lần chạy suite sẽ ăn mất thông báo `.claude/whats-new.md` của chính
   // bạn: cơ chế đó cố ý chỉ in MỘT LẦN cho mỗi version, nên "đã in rồi" là trạng thái
   // không lấy lại được. Test không được phép tiêu thụ trạng thái thật của người dùng.
-  HARNESS_STATE_DIR: join(tmpdir(), 'harness-test-state'),
+  HARNESS_STATE_DIR: TEST_STATE_DIR,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -734,12 +737,97 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   if (badVer.length) fail.push(`rituals.mjs${' '.repeat(17)} claudeCodeVersion() sai ở ${badVer.length}/${VER.length} ca: ${badVer.map(([i]) => JSON.stringify(i)).join(' · ')}`);
   else ok.push(`rituals.mjs${' '.repeat(17)} claudeCodeVersion(): ${VER.length} ca kể cả đường dẫn Windows, không đoán khi không phải version`);
 
+  // ④d NGUỒN THỨ HAI. Ca `/usr/local/bin/claude → null` ở trên KHÔNG phải "không có version" —
+  //     nó là "version không nằm trong đường dẫn". Cách cài bằng npm cho ra đúng hình dạng đó
+  //     (`…/node_modules/@anthropic-ai/claude-code/bin/claude.exe`), và trước 2.13.0 nghi thức
+  //     `claude-code-drift` đứng `?` VĨNH VIỄN trên mọi máy cài kiểu này — kèm một lý do sai sự
+  //     thật ("cách cài không đặt biến này", trong khi biến CÓ được đặt).
+  //
+  //     Đây vẫn KHÔNG phải đoán: nó đọc `version` trong package.json của đúng gói đó. Nên test
+  //     phải khẳng định CẢ HAI chiều — đọc được gói THẬT, và KHÔNG đọc bừa gói tên khác.
+  const { claudeCodeVersionFromPackage } = await import('./rituals.mjs');
+  const pkgRoot = join(tmpdir(), `harness-test-ccver-${process.pid}`);
+  const cases = [
+    ['claude-code', { name: '@anthropic-ai/claude-code', version: '2.1.222' }, '2.1.222'],
+    ['imposter', { name: 'claude-code', version: '9.9.9' }, null],          // tên khác ⇒ KHÔNG nhận
+    ['no-version', { name: '@anthropic-ai/claude-code', version: 'dev' }, null], // version không phải số ⇒ KHÔNG đoán
+  ];
+  const badPkg = [];
+  for (const [dir, pkg, want] of cases) {
+    const binDir = join(pkgRoot, dir, 'bin');
+    mkdirSync(binDir, { recursive: true });
+    writeFileSync(join(pkgRoot, dir, 'package.json'), JSON.stringify(pkg), 'utf8');
+    const got = claudeCodeVersionFromPackage(join(binDir, 'claude.exe'));
+    if (got !== want) badPkg.push(`${dir}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
+  }
+  if (claudeCodeVersionFromPackage('') !== null) badPkg.push('execPath rỗng phải trả null');
+  rmSync(pkgRoot, { recursive: true, force: true });
+  if (badPkg.length) fail.push(`rituals.mjs${' '.repeat(17)} claudeCodeVersionFromPackage() sai: ${badPkg.join(' · ')}`);
+  else ok.push(`rituals.mjs${' '.repeat(17)} claudeCodeVersionFromPackage(): đọc được layout npm, KHÔNG nhận gói tên khác/version không phải số`);
+
   // ⑤ MUTANT: một `check` throw thì phải thành `?`, KHÔNG được làm sập cả bảng. `rituals` được
   //    gọi từ SessionStart — một exception ở đó làm mất TOÀN BỘ định hướng đầu phiên.
   const broken = evaluate(null);
   if (!Array.isArray(broken) || broken.length !== clean.length || !broken.every(r => r.state === '?')) {
     fail.push('rituals.mjs                 trạng thái RỖNG làm bảng sập hoặc cho ra trạng thái khác `?` — SessionStart sẽ mất toàn bộ định hướng');
   } else ok.push(`rituals.mjs${' '.repeat(17)} MUTANT: state rỗng ⇒ ${broken.length} mục \`?\`, bảng KHÔNG sập`);
+}
+
+// ─── PHÉP ĐẾM mà HAI công cụ cùng hỏi ────────────────────────────────────────
+//
+// Hai check dưới đây bảo vệ hai lời nói dối ĐÃ XẢY RA, không phải hai giả thuyết.
+//
+// LƯU Ý CHO NGƯỜI SỬA FILE NÀY: đừng viết tên skill dạng slash-trong-backtick ở đây.
+// `harness-doctor` quét đúng cú pháp đó trong mọi .md/.mjs không phải hồ sơ lịch sử, và
+// file này không phải hồ sơ lịch sử — một test VỀ tham chiếu chết mà tự tạo ra tham chiếu
+// chết thì làm đỏ chính cái nó vừa chứng minh là xanh. Dùng chuỗi trong nháy đơn.
+{
+  // ① `declaredCommands`: `$comment_*` KHÔNG phải lệnh.
+  //    Trước 2.13.0, `harness.config.json` của template có ĐÚNG một key trong `commands` mang
+  //    giá trị khác rỗng — và nó là một dòng chú thích. Nên `!length` không bao giờ đúng, và
+  //    dòng cảnh báo to nhất của cả hệ ("GATE KHÔNG TỒN TẠI ... BẠN là verification loop")
+  //    im lặng ở MỌI repo áp template kể từ phút đầu. Ca hồi quy quan trọng nhất là cấu hình
+  //    THẬT của repo này, không phải một object bịa.
+  //    Bảng dưới đây THUẦN — nó đúng ở mọi repo. Ca hồi quy trên `harness.config.json` THẬT
+  //    (template không khai lệnh nào) chỉ đúng ở template và nằm ở khối cuối file, cạnh chỗ
+  //    đếm `skipped`: một self-test của template khẳng định thứ chỉ đúng trong template là
+  //    ĐÚNG lớp lỗi `knowledge/lessons/0003`, và nó đã một lần đỏ ở cả ba repo tiêu thụ.
+  const CMD = [
+    [{ commands: { $comment_x: 'giải thích dài', test: '' } }, 0, 'chỉ có chú thích ⇒ 0 lệnh'],
+    [{ commands: { $comment_x: 'giải thích dài', test: 'vitest run' } }, 1, 'chú thích + 1 lệnh thật ⇒ 1'],
+    [{ commands: {} }, 0, 'rỗng ⇒ 0'],
+    [{}, 0, 'không có `commands` ⇒ 0, không ném'],
+  ];
+  const badCmd = CMD.filter(([cfg, want]) => declaredCommands(cfg).length !== want);
+  if (badCmd.length) fail.push(`lib/harness.mjs${' '.repeat(13)} declaredCommands() sai ở ${badCmd.length}/${CMD.length} ca: ${badCmd.map(([, , l]) => l).join(' · ')}`);
+  else ok.push(`lib/harness.mjs${' '.repeat(13)} declaredCommands(): key \`$comment_*\` KHÔNG bị đếm là lệnh — cảnh báo "gate không tồn tại" nói được`);
+
+  // ② `isRecordedRemoval`: bia mộ được nhắc tên ở ĐÚNG nơi ghi việc xoá, và chỉ ở đó.
+  //    Cả hai chiều đều là hồi quy: bỏ điều kiện "file" thì docs nhắc skill đã xoá cũng lọt
+  //    (đúng ca check tham chiếu chết sinh ra để bắt); bỏ điều kiện "tên" thì migration nhắc
+  //    tên bịa nào cũng lọt.
+  const removed = [...removedSkillNames()];
+  const REM = [
+    [removed[0], 'harness-migrations/010-bo-thu-template-da-bo.mjs', true, 'migration thi hành việc xoá ⇒ hợp lệ'],
+    [removed[0], 'tooling/lib/harness.mjs', true, 'chính danh sách bia mộ ⇒ hợp lệ'],
+    [removed[0], 'docs/TEAM.md', false, 'tài liệu thường nhắc skill đã xoá ⇒ VẪN là tham chiếu chết'],
+    ['khong-co-thuc', 'harness-migrations/010-bo-thu-template-da-bo.mjs', false, 'tên không trong bia mộ ⇒ VẪN chết, dù ở đúng file'],
+  ];
+  const badRem = REM.filter(([n, f, want]) => isRecordedRemoval(n, f) !== want);
+  if (!removed.length) ok.push(`lib/harness.mjs${' '.repeat(13)} bia mộ rỗng — không có gì để kiểm (n/a, KHÔNG phải pass)`);
+  else if (badRem.length) fail.push(`lib/harness.mjs${' '.repeat(13)} isRecordedRemoval() sai ở ${badRem.length}/${REM.length} ca: ${badRem.map(([, , , l]) => l).join(' · ')}`);
+  else ok.push(`lib/harness.mjs${' '.repeat(13)} isRecordedRemoval(): loại trừ theo CẢ tên LẪN file, ${REM.length} ca`);
+
+  // ③ CHỐNG LỆCH: doctor phải đọc telemetry của suite qua HẰNG SỐ CHUNG, không phải chuỗi
+  //    viết tay. Đây là check RẺ cho một lỗi ĐẮT: nếu hai bên trỏ khác thư mục, doctor đọc
+  //    chỗ rỗng rồi kết luận "chưa có bằng chứng" về những cái gác vừa chạy xong trong chính
+  //    lần chạy của nó — sai lặng lẽ, không đỏ ở đâu cả.
+  const docSrc = readFileSync(repoPath('tooling', 'harness-doctor.mjs'), 'utf8');
+  if (!/TEST_TELEMETRY_DIR/.test(docSrc)) {
+    fail.push(`harness-doctor.mjs${' '.repeat(10)} không dùng TEST_TELEMETRY_DIR — nguồn bằng chứng thứ hai đã mất, mọi hook chưa gặp ca thật quay lại "? chưa đo"`);
+  } else if (/harness-test-telemetry/.test(docSrc)) {
+    fail.push(`harness-doctor.mjs${' '.repeat(10)} viết tay chuỗi 'harness-test-telemetry' — dùng hằng số TEST_TELEMETRY_DIR ở lib, hai bản sao sẽ lệch`);
+  } else ok.push(`harness-doctor.mjs${' '.repeat(10)} đọc telemetry của suite qua hằng số chung, không phải chuỗi viết tay`);
 }
 
 // ─── ③④ MUTANT ───────────────────────────────────────────────────────────────
@@ -939,6 +1027,23 @@ if (repoRole() === 'template') {
   } else ok.push(`governanceDrift${" ".repeat(10)} chiều ngược: bắt đường dẫn thật, BỎ QUA tên skill và khoá config`);
 }
 
+// ─── Ca hồi quy CHỈ ĐÚNG Ở TEMPLATE: `commands` của template phải đếm ra 0 ───
+//
+// Ở project đích, `commands` ĐƯỢC khai — đó là mục đích của họ — nên assert "0 lệnh" ở đó là
+// sai. Khối này vì thế phải đếm vào `skipped` khi không phải template, không được im lặng
+// biến mất: một case ngừng chạy và một case bỏ qua có chủ ý đọc giống hệt nhau nếu chỉ nhìn tổng.
+if (repoRole() === 'template') {
+  const cfgReal = readJson(repoPath('harness.config.json'));
+  const cmt = Object.keys(cfgReal?.commands || {}).filter(k => k.startsWith('$'));
+  const real = declaredCommands(cfgReal);
+  if (!cmt.length) {
+    fail.push(`lib/harness.mjs${' '.repeat(13)} \`commands\` của template không còn key \`$comment_*\` nào — ca hồi quy này MẤT PHẠM VI. Xem lại vì sao, đừng xoá test`);
+  } else if (real.length) {
+    fail.push(`lib/harness.mjs${' '.repeat(13)} template đếm ra ${real.length} lệnh (${real.map(([k]) => k).join(', ')}) nhưng template KHÔNG khai lệnh nào — `
+      + `chú thích lại bị đếm là lệnh, và cảnh báo "GATE KHÔNG TỒN TẠI" sẽ im ở mọi repo áp template`);
+  } else ok.push(`lib/harness.mjs${' '.repeat(13)} template: ${cmt.length} chú thích trong \`commands\` ⇒ vẫn đếm ra 0 lệnh`);
+} else skipped += 1;
+
 // SỐ MẪU không phải một phép cộng viết tay. Bản trước in
 // `ok.length / (cases + MUTANTS + GATE_CASES + 3)` và ĐO ĐƯỢC 2026-08-05: **`75/72`** — tử số
 // lớn hơn mẫu số. Tỉ số đó không sai vô hại: mẫu số tồn tại để trả lời "có case nào NGỪNG
@@ -954,7 +1059,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 101;
+const RATCHET = 106;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

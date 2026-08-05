@@ -598,6 +598,55 @@ export const REMOVED_PATHS = [
 ];
 
 /**
+ * File có NHIỆM VỤ ghi lại một việc XOÁ — bia mộ ở trên, và migration thi hành nó.
+ *
+ * `harness-doctor` báo "tham chiếu chết" khi một file nhắc tên skill không tồn tại. Check đó
+ * đã loại trừ changelog · whats-new · ADR · learnings vì chúng là **hồ sơ lịch sử**: nhắc tên
+ * thứ đã xoá chính là việc của chúng. Cơ chế bia mộ (2.11.0) thêm hai hồ sơ lịch sử nữa,
+ * chỉ khác là chúng viết bằng CODE thay vì văn xuôi — nên check không nhận ra, và từ 2.11.0
+ * nó báo đỏ VĨNH VIỄN về hai file đang làm đúng việc của mình (đo 2026-08-06: 2/2 tham chiếu
+ * còn lại đều thuộc nhóm này, tức mục advice đó 100% dương tính giả).
+ *
+ * LOẠI TRỪ THEO BẢN CHẤT, KHÔNG THEO TIỆN LỢI — nên nó cần CẢ HAI điều kiện:
+ *   · tên phải nằm trong bia mộ (xoá CÓ CHỦ Ý, có version, tra lại được), VÀ
+ *   · file phải là nơi ghi việc xoá.
+ * Bỏ điều kiện thứ hai thì `docs/TEAM.md` nhắc một skill đã xoá cũng lọt — mà đó đúng là
+ * ca check này được viết ra để bắt. Bỏ điều kiện thứ nhất thì migration nhắc bất kỳ tên
+ * bịa nào cũng lọt.
+ */
+/**
+ * LỆNH THẬT SỰ ĐÃ KHAI trong `commands` — key `$comment_*` KHÔNG phải lệnh.
+ *
+ * Ở ĐÂY vì `init.mjs` và `harness-doctor.mjs` cùng hỏi câu này, và cùng trả lời SAI theo
+ * đúng một kiểu: `Object.entries(cfg.commands).filter(([, v]) => v.trim())` đếm cả
+ * `$comment_a11y_perf` — key duy nhất trong `commands` có giá trị khác rỗng ở template.
+ *
+ * Hệ quả đo được 2026-08-06: với cấu hình mặc định KHÔNG AI ĐIỀN GÌ, cả hai công cụ báo
+ * *"1 lệnh đã khai"*, nên nhánh `!length` không bao giờ chạy — tức dòng cảnh báo to nhất
+ * của cả hệ (`commands rỗng — GATE KHÔNG TỒN TẠI ... BẠN là verification loop`) bị một
+ * dòng chú thích làm câm, ở MỌI repo áp template, ngay từ phút đầu. Cửa thoát nguy hiểm
+ * nhất không phải cửa ai đó mở — mà cửa không ai biết là mình đã đi qua.
+ *
+ * Quy ước `$comment_*` đã dùng khắp `harness.config.json` (`$comment_migrations`,
+ * `$comment_secrets`, `$comment_hot`, …); chỗ này chỉ là nơi duy nhất quên tôn trọng nó.
+ */
+export function declaredCommands(cfg) {
+  return Object.entries(cfg?.commands || {}).filter(([k, v]) => !k.startsWith('$') && v && String(v).trim());
+}
+
+export const TOMBSTONE_FILE = /^(tooling\/lib\/harness\.mjs$|harness-migrations\/)/;
+
+/** `.claude/skills/whats-new` → `whats-new`. Chỉ lấy bia mộ LÀ skill; bia mộ khác không liên quan. */
+export function removedSkillNames() {
+  return new Set(REMOVED_PATHS.map(r => /^\.claude\/skills\/([^/]+)/.exec(r.path)?.[1]).filter(Boolean));
+}
+
+/** Tên skill này, ở file này, có phải một việc xoá ĐÃ GHI SỔ không? HÀM THUẦN. */
+export function isRecordedRemoval(name, file) {
+  return removedSkillNames().has(name) && TOMBSTONE_FILE.test(String(file).split('\\').join('/'));
+}
+
+/**
  * LỆCH giữa điều CẤM viết ra và điều guard CƯỠNG CHẾ. HÀM THUẦN, không đọc đĩa.
  *
  * Thuần là điều kiện, không phải sở thích: check này sống trong `harness-doctor`, và
@@ -719,6 +768,21 @@ export function telemetryDir() {
   try { mkdirSync(d, { recursive: true }); } catch {}
   return d;
 }
+
+/**
+ * ĐÍCH mà `test-hooks.mjs` chuyển telemetry/state sang. Ở ĐÂY vì có HAI nơi dùng nó,
+ * và hai nơi đó phải trỏ cùng một chỗ hoặc cả cơ chế im lặng mất tác dụng:
+ *
+ *   · `test-hooks.mjs` GHI vào đây (qua `HARNESS_TELEMETRY_DIR`).
+ *   · `harness-doctor` ĐỌC ở đây, như nguồn BẰNG CHỨNG THỨ HAI cho câu hỏi
+ *     "hook này có thật sự chạy không, hay nó crash im lặng?".
+ *
+ * Hằng số này viết tay ở hai file thì lệch nhau là chuyện của thời gian, và khi lệch
+ * thì doctor đọc một thư mục rỗng rồi kết luận "chưa có bằng chứng" về 9 cái gác
+ * vừa chạy xong ngay trong cùng một lần chạy của chính nó. Sai lặng lẽ, không đỏ.
+ */
+export const TEST_TELEMETRY_DIR = join(tmpdir(), 'harness-test-telemetry');
+export const TEST_STATE_DIR = join(tmpdir(), 'harness-test-state');
 
 /**
  * Ghi một dòng vào log telemetry. `kind` = tên file không đuôi.

@@ -39,7 +39,7 @@
  * trạng thái git là của HỌ (xem knowledge/lessons/0003).
  */
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey } from './lib/harness.mjs';
 
@@ -177,7 +177,11 @@ export const RITUALS = [
     what: 'Claude Code vừa lên bản mới — hỏi MỘT câu: nó có ra sẵn thứ harness đang tự viết không?',
     check: (s) => {
       if (!s.claudeCodeVersion) {
-        return { state: '?', why: 'không đọc được version Claude Code từ CLAUDE_CODE_EXECPATH (cách cài không đặt biến này) — không đo được' };
+        // Lý do đến từ `collect()`, không đọc env ở đây: `check` phải THUẦN (xem đầu file).
+        // Và lý do phải nói ĐÚNG nguồn nào đã thử — bản cũ nói "cách cài không đặt biến này"
+        // kể cả khi biến CÓ được đặt, tức một mục `?` kèm lời giải thích sai. Không ai đi tìm
+        // tiếp sau một lời giải thích nghe đã xong.
+        return { state: '?', why: s.claudeCodeVersionWhy || 'không đo được version Claude Code' };
       }
       if (!s.reviewedClaudeCode) {
         return { state: 'due', why: `đang chạy Claude Code ${s.claudeCodeVersion} và CHƯA có bản rà nào được ghi (.claude/claude-code-baseline.json) — chưa ai hỏi bản này có ra sẵn thứ harness tự viết không` };
@@ -194,6 +198,44 @@ export const RITUALS = [
 export function claudeCodeVersion(execPath = process.env.CLAUDE_CODE_EXECPATH || '') {
   const base = String(execPath).split(/[\\/]/).filter(Boolean).pop() || '';
   return /^\d+\.\d+\.\d+/.test(base) ? base : null;
+}
+
+/**
+ * NGUỒN THỨ HAI: `package.json` của chính gói đang chạy.
+ *
+ * `claudeCodeVersion()` chỉ đọc được CÁCH CÀI có version nằm trong đường dẫn
+ * (`…/versions/2.1.221`). Cách cài bằng npm thì `CLAUDE_CODE_EXECPATH` trỏ thẳng vào
+ * binary — `…/node_modules/@anthropic-ai/claude-code/bin/claude.exe` — và đoạn cuối là
+ * TÊN FILE, không phải version. Đúng là không được đoán, nhưng "không đoán" đã bị hiểu
+ * thành "không đo", và lời giải thích đi kèm còn sai sự thật: nó nói "cách cài không đặt
+ * biến này", trong khi biến CÓ được đặt (đo 2026-08-06, Windows + npm) — nó chỉ trỏ vào
+ * một layout khác. Một mục `?` kèm lý do sai thì không ai đi tìm tiếp.
+ *
+ * Đây KHÔNG phải đoán thêm: nó đọc `version` trong `package.json` của đúng gói
+ * `@anthropic-ai/claude-code` chứa binary đó. Đó là bằng chứng trên đĩa, không phải suy luận
+ * từ hình dạng chuỗi. Không thấy gói ⇒ vẫn `null`, vẫn `?`.
+ *
+ * Đi lên tối đa 5 tầng: `bin/claude.exe` cách gốc gói 1 tầng, trần rộng gấp mấy lần layout
+ * đã biết mà vẫn không thể lang thang lên tận gốc đĩa.
+ */
+export function claudeCodeVersionFromPackage(execPath = process.env.CLAUDE_CODE_EXECPATH || '') {
+  let dir = String(execPath).trim();
+  if (!dir) return null;
+  dir = dirname(dir);
+  for (let i = 0; i < 5 && dir && dir !== dirname(dir); i++, dir = dirname(dir)) {
+    try {
+      const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+      if (pkg?.name === '@anthropic-ai/claude-code' && /^\d+\.\d+\.\d+/.test(String(pkg.version || ''))) {
+        return String(pkg.version);
+      }
+    } catch { /* tầng này không phải gốc gói — đi tiếp */ }
+  }
+  return null;
+}
+
+/** Version đo được, theo thứ tự nguồn. `null` = THẬT SỰ không đo được, không phải chưa thử. */
+export function claudeCodeVersionMeasured(execPath = process.env.CLAUDE_CODE_EXECPATH || '') {
+  return claudeCodeVersion(execPath) ?? claudeCodeVersionFromPackage(execPath);
 }
 
 /** Chạy toàn bộ nghi thức trên một trạng thái. Thuần, tất định. */
@@ -295,7 +337,11 @@ export function collect() {
     // hai cái null đó nghĩa khác nhau: không đọc được version ⇒ `?` (không đo được); đọc
     // được version mà chưa có baseline ⇒ `due` (chưa ai rà). Gộp chúng thành một là cách
     // một mục tới hạn thật biến thành một mục im lặng.
-    claudeCodeVersion: claudeCodeVersion(),
+    claudeCodeVersion: claudeCodeVersionMeasured(),
+    claudeCodeVersionWhy: claudeCodeVersionMeasured() ? null
+      : `không đo được version Claude Code — đã thử CẢ HAI nguồn: ${process.env.CLAUDE_CODE_EXECPATH
+        ? `CLAUDE_CODE_EXECPATH = "${process.env.CLAUDE_CODE_EXECPATH}" (không có đoạn nào là version)`
+        : 'CLAUDE_CODE_EXECPATH không được đặt'}, và không thấy package.json của @anthropic-ai/claude-code trong 5 tầng trên binary đó`,
     ...(() => {
       try {
         const b = JSON.parse(readFileSync(repoPath('.claude', 'claude-code-baseline.json'), 'utf8'));
@@ -350,9 +396,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   const ri = process.argv.indexOf('--reviewed-claude-code');
   if (ri > -1) {
     const found = process.argv.slice(ri + 1).filter(a => !a.startsWith('--')).join(' ').trim();
-    const version = claudeCodeVersion();
+    // CÙNG nguồn với `collect()`. Hai phép đo khác nhau ở chỗ ĐỌC và chỗ GHI nghĩa là:
+    // bảng nói "đang chạy 2.1.222, hãy rà đi", còn lệnh rà thì từ chối vì không biết version.
+    const version = claudeCodeVersionMeasured();
     if (!version) {
-      console.error('Không đọc được version Claude Code từ CLAUDE_CODE_EXECPATH — không ghi baseline cho một version không biết.');
+      console.error('Không đo được version Claude Code (cả CLAUDE_CODE_EXECPATH lẫn package.json của @anthropic-ai/claude-code) — không ghi baseline cho một version không biết.');
       process.exit(1);
     }
     if (!found) {
