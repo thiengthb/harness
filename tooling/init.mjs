@@ -13,7 +13,7 @@
  */
 import { existsSync, copyFileSync, readFileSync } from 'node:fs';
 import { platform, cpus, totalmem } from 'node:os';
-import { REPO_ROOT, repoPath, run, git, runConfigured, config, report, exists } from './lib/harness.mjs';
+import { REPO_ROOT, repoPath, run, git, runConfigured, config, report, exists, repoRole, declaredCommands } from './lib/harness.mjs';
 
 const ok = [], warn = [], fail = [];
 const cfg = config();
@@ -83,12 +83,24 @@ for (const [src, dest] of pairs) {
 }
 
 // ── 5. Cấu hình harness đã điền chưa ─────────────────────────────────────────
+//
+// Ở REPO TEMPLATE, `CHANGEME` và `commands` rỗng là PLACEHOLDER ĐÚNG — điền chúng ở đây
+// nghĩa là ship cấu hình của một project bịa sang mọi project áp template. `harness-doctor`
+// đã biết điều đó từ đầu (`IS_TEMPLATE` → in "placeholder CHANGEME là đúng, không phải lỗi").
+// `init.mjs` thì không, nên `node tooling/init.mjs` — LỆNH NGÀY ĐẦU trong AGENTS.md — kết
+// thúc bằng "Chưa sẵn sàng" và một dòng FAIL không ai sửa được, ở chính repo dạy người khác
+// rằng gác phải nói thật. Hai công cụ, một repo, hai phán quyết ngược nhau về cùng một dòng:
+// người mới tin cái nào cũng sai, và bài học họ rút ra là "đỏ ở đây không có nghĩa gì".
+const IS_TEMPLATE = repoRole() === 'template';
 if (String(cfg.project?.id).startsWith('CHANGEME')) {
-  fail.push('harness.config.json → project.id vẫn là CHANGEME. Điền trước khi làm gì khác.');
+  if (IS_TEMPLATE) ok.push('project.id là CHANGEME — ĐÚNG ở repo template (placeholder, không phải lỗi)');
+  else fail.push('harness.config.json → project.id vẫn là CHANGEME. Điền trước khi làm gì khác.');
 }
-const declared = Object.entries(cfg.commands || {}).filter(([, v]) => v && String(v).trim());
+const declared = declaredCommands(cfg);
 if (!declared.length) {
-  fail.push('harness.config.json → commands rỗng. Gate đang không tồn tại và harness này chỉ là trang trí. Đây là việc SỐ 1.');
+  const msg = 'harness.config.json → commands rỗng. Gate đang không tồn tại và harness này chỉ là trang trí. Đây là việc SỐ 1.';
+  if (IS_TEMPLATE) ok.push('commands rỗng — ĐÚNG ở repo template. Ở project đích, dòng này là FAIL.');
+  else fail.push(msg);
 } else {
   ok.push(`${declared.length} lệnh đã khai: ${declared.map(([k]) => k).join(', ')}`);
   for (const need of ['verify', 'test', 'typecheck']) {

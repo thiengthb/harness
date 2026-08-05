@@ -11,6 +11,149 @@
 
 ---
 
+## 2.13.0 — 2026-08-06
+
+**minor.** Sáu mục, một chủ đề: **công cụ đo nói sai về chính nó**. Không mục nào là cơ chế
+mới — tất cả là những chỗ mà một cái gác đang làm việc bị báo cáo là im lặng, một cái gác đang
+im lặng được báo cáo là ổn, hoặc một lời khẳng định đứng ở chỗ đáng lẽ phải có một phép đo.
+Cả sáu đều đo được trên chính repo này ngày 2026-08-06, với `harness-doctor` mở đầu bằng
+**19 dòng "Nên làm"** mà **15 dòng không ai được phép làm**.
+
+### ① `$comment_*` bị đếm là LỆNH — nên cảnh báo to nhất của cả hệ bị câm
+
+**ĐÂY LÀ MỤC ĐÁNG ĐỌC, và nó chạm MỌI repo đã áp template.**
+
+`init.mjs` và `harness-doctor.mjs` cùng hỏi *"đã khai lệnh nào chưa?"* và cùng trả lời bằng
+`Object.entries(cfg.commands).filter(([, v]) => v.trim())`. Trong `harness.config.json` của
+template, mọi lệnh thật là `""` và **đúng một key có giá trị**: `$comment_a11y_perf` — một
+dòng chú thích dài.
+
+Hệ quả, với cấu hình mặc định **không ai điền gì**:
+
+| công cụ | in ra | đáng lẽ |
+|---|---|---|
+| `init.mjs` | `OK 1 lệnh đã khai: $comment_a11y_perf` | `FAIL commands rỗng — việc SỐ 1` |
+| `harness-doctor` | `✓ 1 lệnh đã khai: $comment_a11y_perf` | `CHẶN — GATE KHÔNG TỒN TẠI` |
+
+Nhánh `!length` **chưa từng chạy ở bất kỳ repo nào**, nên dòng cảnh báo to nhất trong cả
+harness — *"Harness này đang chỉ là trang trí, và BẠN là verification loop"* — im lặng từ
+phút đầu tiên của mọi lần áp template. Cửa thoát nguy hiểm nhất không phải cửa ai đó mở,
+mà cửa không ai biết mình đã đi qua.
+
+Quy ước `$comment_*` đã dùng khắp `harness.config.json`; chỗ này là nơi duy nhất quên tôn
+trọng nó. Phép đếm giờ nằm ở **một chỗ**: `declaredCommands(cfg)` trong `lib/harness.mjs`.
+
+> **Với repo đã áp template:** sau khi nâng lên 2.13.0, nếu bạn chưa khai lệnh nào thật,
+> `harness-doctor` sẽ **CHẶN** ở chỗ trước đây nó cho ✓. Đó không phải hồi quy — đó là
+> câu trả lời đúng, lần đầu tiên.
+
+### ② "Chạy `test-hooks.mjs` để lấy bằng chứng" là một NGÕ CỤT
+
+`harness-doctor` báo *"hook này chưa có BẰNG CHỨNG nó chạy — chạy `node tooling/test-hooks.mjs`"*
+cho **7/10 hook** ở mỗi lần chạy. Nhưng suite **cố ý** chuyển telemetry sang thư mục tạm
+(2.9.0 — không chuyển thì suite tự bơm số vào bộ đếm mà `/harness-retro` bước 4 dùng để đề
+xuất **cắt bỏ**). Nên làm đúng lời khuyên, kết quả **không đổi**, mãi mãi.
+
+Bằng chứng vẫn luôn tồn tại — chỉ nằm ở thư mục kia. Và `harness-doctor` **chạy chính suite
+đó** như bước đầu của nó, nên khi tới mục này, dấu vết spawn thật của các hook vừa được ghi
+xong. Doctor giờ đọc cả hai nguồn, và **không gộp chúng**:
+
+| cột | nghĩa |
+|---|---|
+| `N qua · M chặn` | hook đã **gặp ca của nó** trong việc thật |
+| `suite ✓ · ca thật chưa tới` | hook **chạy được**, không crash im lặng |
+| `? chưa đo` | không có gì ở **cả hai** nơi — lúc này im lặng mới là câu hỏi |
+
+Đường dẫn thư mục là **một hằng số ở `lib`** (`TEST_TELEMETRY_DIR`), không phải chuỗi viết
+tay hai nơi, và có test chặn việc quay lại viết tay.
+
+**Và bằng chứng phải MỚI.** `tmpdir()` sống dai hơn một lần chạy, nên nếu chỉ đọc thư mục đó
+mà không hỏi *"dòng này từ bao giờ"*, thì một lần chạy suite **hôm qua** vẫn đọc là `suite ✓`
+hôm nay — kể cả khi hôm nay suite crash, bị gỡ khỏi danh sách check, hay ai đó đảo thứ tự hai
+bước. Đó lại đúng lớp lỗi mà cả mục này sinh ra để diệt, chỉ đổi chỗ đứng. `tallyLines()` chỉ
+đếm dòng sinh ra **sau mốc bắt đầu của chính tiến trình đang hỏi**, nên `suite ✓` có nghĩa hẹp
+và kiểm được: *hook này đã spawn thành công TRONG lần chạy này*. Mất bằng chứng thì tụt về `?`,
+không tụt thành một lời khẳng định sai. Dấu thời gian không đọc được cũng **không** được đếm —
+`?` không được cộng vào một con số.
+
+**Nó tìm ra ngay một cái thật:** `protect-feature-files.mjs` không để lại dòng nào ở **cả
+hai** nơi. Nhánh chặn `features/_index.json` — guard chống single-writer — gọi `block()`
+mà **không** gọi `telemetry('gate-fails')` trước đó, và `block()` không tự ghi sổ. Nó chặn
+thật, nhưng chặn **vô hình**: `/harness-retro` bước 4 nhìn vào sẽ thấy một cái gác chưa bắt
+gì bao giờ và đề xuất cắt nó. `.claude/hooks/**` là vùng cấm sửa nên mục này đi đường
+`/harness-propose`, chưa vá ở bản này — đã ghi fixlog.
+
+### ③ Nghi thức `claude-code-drift` đứng `?` vĩnh viễn trên mọi máy cài bằng npm
+
+`claudeCodeVersion()` chỉ đọc được layout có version nằm trong đường dẫn
+(`…/versions/2.1.221`). Cài bằng npm thì `CLAUDE_CODE_EXECPATH` trỏ vào
+`…/node_modules/@anthropic-ai/claude-code/bin/claude.exe` — đoạn cuối là **tên file**.
+
+"Không đoán" là đúng; nhưng nó đã bị hiểu thành "không đo", và lời giải thích đi kèm còn
+**sai sự thật**: *"cách cài không đặt biến này"* — trong khi biến **có** được đặt. Một mục
+`?` kèm lý do nghe-đã-xong thì không ai đi tìm tiếp.
+
+Thêm **nguồn thứ hai, vẫn là bằng chứng trên đĩa**: `version` trong `package.json` của đúng
+gói `@anthropic-ai/claude-code` chứa binary đó. Không thấy gói ⇒ vẫn `null`, vẫn `?` — và
+lý do giờ nói rõ **đã thử nguồn nào**. Chỗ ĐỌC và chỗ GHI baseline dùng chung một phép đo.
+
+*Đo ngay sau khi vá: máy này chạy 2.1.222, baseline ghi 2.1.221 ⇒ nghi thức chuyển từ `?`
+sang **tới hạn**. Một việc thật đã bị một phép đo hỏng giấu đi.*
+
+### ③b `/pre-merge` in một lý do mô tả phép đo CHƯA TỪNG XẢY RA
+
+Nghi thức `/pre-merge` in *"N commit đi trước, và **chưa thấy dấu gate preMerge chạy ở phiên
+này**"*. Nhưng `collect()` **không đi tìm dấu nào cả** — và không thể tìm, vì `gates.mjs` chỉ
+ghi telemetry khi **HỎNG**. Một lần chạy xanh không để lại gì.
+
+Nên nghi thức đỏ theo đúng `ahead > 0` và **ở đỏ mãi**: chạy gate bao nhiêu lần cũng vậy. Câu
+chữ thì nói rằng nó đã nhìn. Đây là cùng lớp lỗi với ①/② — một lời khẳng định đứng ở chỗ đáng
+lẽ phải có một phép đo — và nó dạy đúng thứ nguy hiểm nhất: **mục này đỏ cũng không sao**.
+
+Hai đầu cùng sửa:
+
+- `gates.mjs` ghi `gate-runs` **kể cả khi xanh** (`pass`/`fail`, kèm `ok= skip= ms=`). Đây đúng
+  ba trạng thái mà `hookRan()` đã tách cho hook từ 2.12.0, chỉ là gate chưa được hưởng: *gate
+  chạy suốt và luôn xanh · gate chưa từng chạy · gate chạy hỏng*. Cái ở giữa là cái nguy hiểm.
+- Nghi thức so **HAI mốc**, không phải một: lần chạy gate gần nhất so với **commit mới nhất**.
+  Chạy gate rồi commit thêm ⇒ lần chạy đó không còn nói gì về cây hiện tại ⇒ vẫn tới hạn, kèm
+  số phút lệch. Thiếu một trong hai mốc ⇒ `?`, **không** phải `ok`.
+
+### ④ `init.mjs` gọi placeholder của template là FAIL — `harness-doctor` gọi nó là ĐÚNG
+
+Hai công cụ, một repo, hai phán quyết ngược nhau về **cùng một dòng**. `node tooling/init.mjs`
+— lệnh ngày đầu trong `AGENTS.md` — kết thúc bằng *"Chưa sẵn sàng"* và một dòng FAIL **không
+ai được phép sửa**, ở chính repo dạy người khác rằng gác phải nói thật.
+
+`init.mjs` giờ biết `repoRole()`. Và ở `harness-doctor`, placeholder không còn bị **hạ cấp**
+xuống "Nên làm" ở template — nó **biến mất**: một danh sách việc chứa việc *không được phép
+làm* dạy người đọc bỏ qua cả danh sách, mà đó là danh sách duy nhất ở đây có quyền đòi hành động.
+
+### ⑤ Bia mộ bị chính check "tham chiếu chết" báo đỏ
+
+Check tham chiếu chết loại trừ changelog · whats-new · ADR · learnings vì chúng là **hồ sơ
+lịch sử** — nhắc tên thứ đã xoá là việc của chúng. Cơ chế bia mộ (2.11.0) thêm hai hồ sơ lịch
+sử nữa, chỉ khác là chúng viết bằng **code**: `REMOVED_PATHS` và migration thi hành việc xoá.
+Từ 2.11.0 check báo đỏ vĩnh viễn về hai file đang làm đúng việc của mình — 2/2 tham chiếu còn
+lại đều thuộc nhóm này, tức mục advice đó **100% dương tính giả**.
+
+`isRecordedRemoval(name, file)` loại trừ theo **cả tên lẫn file**. Bỏ điều kiện file thì
+`docs/TEAM.md` nhắc skill đã xoá cũng lọt — đúng ca check này sinh ra để bắt. Bỏ điều kiện
+tên thì migration nhắc tên bịa nào cũng lọt.
+
+### Kết quả đo
+
+| | trước | sau |
+|---|---|---|
+| `harness-doctor` → "Nên làm" | 19 | **4** (mọi mục còn lại đều hành động được) |
+| trong đó dương tính giả | 15 | **0** |
+| `rituals --all` → mục `?` | 1 (không đo được) | **0** — và lộ ra 1 việc thật |
+| `test-hooks.mjs` | sàn 101 | **113 khẳng định, sàn 113** (+12) |
+
+Không có file nào trong `.claude/hooks/**` bị sửa ở bản này.
+
+---
+
 ## 2.12.0 — 2026-08-05
 
 **minor.** Ba mục, tất cả lấy từ đợt nghiên cứu repo `fleet` bên cạnh. Mục ① là **lỗ hổng

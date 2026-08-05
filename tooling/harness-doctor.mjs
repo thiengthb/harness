@@ -16,9 +16,13 @@
  * Chạy: sau khi áp template · sau khi nâng cấp · mỗi 2 tuần · khi thấy "agent hôm nay lạ".
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText } from './lib/harness.mjs';
+import { join } from 'node:path';
+import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, TEST_TELEMETRY_DIR } from './lib/harness.mjs';
 
 const QUICK = process.argv.includes('--quick');
+// PHẢI chụp TRƯỚC khi chạy các suite bên dưới: nó là mốc phân biệt "telemetry suite của lần
+// chạy NÀY" với "telemetry còn sót từ lần trước". Xem mục BẰNG CHỨNG THỨ HAI ở danh mục hook.
+const RUN_STARTED = Date.now();
 const cfg = config();
 
 const checks = [
@@ -65,6 +69,21 @@ const ROLE = repoRole();
 const IS_TEMPLATE = ROLE === 'template';
 const blocker = m => (IS_TEMPLATE ? advice : blockers).push(m);
 
+/**
+ * PLACEHOLDER: ở project thật là CHẶN, ở template là ĐÚNG — nên ở template nó không được
+ * xuống "Nên làm", nó phải BIẾN MẤT.
+ *
+ * `blocker()` hạ mọi thứ xuống `advice` ở template. Với placeholder thì hạ cấp vẫn sai: doctor
+ * in "placeholder CHANGEME là đúng, không phải lỗi" ở đầu, rồi liệt kê ĐÚNG BA dòng CHANGEME
+ * đó dưới "Nên làm (19)" — cùng một công cụ, hai câu trả lời ngược nhau, cách nhau 30 dòng.
+ * Một danh sách việc chứa việc KHÔNG ĐƯỢC PHÉP LÀM sẽ dạy người đọc bỏ qua cả danh sách, và
+ * đó là danh sách duy nhất ở đây có quyền đòi hành động.
+ */
+const placeholder = (m, okMsg) => {
+  if (IS_TEMPLATE) console.log(`  ✓  ${okMsg}`);
+  else blockers.push(m);
+};
+
 if (IS_TEMPLATE) console.log('  ℹ  Đây là REPO TEMPLATE — placeholder CHANGEME là đúng, không phải lỗi.');
 // Trạng thái thứ BA phải được NÓI RA, không được âm thầm gộp vào một trong hai kia. Không có
 // manifest và cũng không có changelog nghĩa là harness tới đây bằng đường không ai theo dõi
@@ -75,12 +94,13 @@ if (ROLE === 'unknown') {
     + 'nâng cấp sau này sẽ ghi đè MÙ vì không có hash nào để so. Sửa: `node <template>/tooling/apply-to.mjs . --apply --update` một lần để tạo manifest.');
 }
 
-if (String(cfg.project?.id).includes('CHANGEME')) blocker('harness.config.json → project.id vẫn là CHANGEME');
-if (String(cfg.project?.dri || '').includes('CHANGEME')) blocker('harness.config.json → project.dri chưa điền');
+if (String(cfg.project?.id).includes('CHANGEME')) placeholder('harness.config.json → project.id vẫn là CHANGEME', 'project.id = CHANGEME (placeholder của template)');
+if (String(cfg.project?.dri || '').includes('CHANGEME')) placeholder('harness.config.json → project.dri chưa điền', 'project.dri chưa điền (placeholder của template)');
 
-const cmds = Object.entries(cfg.commands || {}).filter(([, v]) => v && String(v).trim());
+const cmds = declaredCommands(cfg);
 if (!cmds.length) {
-  blocker('commands rỗng — GATE KHÔNG TỒN TẠI. Harness này đang chỉ là trang trí, và BẠN là verification loop.');
+  placeholder('commands rỗng — GATE KHÔNG TỒN TẠI. Harness này đang chỉ là trang trí, và BẠN là verification loop.',
+    'commands rỗng — placeholder của template. Ở project đích, ĐÂY LÀ DÒNG CHẶN.');
 } else {
   console.log(`  ✓  ${cmds.length} lệnh đã khai: ${cmds.map(([k]) => k).join(', ')}`);
   for (const need of ['verify', 'typecheck', 'test']) {
@@ -399,21 +419,39 @@ for (const [event, groups] of Object.entries(settings.hooks ?? {})) {
 // im lặng (hỏng). `hookRan()` ghi nhánh cho-qua; `gate-fails` ghi nhánh chặn.
 // KHÔNG có dữ liệu là `?` (CHƯA ĐO ĐƯỢC), KHÔNG phải `0` — gộp hai cái đó là cách một
 // cái gác đang làm việc bị đề xuất xoá.
-const tally = (file, field = 2) => {
-  const m = new Map();
-  if (!exists(repoPath('.claude', 'telemetry', file))) return m;
-  for (const line of readFileSync(repoPath('.claude', 'telemetry', file), 'utf8').split('\n')) {
-    const p = line.split('|');
-    if (p.length < field + 2) continue;
-    const key = p[field], sub = p[field + 1];
-    const e = m.get(key) ?? {};
-    e[sub] = (e[sub] ?? 0) + 1;
-    m.set(key, e);
-  }
-  return m;
+const tally = (file, field = 2, dir = repoPath('.claude', 'telemetry'), sinceMs = 0) => {
+  if (!exists(join(dir, file))) return new Map();
+  return tallyLines(readFileSync(join(dir, file), 'utf8'), { field, sinceMs });
 };
 const hookRuns = tally('hook-runs.log');
 const hookBlocks = tally('gate-fails.log');
+
+// ── BẰNG CHỨNG THỨ HAI: telemetry mà SUITE để lại ────────────────────────────
+//
+// Lời khuyên cũ ở đây là "không có dòng nào trong log ⇒ chạy `node tooling/test-hooks.mjs`".
+// Nó là NGÕ CỤT, và đo được: suite CỐ Ý chuyển telemetry sang `TEST_TELEMETRY_DIR`
+// (test-hooks.mjs dòng ~37, có lý do viết rõ — không chuyển thì suite tự bơm số vào bộ đếm
+// mà `/harness-retro` bước 4 dùng để đề xuất CẮT BỎ). Nên chạy suite KHÔNG BAO GIỜ tạo được
+// dòng nào ở nơi doctor đang nhìn: làm đúng lời khuyên, kết quả không đổi, mãi mãi.
+// Đo 2026-08-06: 7/10 hook dính lời khuyên này ở mỗi lần chạy.
+//
+// Bằng chứng thì đã có sẵn — chỉ nằm ở thư mục kia. `harness-doctor` CHẠY suite như bước
+// đầu tiên của chính nó (dòng 25), nên khi tới được đây, `TEST_TELEMETRY_DIR` chứa dấu vết
+// spawn THẬT của các hook, vừa mới, từ chính lần chạy này.
+//
+// Hai loại bằng chứng KHÔNG được gộp làm một, vì chúng trả lời hai câu khác nhau:
+//   · telemetry THẬT  → "hook đã GẶP CA CỦA NÓ trong việc thật"
+//   · telemetry SUITE → "hook CHẠY ĐƯỢC, không crash im lặng" (nhưng ca thật chưa tới)
+// Chỉ khi KHÔNG có cả hai thì im lặng mới là một câu hỏi — và lúc đó lời khuyên mới có việc.
+//
+// CHỈ ĐẾM DÒNG CỦA CHÍNH LẦN CHẠY NÀY (`RUN_STARTED`). Thư mục kia nằm ở `tmpdir()` và sống
+// dai hơn một lần chạy, nên không lọc thì một lần chạy suite HÔM QUA vẫn đọc là "suite ✓"
+// hôm nay — kể cả khi hôm nay suite crash, bị gỡ khỏi danh sách check, hay ai đó đảo thứ tự
+// hai bước. Đó lại đúng lớp lỗi mà cả mục này sinh ra để diệt, chỉ đổi chỗ đứng.
+// Lọc theo mốc thì nó hỏng về phía an toàn: mất bằng chứng ⇒ tụt về `?`, không thành lời
+// khẳng định sai.
+const suiteRuns = tally('hook-runs.log', 2, TEST_TELEMETRY_DIR, RUN_STARTED);
+const suiteBlocks = tally('gate-fails.log', 2, TEST_TELEMETRY_DIR, RUN_STARTED);
 
 const applyTo = exists(repoPath('tooling', 'apply-to.mjs')) ? readFileSync(repoPath('tooling', 'apply-to.mjs'), 'utf8') : '';
 // Khớp cả '.claude/hooks' (thư mục) lẫn '.claude/hooks/x.mjs' (file lẻ). Bản đầu
@@ -429,15 +467,23 @@ for (const f of onDisk) {
   const name = f.replace(/\.mjs$/, '');
   const passes = Object.values(hookRuns.get(name) ?? {}).reduce((a, b) => a + b, 0);
   const blocks = Object.values(hookBlocks.get(name) ?? {}).reduce((a, b) => a + b, 0);
+  const inSuite = suiteRuns.has(name) || suiteBlocks.has(name);
   // `fired` của một hook KHÔNG có đường exit 2 là `n/a`, không phải `0`.
   // Gộp hai giá trị đó là cách một bảng nói "cái gác này vô dụng" về một cái gác đang làm việc.
-  const runCol = passes || blocks ? `${passes} qua · ${canBlock ? `${blocks} chặn` : 'n/a chặn'}` : '? chưa đo';
+  // Và "suite chạy được nó" là một GIÁ TRỊ THỨ BA, không phải một dạng của `?`: nó loại trừ
+  // crash im lặng mà KHÔNG giả vờ rằng ca thật đã từng tới.
+  const runCol = passes || blocks
+    ? `${passes} qua · ${canBlock ? `${blocks} chặn` : 'n/a chặn'}`
+    : inSuite ? 'suite ✓ · ca thật chưa tới' : '? chưa đo';
   console.log(`  ${events ? '✓' : '✗'} ${f.padEnd(28)} ${(events ? events.join(',') : 'KHÔNG CẮM').padEnd(22)} ${(canBlock ? 'chặn được' : 'chỉ nhắc (n/a)').padEnd(15)} ${runCol}`);
   if (!events) advice.push(`hook \`${f}\` có trên đĩa nhưng KHÔNG có trong settings.json — mã chết trông như đang sống`);
   // "CHƯA ĐO ĐƯỢC" ≠ "0 lần". Chỉ nói khi log đã có dữ liệu của hook KHÁC: lúc đó
   // sự im lặng của hook này mới là một câu hỏi, không phải một hệ quả của việc chưa chạy gì.
-  else if (!passes && !blocks && hookRuns.size) {
-    advice.push(`hook \`${f}\` đã cắm nhưng KHÔNG có dòng nào trong hook-runs.log/gate-fails.log trong khi hook khác có — chưa có BẰNG CHỨNG nó chạy (có thể chỉ là chưa gặp ca của nó, cũng có thể là crash im lặng: chạy \`node tooling/test-hooks.mjs\`)`);
+  else if (!passes && !blocks && !inSuite && hookRuns.size) {
+    advice.push(`hook \`${f}\` đã cắm nhưng KHÔNG để lại dòng nào — cả ở telemetry thật LẪN ở telemetry của suite `
+      + `(${TEST_TELEMETRY_DIR}), trong khi hook khác có ở cả hai. Suite VỪA chạy trong chính lần doctor này, nên `
+      + `đây không phải "chưa chạy suite": hoặc đường đi của hook không gọi \`hookRan()\`/\`telemetry('gate-fails')\`, `
+      + `hoặc nó crash im lặng. Nhánh nào chặn mà không ghi sổ thì \`/harness-retro\` bước 4 sẽ thấy nó là gác vô dụng và đề xuất cắt.`);
   }
 }
 if (!carriesHooks && onDisk.length) advice.push('apply-to.mjs không mang `.claude/hooks/` — repo tiêu thụ sẽ nhận settings.json trỏ vào file không tồn tại');
@@ -580,6 +626,9 @@ for (const f of git(['ls-files']).stdout.split('\n').filter(Boolean)) {
   for (const m of txt.matchAll(/`\/([a-z][a-z0-9-]*)`/g)) {
     const n = m[1];
     if (skillNames.has(n) || NATIVE_OR_NOT_A_SKILL.has(n)) continue;
+    // Bia mộ + migration thi hành việc xoá là HỒ SƠ LỊCH SỬ viết bằng code — cùng bản chất
+    // với changelog/ADR ở `HISTORICAL`, chỉ khác định dạng. Xem `isRecordedRemoval` ở lib.
+    if (isRecordedRemoval(n, f)) continue;
     if (!deadRefs.has(n)) deadRefs.set(n, new Set());
     deadRefs.get(n).add(f);
   }
