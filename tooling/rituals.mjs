@@ -222,10 +222,28 @@ export function collect() {
     maxSkills: limit('maxSkills', 12),
     worktrees: num(() => (git(['worktree', 'list', '--porcelain']).stdout.match(/^worktree /gm) || []).length),
     maxWorktrees: limit('maxWorktrees', 4),
+    // Đếm pack CHƯA ĐƯỢC QUYẾT, không đếm pack TỒN TẠI.
+    //
+    // Pack là SNAPSHOT: `upstream --apply` sinh lại nó mỗi lần chạy. Bản đầu đếm số thư mục,
+    // nên ngay sau khi quyết xong và dọn, lần chạy `upstream` kế tiếp lại dựng pack cũ và mục
+    // này ĐỎ LẠI — một mục đỏ vĩnh viễn dạy đúng thứ file này ra đời để diệt.
+    //
+    // Neo là `sourceCommit` của pack: nó là commit của repo GỬI. Repo đó không đổi thì commit
+    // không đổi, nên "đã quyết" là một trạng thái bền. Repo đó có fixlog mới ⇒ commit mới ⇒
+    // mục này đỏ lại, và lần đó thì nó ĐÚNG.
     pendingPacks: num(() => {
       const d = repoPath('knowledge', 'incoming');
       if (!existsSync(d)) return 0;
-      return readdirSync(d, { withFileTypes: true }).filter(x => x.isDirectory()).length;
+      let log = '';
+      try { log = readFileSync(repoPath('knowledge', 'DECISIONS.log'), 'utf8'); } catch {}
+      const packs = readdirSync(d, { withFileTypes: true }).filter(x => x.isDirectory());
+      return packs.filter(x => {
+        let commit = null;
+        try { commit = JSON.parse(readFileSync(join(d, x.name, 'pack.json'), 'utf8')).sourceCommit; } catch {}
+        // Không đọc được commit ⇒ coi là CHƯA quyết. Thà nhắc thừa một lần còn hơn im lặng
+        // bỏ qua nguyên liệu đi lên — chiều LÊN là chiều dễ tắt nhất của vòng học.
+        return !commit || !log.includes(commit);
+      }).length;
     }),
   };
 }

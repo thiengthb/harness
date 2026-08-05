@@ -11,6 +11,28 @@
 
 ---
 
+## 2.10.4 — 2026-08-05
+
+**patch.** `rituals.mjs` đếm pack **CHƯA ĐƯỢC QUYẾT**, không đếm pack **tồn tại**.
+
+Pack là **snapshot** — `upstream --apply` sinh lại nó mỗi lần chạy. Bản 2.10.0 đếm số thư mục
+trong `knowledge/incoming/`, nên ngay sau khi quyết xong và dọn, lần chạy `upstream` kế tiếp
+dựng lại pack cũ và mục này **đỏ lại**.
+
+Một mục đỏ vĩnh viễn dạy đúng thứ `rituals.mjs` ra đời để diệt: người đọc học rằng bảng này có
+một dòng đỏ *"bình thường"*, và sau đó một dòng đỏ **thật** lẫn vào giữa mà không ai thấy. Đây
+là tầng 1 của `knowledge/lessons/0003` (*"đỏ giả làm người ta bỏ qua màu đỏ"*), lần này ở chính
+cái bảng vừa được xây để chống nó.
+
+Neo là **`sourceCommit`** của pack — commit của repo GỬI. Repo đó không đổi thì commit không
+đổi, nên *"đã quyết"* là trạng thái **bền**. Repo đó có fixlog mới ⇒ commit mới ⇒ mục đỏ lại,
+và lần đó thì nó **đúng**. Không đọc được commit ⇒ coi là **chưa quyết**: thà nhắc thừa một lần
+còn hơn im lặng bỏ qua nguyên liệu đi lên, vì chiều LÊN là chiều dễ tắt nhất của vòng học.
+
+Ba pack hiện tại đã được ghi `REVIEWED` kèm commit trong `knowledge/DECISIONS.log`, nên bảng
+nghi thức ở template giờ **không còn mục nào tới hạn** — trạng thái đúng, không phải trạng thái
+được làm cho im.
+
 ## 2.10.3 — 2026-08-05
 
 **patch.** Bỏ **proxy**, đo **trực tiếp**. Guard chống nghịch lý bootstrap không còn quét
