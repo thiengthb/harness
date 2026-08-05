@@ -39,8 +39,10 @@
  */
 import {
   hookInput, toolFilePath, toRepoRel, matchAny, pathsFor,
-  config, git, block, pass, telemetry, hookRan, currentBranch,
+  config, git, block, pass, telemetry, hookRan, currentBranch, declareFailMode,
 } from '../../tooling/lib/harness.mjs';
+
+declareFailMode(2, 'Không xác định được migration này đã merge chưa — sửa migration đã merge làm DB lệch nhau im lặng (nhóm 3).');
 
 const rel = toRepoRel(toolFilePath(hookInput()));
 if (!rel) pass();

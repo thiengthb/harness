@@ -7,7 +7,9 @@
  * và hook này cưỡng chế "mỗi nhánh chỉ sửa feature của issue mình đang làm".
  */
 import { readFileSync } from 'node:fs';
-import { hookInput, toolFilePath, toRepoRel, currentBranch, issueFromBranch, config, block, pass, repoPath, readJson, telemetry, hookRan } from '../../tooling/lib/harness.mjs';
+import { hookInput, toolFilePath, toRepoRel, currentBranch, issueFromBranch, config, block, pass, repoPath, readJson, telemetry, hookRan, declareFailMode } from '../../tooling/lib/harness.mjs';
+
+declareFailMode(2, 'Không xác định được file feature này thuộc issue nào — ghi đè việc của đồng đội là thiệt hại họ không dựng lại được.');
 
 const rel = toRepoRel(toolFilePath(hookInput()));
 if (!rel.startsWith('features/')) pass();

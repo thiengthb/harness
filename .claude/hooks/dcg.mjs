@@ -8,7 +8,9 @@
  * `--force-with-lease` CỐ Ý không bị chặn: đó là biến thể an toàn và agent cần nó
  * để rebase nhánh của chính mình.
  */
-import { hookInput, toolCommand, block, pass, telemetry, hookRan, config } from '../../tooling/lib/harness.mjs';
+import { hookInput, toolCommand, block, pass, telemetry, hookRan, config, declareFailMode } from '../../tooling/lib/harness.mjs';
+
+declareFailMode(2, 'Không phân tích được lệnh nên không biết nó có phá lịch sử chung hay production hay không (nhóm 1+3).');
 
 const cmd = toolCommand(hookInput());
 if (!cmd.trim()) pass();

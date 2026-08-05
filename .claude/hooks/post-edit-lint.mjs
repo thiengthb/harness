@@ -7,7 +7,9 @@
  * đặt ở CI thì agent đã đi tiếp 40 phút, context đã trôi, sửa lại tốn 10x.
  */
 import { writeFileSync } from 'node:fs';
-import { hookInput, toolFilePath, toRepoRel, matchAny, pathsFor, runConfigured, spill, telemetry, hookRan, pass, EXIT_BLOCK } from '../../tooling/lib/harness.mjs';
+import { hookInput, toolFilePath, toRepoRel, matchAny, pathsFor, runConfigured, spill, telemetry, hookRan, pass, EXIT_BLOCK, declareFailMode } from '../../tooling/lib/harness.mjs';
+
+declareFailMode(1, 'Không lint được file vừa ghi. PostToolUse không chặn được gì, và lint còn chạy lại ở gate.');
 
 const rel = toRepoRel(toolFilePath(hookInput()));
 if (!rel) pass();

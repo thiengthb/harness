@@ -38,7 +38,7 @@
  * một repo giả cho mỗi ca — và đó là điều kiện để suite này chạy được ở project đích, nơi
  * trạng thái git là của HỌ (xem knowledge/lessons/0003).
  */
-import { readdirSync, existsSync, statSync, readFileSync } from 'node:fs';
+import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey } from './lib/harness.mjs';
@@ -149,7 +149,52 @@ export const RITUALS = [
       return { state: 'ok', why: 'không có pack chờ quyết' };
     },
   },
+  {
+    // ── NGHI THỨC DUY NHẤT HỎI LẠI TIỀN ĐỀ CỦA CHÍNH HARNESS.
+    //
+    // Mọi mục trên hỏi "việc trong repo đã xong chưa". Mục này hỏi một câu khác hẳn:
+    // *thứ harness tự viết có còn đáng tự viết không* — vì cái công cụ mình đang chạy BÊN
+    // TRONG vừa lên phiên bản.
+    //
+    // Vì sao nó tồn tại: `fleet` (repo bên cạnh) bỏ ~6 phiên tháng 6/2026 xây "auto-pilot"
+    // — orchestrator chạy lại `claude -p` mỗi batch, scheduled task, control plane Discord
+    // ký RS256. Nó CHẠY ĐƯỢC. Ngày 2026-07-28 xoá sạch, vì Claude Code đã ra sẵn scheduled
+    // agents. Không có bước nào trong quy trình cũ đi kiểm lại tiền đề. Ghi chép của họ:
+    // *"Nothing about the process was wrong… The premise expired and no step ever re-checked
+    // it."* Harness là repo tự viết RẤT nhiều (presence detection, migration, ratchet,
+    // telemetry, ledger) nên nó phơi ra đúng rủi ro đó, chỉ là chưa ai đo.
+    //
+    // HÌNH DẠNG LÀ MỘT NGHI THỨC, KHÔNG PHẢI MỘT HOOK MỚI — và đó là chỗ khác fleet. Fleet
+    // cắm một hook SessionStart riêng; ở harness một hook mới cần sửa `settings.json` ở MỌI
+    // repo đã áp, tức là cần một migration đăng ký, tức là ba bước có thể hỏng để mua đúng
+    // một câu hỏi. `rituals.mjs` đã được SessionStart gọi sẵn, nên ở đây nó tốn 0 bước.
+    //
+    // NEO LÀ VERSION, KHÔNG PHẢI LỊCH. Câu trả lời chỉ đổi khoảng một lần mỗi release, nên
+    // một job nghiên cứu hằng tuần sẽ đốt phiên để không tìm ra gì. Một lần bump version là
+    // cái cò rẻ và chính xác: đọc một biến môi trường, so với một file JSON.
+    id: 'claude-code-drift',
+    cmd: 'rituals.mjs --reviewed-claude-code',
+    what: 'Claude Code vừa lên bản mới — hỏi MỘT câu: nó có ra sẵn thứ harness đang tự viết không?',
+    check: (s) => {
+      if (!s.claudeCodeVersion) {
+        return { state: '?', why: 'không đọc được version Claude Code từ CLAUDE_CODE_EXECPATH (cách cài không đặt biến này) — không đo được' };
+      }
+      if (!s.reviewedClaudeCode) {
+        return { state: 'due', why: `đang chạy Claude Code ${s.claudeCodeVersion} và CHƯA có bản rà nào được ghi (.claude/claude-code-baseline.json) — chưa ai hỏi bản này có ra sẵn thứ harness tự viết không` };
+      }
+      if (s.reviewedClaudeCode !== s.claudeCodeVersion) {
+        return { state: 'due', why: `Claude Code đã đổi ${s.reviewedClaudeCode} → ${s.claudeCodeVersion}: đọc changelog bản mới với ĐÚNG một câu hỏi "nó vừa ra sẵn thứ nào harness đang tự làm tay?", rồi ghi lại bằng \`node tooling/rituals.mjs --reviewed-claude-code "<thấy gì>"\`` };
+      }
+      return { state: 'ok', why: `đã rà Claude Code ${s.claudeCodeVersion}${s.reviewedClaudeCodeAt ? ` ngày ${s.reviewedClaudeCodeAt.slice(0, 10)}` : ''}` };
+    },
+  },
 ];
+
+/** `…/versions/2.1.221` → `2.1.221`. Trả `null` thay vì đoán — `null` chạy tiếp thành `?`. */
+export function claudeCodeVersion(execPath = process.env.CLAUDE_CODE_EXECPATH || '') {
+  const base = String(execPath).split(/[\\/]/).filter(Boolean).pop() || '';
+  return /^\d+\.\d+\.\d+/.test(base) ? base : null;
+}
 
 /** Chạy toàn bộ nghi thức trên một trạng thái. Thuần, tất định. */
 export function evaluate(state) {
@@ -245,6 +290,18 @@ export function collect() {
         return !commit || !log.includes(commit);
       }).length;
     }),
+
+    // Version Claude Code ĐANG chạy, và version đã được RÀ. Cả hai đều có thể là null, và
+    // hai cái null đó nghĩa khác nhau: không đọc được version ⇒ `?` (không đo được); đọc
+    // được version mà chưa có baseline ⇒ `due` (chưa ai rà). Gộp chúng thành một là cách
+    // một mục tới hạn thật biến thành một mục im lặng.
+    claudeCodeVersion: claudeCodeVersion(),
+    ...(() => {
+      try {
+        const b = JSON.parse(readFileSync(repoPath('.claude', 'claude-code-baseline.json'), 'utf8'));
+        return { reviewedClaudeCode: b.reviewedVersion || null, reviewedClaudeCodeAt: b.reviewedAt || null };
+      } catch { return { reviewedClaudeCode: null, reviewedClaudeCodeAt: null }; }
+    })(),
   };
 }
 
@@ -284,6 +341,44 @@ function fixlogState() {
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   const ALL = process.argv.includes('--all');
   const JSONOUT = process.argv.includes('--json');
+
+  // ── Ghi lại một lần rà Claude Code. LÝ DO BẮT BUỘC, và đó không phải hình thức: mục này
+  // đóng được bằng cách "không thấy gì" — nhưng *"đã đọc changelog 2.1.221, không có gì
+  // trùng thứ harness tự viết"* là một kết luận kiểm được, còn một file baseline bị bump
+  // lặng lẽ thì không phân biệt được với việc chưa ai đọc. Cùng lý do `fixlog --close` đòi
+  // lý do: một mục bị đóng mà không ghi vì sao thì lần sau không ai dựng lại được quyết định.
+  const ri = process.argv.indexOf('--reviewed-claude-code');
+  if (ri > -1) {
+    const found = process.argv.slice(ri + 1).filter(a => !a.startsWith('--')).join(' ').trim();
+    const version = claudeCodeVersion();
+    if (!version) {
+      console.error('Không đọc được version Claude Code từ CLAUDE_CODE_EXECPATH — không ghi baseline cho một version không biết.');
+      process.exit(1);
+    }
+    if (!found) {
+      console.error(`Cách dùng: node tooling/rituals.mjs --reviewed-claude-code "<đã thấy gì>"`);
+      console.error(`  Ví dụ: "2.1.221 không ra thêm gì trùng harness" hoặc "ra native X — mở issue bỏ tooling/y.mjs".`);
+      console.error(`  Lý do là BẮT BUỘC: một baseline bị bump lặng lẽ không phân biệt được với việc chưa ai đọc.`);
+      process.exit(1);
+    }
+    const p = repoPath('.claude', 'claude-code-baseline.json');
+    let prev = {};
+    try { prev = JSON.parse(readFileSync(p, 'utf8')); } catch { /* lần đầu */ }
+    const history = Array.isArray(prev.history) ? prev.history : [];
+    history.unshift({ version, at: new Date().toISOString(), found });
+    writeFileSync(p, JSON.stringify({
+      $comment: 'Bản rà Claude Code gần nhất. Nghi thức `claude-code-drift` so `reviewedVersion` với version đang chạy. '
+        + 'Đừng sửa tay — dùng `node tooling/rituals.mjs --reviewed-claude-code "<thấy gì>"`.',
+      reviewedVersion: version,
+      reviewedAt: history[0].at,
+      history: history.slice(0, 20),
+    }, null, 2) + '\n', 'utf8');
+    console.log(`✓ đã ghi: rà Claude Code ${version}`);
+    console.log(`  thấy: ${found}`);
+    console.log(`  Nghi thức claude-code-drift sẽ im cho tới lần Claude Code lên version tiếp theo.\n`);
+    process.exit(0);
+  }
+
   const results = evaluate(collect());
 
   if (JSONOUT) { console.log(JSON.stringify(results, null, 2)); process.exit(0); }
