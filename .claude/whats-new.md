@@ -1,4 +1,4 @@
-<!-- version: 2026-08-05-i -->
+<!-- version: 2026-08-05-j -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,16 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-05 — Promote một bài học? Nhớ ĐĂNG KÝ nó, nếu không nó không đi đâu cả
+
+`L0004` (gác hỏng thì chặn) đã lên `knowledge/lessons/`, kèm gate `evals/tasks/0005`.
+
+**Việc bạn phải làm khác đi:** thêm file vào `knowledge/lessons/` hoặc `evals/tasks/` thì
+phải thêm tên nó vào `SEED` trong `tooling/apply-to.mjs` — nếu không, `--audit` đỏ và bài
+học **không sang được project đích**. `/knowledge-promote` chưa nói bước này; `--audit` bắt.
+
+Bị chặn sai chỗ này → nhắn DRI, đừng tự nới `--audit`.
 
 ## 2026-08-05 — Gác ném lỗi giờ CHẶN, không im lặng cho qua (v2.12.0)
 
