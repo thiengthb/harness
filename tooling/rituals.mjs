@@ -41,7 +41,7 @@
 import { readdirSync, existsSync, statSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoPath, git, config, limit, report, telemetryDir, exists } from './lib/harness.mjs';
+import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey } from './lib/harness.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHẦN THUẦN — không đọc đĩa, không gọi git. Test khẳng định trực tiếp vào đây.
@@ -254,17 +254,25 @@ function fixlogState() {
     const f = join(telemetryDir(), 'manual-fixes.log');
     if (!existsSync(f)) return { fixlogTotal: 0, fixlogRepeated: 0 };
     const lines = readFileSync(f, 'utf8').split('\n').filter(Boolean);
-    // Cùng phép chuẩn hoá với `tooling/fixlog.mjs --top`: 6 từ đầu dài hơn 3 ký tự. Hai bản
-    // của cùng một phép nhóm sẽ lệch nhau vào ngày có người sửa một bản — nên nếu phép này
-    // còn phải dùng ở chỗ thứ ba, nó phải chuyển vào `lib/harness.mjs` trước.
-    const norm = s => s.toLowerCase().replace(/[^a-z0-9à-ỹ\s]/gi, ' ').split(/\s+/).filter(w => w.length > 3).slice(0, 6).join(' ');
+    // `fixlogKey` ở `lib/harness.mjs` — MỘT nguồn cho cả `--top`, `--close` và chỗ này.
+    const norm = fixlogKey;
     const groups = new Map();
     for (const l of lines) {
       const text = l.split('|').slice(3).join('|').trim() || l;
       const k = norm(text);
       groups.set(k, (groups.get(k) ?? 0) + 1);
     }
-    return { fixlogTotal: lines.length, fixlogRepeated: [...groups.values()].filter(n => n >= 2).length };
+    // Trừ nhóm ĐÃ ĐÓNG. Không trừ thì một nhóm ≥2 lần ĐỎ VĨNH VIỄN: fixlog chỉ biết ghi thêm,
+    // không biết việc đã được xử. Đo ở `sakubun`: nhóm `gen-clean chẩn đoán sai` đạt 2 lần và
+    // đã được sửa ở template v2.10.0 — fixlog cục bộ không biết, nên mục này sẽ nhắc mãi.
+    // Cùng hình dạng với bug đếm pack ở 2.10.4: đếm cái TỒN TẠI thay vì cái CHƯA XỬ.
+    const closedFile = join(telemetryDir(), 'fixlog-closed.log');
+    const closed = new Set();
+    try {
+      for (const l of readFileSync(closedFile, 'utf8').split('\n').filter(Boolean)) closed.add(l.split('\t')[1]);
+    } catch { /* chưa đóng nhóm nào */ }
+    const open = [...groups.entries()].filter(([k]) => !closed.has(k));
+    return { fixlogTotal: lines.length, fixlogRepeated: open.filter(([, n]) => n >= 2).length };
   } catch { return { fixlogTotal: null, fixlogRepeated: null }; }
 }
 

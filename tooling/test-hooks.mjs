@@ -11,6 +11,7 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, rmSync, readdirSync, cpSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { repoPath, report, exists, git, tmpdir, repoRole, readJson } from './lib/harness.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -591,6 +592,62 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   else ok.push(`precommit-scan.mjs${' '.repeat(10)} 0 file nguồn chứa NUL; điều kiện đỏ được với .mjs và KHÔNG bắt .png`);
 }
 
+// ─── Migration DUY NHẤT XOÁ FILE: cả hai nhánh phải được khẳng định ──────────
+//
+// `harness-migrations/010` là migration đầu tiên và duy nhất XOÁ file ở repo người khác. Hợp
+// đồng của `test-migrations` (không throw · JSON còn đọc được · idempotent · không mất
+// `$comment` · `expect`) không nói được điều quan trọng nhất ở đây: **nó xoá ĐÚNG cái gì, và
+// nó DỪNG TAY khi nào**. `expect` chỉ khẳng định được nội dung MỘT file còn tồn tại — nó
+// không khẳng định được sự VẮNG MẶT, mà vắng mặt mới là hành vi của migration này.
+//
+// Hai nhánh, và nhánh thứ hai là nhánh giữ niềm tin: một migration xoá đè lên chỉnh sửa của
+// người dùng làm cả cơ chế nâng cấp mất tín nhiệm, và mất tín nhiệm thì lần sau không ai nâng.
+{
+  const work = join(tmpdir(), `harness-mig010-${process.pid}`);
+  const run010 = async (mutateFile) => {
+    rmSync(work, { recursive: true, force: true });
+    cpSync(repoPath('tooling', 'fixtures', 'migration-2.11.0'), work, { recursive: true });
+    if (mutateFile) writeFileSync(join(work, mutateFile), 'người dùng đã sửa file này\n', 'utf8');
+    const logs = [];
+    const mod = await import(pathToFileURL(repoPath('harness-migrations', '010-bo-thu-template-da-bo.mjs')).href);
+    await mod.up({
+      repoPath: (...p) => join(work, ...p),
+      readJson: (p, fb = null) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return fb; } },
+      readFileSync, writeFileSync, existsSync: exists,
+      log: m => logs.push(String(m)),
+    });
+    return { logs, has: (rel) => exists(join(work, rel)) };
+  };
+
+  try {
+    // ① Còn nguyên như harness đặt ⇒ XOÁ. Và chỉ xoá thứ có tên trong bia mộ.
+    const a = await run010(null);
+    if (a.has('.claude/skills/whats-new/SKILL.md')) {
+      fail.push('migration 010              skill template đã BỎ vẫn còn sau up() — lớp phân phối vẫn không biết xoá');
+    } else if (!a.has('.claude/skills/cua-project/SKILL.md')) {
+      fail.push('migration 010              XOÁ NHẦM skill của project — bia mộ phải là danh sách TƯỜNG MINH, không phải suy luận "có ở đích mà không có ở template"');
+    } else if (!a.logs.some(l => l.startsWith('✓'))) {
+      fail.push('migration 010              xoá mà KHÔNG nói ra — một migration xoá file im lặng là thứ không ai truy được');
+    } else {
+      ok.push(`migration 010${' '.repeat(15)} xoá thứ template đã bỏ, GIỮ skill của project, và nói ra`);
+    }
+
+    // ② Người dùng đã sửa ⇒ GIỮ LẠI và cảnh báo. Đây là nhánh giữ niềm tin vào nâng cấp.
+    const b = await run010('.claude/skills/whats-new/SKILL.md');
+    if (!b.has('.claude/skills/whats-new/SKILL.md')) {
+      fail.push('migration 010              XOÁ ĐÈ lên chỉnh sửa của người dùng — điều kiện an toàn số 2 (so sha với manifest) không có hiệu lực');
+    } else if (!b.logs.some(l => l.includes('⚠'))) {
+      fail.push('migration 010              giữ lại nhưng KHÔNG cảnh báo — người dùng không biết mình đang giữ một thứ template đã bỏ');
+    } else {
+      ok.push(`migration 010${' '.repeat(15)} file đã bị người dùng SỬA ⇒ GIỮ LẠI kèm cảnh báo (sha khác manifest)`);
+    }
+  } catch (e) {
+    fail.push(`migration 010              THROW khi chạy trực tiếp: ${String(e.message || e).slice(0, 100)}`);
+  } finally {
+    try { rmSync(work, { recursive: true, force: true }); } catch {}
+  }
+}
+
 // ─── rituals.mjs: BA GIÁ TRỊ, và "tới hạn" phải kèm SỐ ĐO ────────────────────
 //
 // Khẳng định vào `evaluate()` — hàm THUẦN — bằng trạng thái DỰNG SẴN. Không dựng repo giả:
@@ -743,7 +800,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 87;
+const RATCHET = 89;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

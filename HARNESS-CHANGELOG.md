@@ -11,6 +11,66 @@
 
 ---
 
+## 2.11.0 — 2026-08-05
+
+**minor.** Lớp phân phối biết **XOÁ**, và fixlog biết **ĐÓNG**. Hai lỗ hổng cùng một hình
+dạng: cơ chế chỉ đồng bộ **một chiều**, nên trạng thái *"đã xong"* không bao giờ tới nơi.
+
+### ① Thứ template đã bỏ vẫn nằm ở project — sáu version
+
+`/whats-new` bị cắt khỏi template ở **v2.4.0** (commit `21834ca`) và vẫn có ở **cả ba** repo
+tiêu thụ. Nó đẩy cả ba lên **13 skill trên trần 12**, nên `entropy-scan` báo đỏ ở mọi phiên về
+một thứ mà project **không gây ra và không sửa được bằng cách nâng cấp**. Đó là dạng đỏ tệ
+nhất: đỏ **đúng**, nhưng không ai sửa được từ phía mình.
+
+Chiều ngược của lỗ hổng đã sửa ở 2.8.0 (sự kiện hook mới không tới được repo cũ) — cùng nguyên
+nhân: lớp phân phối chỉ biết **thêm** và **sửa**.
+
+`REMOVED_PATHS` trong `lib/harness.mjs` là **bia mộ**: mỗi dòng ghi rõ version nào đã bỏ và vì
+sao. `harness-migrations/010` xoá chúng ở project — và đây là migration **duy nhất xoá file**,
+nên nó có **hai điều kiện an toàn**:
+
+1. **Chỉ xoá thứ có tên trong bia mộ.** Không suy luận *"có ở đích mà không có ở template"* —
+   phép đó không phân biệt được *harness đã bỏ* với *project tự thêm* và *công cụ khác cài
+   vào* (`prisma init` đổ 9 skill vào `.claude/skills/`, có thật trong fixlog của `warehouse`).
+   Suy luận ở đây nghĩa là xoá nhầm file của người dùng.
+2. **Chỉ xoá khi file còn nguyên** — so `sha` với manifest. Người dùng đã sửa ⇒ **giữ lại** và
+   nói ra. Một migration xoá đè lên chỉnh sửa của người dùng làm cả cơ chế nâng cấp mất tín
+   nhiệm, và mất tín nhiệm thì lần sau không ai nâng nữa.
+
+Hợp đồng của `test-migrations` không nói được điều quan trọng nhất ở đây — `expect` khẳng định
+được nội dung một file **còn tồn tại**, không khẳng định được **sự vắng mặt**, mà vắng mặt mới
+là hành vi của migration này. Nên nó có test riêng cho **cả hai nhánh**: xoá đúng thứ + giữ
+skill của project; và file đã bị sửa ⇒ giữ lại kèm cảnh báo.
+
+### ② Một nhóm fixlog ≥2 lần đỏ VĨNH VIỄN
+
+fixlog chỉ biết **ghi thêm**, không biết việc đã được xử. Đo ở `sakubun`: nhóm *"gen-clean chẩn
+đoán sai"* đạt 2 lần và **đã được sửa ở template v2.10.0** — nhưng fixlog cục bộ không biết,
+nên `rituals` sẽ nhắc `/harness-retro` **mãi mãi**.
+
+Cùng hình dạng với bug đếm pack vừa sửa ở 2.10.4: **đếm cái TỒN TẠI thay vì cái CHƯA XỬ**.
+
+```
+node tooling/fixlog.mjs --close "<vài chữ trong mục>" "<đã xử lý thế nào>"
+```
+
+Khớp theo **văn bản**, không theo số thứ tự — thứ tự trong `--top` đổi mỗi lần có dòng mới, nên
+`--close 2` hôm nay và ngày mai là hai nhóm khác nhau. Khớp 0 hoặc >1 nhóm thì **từ chối** kèm
+danh sách ứng viên: đóng nhầm nhóm là làm tắt một cảnh báo đang đúng. Lý do là **bắt buộc** —
+một nhóm bị đóng mà không ghi vì sao thì lần sau không ai dựng lại được quyết định. `--top` in
+`✔` cho nhóm đã đóng kèm ngày và lý do; mục fixlog **vẫn giữ nguyên** làm bằng chứng.
+
+### ③ Phép nhóm fixlog: ba bản sao → một nguồn
+
+`fixlogKey()` chuyển vào `lib/harness.mjs`. Ba nơi dùng nó: `--top` (hiển thị), `rituals`
+(đếm), `--close` (đóng). Ba bản sao là ba cơ hội lệch nhau — và khi lệch thì `--close` đóng một
+khoá mà `--top` không bao giờ sinh ra: **nút "đã xử lý" bấm vào không có tác dụng, và không có
+gì báo**. Bản sao thứ hai đã tồn tại từ 2.10.0 kèm một comment tiên đoán đúng chuyện này;
+comment không ngăn được bản sao thứ ba, gộp lại thì ngăn được.
+
+`RATCHET` 87 → **89**.
+
 ## 2.10.4 — 2026-08-05
 
 **patch.** `rituals.mjs` đếm pack **CHƯA ĐƯỢC QUYẾT**, không đếm pack **tồn tại**.
