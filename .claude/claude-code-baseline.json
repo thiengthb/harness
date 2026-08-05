@@ -1,8 +1,13 @@
 {
   "$comment": "Bản rà Claude Code gần nhất. Nghi thức `claude-code-drift` so `reviewedVersion` với version đang chạy. Đừng sửa tay — dùng `node tooling/rituals.mjs --reviewed-claude-code \"<thấy gì>\"`.",
-  "reviewedVersion": "2.1.221",
-  "reviewedAt": "2026-08-05T07:31:47.073Z",
+  "reviewedVersion": "2.1.222",
+  "reviewedAt": "2026-08-05T08:22:29.999Z",
   "history": [
+    {
+      "version": "2.1.222",
+      "at": "2026-08-05T08:22:29.999Z",
+      "found": "2.1.222 ra 2026-08-05, toan bo la fix/improve, KHONG co nang luc moi nao lam co che harness thanh thua. Nhung 3 muc cham thang vao lop dang ganh viec o day: (1) 'worktree-isolated sessions and their subagents being able to run destructive git commands against the main checkout' — vung phu song CHONG LAN voi dcg.mjs, nhung chi o dung mot huong (phien trong worktree ban ra main checkout); dcg van la lop duy nhat phu nhom 3 danger-zones o phien thuong, GIU. Dang chu y vi /wt cua harness sinh worktree. (2) 'PreToolUse auto-allow hooks bypassing tool restrictions in background agent tasks' — moi guard cua harness la PreToolUse; truoc ban nay mot background agent task co the di vong qua chinh cai gac vua duoc lam fail-closed o v2.12.0, tuc la bang do trong learnings 2026-W32-gac-nem-loi-thi-cho-qua CHUA phai buc tranh day du. Nen tai do fail-closed tren background task truoc khi tin no. (3) 'org-restricted model:opus-style subagent and teammate family aliases dropping to parent model' — day dung la diem cuong che THAT cua model tiering theo harness.config.json (permissions.ask -> Agent(model:opus)); truoc ban nay no co the tut ve model cha ma khong bao. Khong mo issue nao."
+    },
     {
       "version": "2.1.221",
       "at": "2026-08-05T07:31:47.073Z",
