@@ -1,4 +1,4 @@
-<!-- version: 2026-08-05-j -->
+<!-- version: 2026-08-05-k -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,18 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-05 — Đang dở: nhánh `chore/vong-hoc-2026-W32` · đọc nhật ký trước khi sửa gì
+
+**Nếu bạn vừa vào ở một máy khác:** `docs/progress/vong-hoc-2026-W32.md` — nhật ký đầy đủ,
+gồm 5 mục cần `/harness-propose` và một bảng "harness nói X, thực tế Y". SessionStart **không**
+tự in nó vì nhánh `chore/` không suy ra được issue (`session-start.mjs:47`), nên nó ở đây.
+
+**Việc số 1 khi quay lại:** `budget.monthlyUsdCap = 0` trong khi `budget-alarm.log` ghi 3 lần
+`rate_limit` sáng 2026-08-05. Rồi `/pre-merge` + PR cho 2 commit đang chờ.
+
+**Không đi theo bạn sang máy khác** (gitignore, cố ý): `.claude/telemetry/` (16 mục fixlog) ·
+`knowledge/incoming/` (3 pack) · `.harness-pack/` (dựng lại bằng `knowledge/export.mjs`).
 
 ## 2026-08-05 — Promote một bài học? Nhớ ĐĂNG KÝ nó, nếu không nó không đi đâu cả
 
