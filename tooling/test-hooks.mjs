@@ -591,6 +591,32 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   else ok.push(`precommit-scan.mjs${' '.repeat(10)} 0 file nguồn chứa NUL; điều kiện đỏ được với .mjs và KHÔNG bắt .png`);
 }
 
+// ─── Quét `import` phải neo vào CODE, không vào COMMENT ──────────────────────
+//
+// `upgrade.mjs` kiểm mọi `import` tương đối sau khi nâng cấp (guard chống nghịch lý bootstrap).
+// Bản đầu quét cả văn xuôi và bắn nhầm ngay lần chạy thật đầu tiên: đoạn comment giải thích
+// check đó có nêu ví dụ một đường dẫn tương đối, nên check tố chính `upgrade.mjs`.
+//
+// Đây là lần thứ BA của cùng một bài học trong repo này (engine mutant của `test-migrations`,
+// check CODEOWNERS của `harness-doctor`) — nên nó đáng một test, không đáng một comment nữa.
+// Test khẳng định trên chuỗi tổng hợp: `upgrade.mjs` không export hàm này, và bóc nó ra chỉ để
+// test được thì sẽ có hai bản của cùng phép lọc.
+{
+  const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+  const RE = /(?:from|import)\s*\(?\s*['"](\.[^'"]+)['"]/g;
+  const found = (src) => [...strip(src).matchAll(RE)].map(m => m[1]);
+
+  const cases = [
+    ['comment CẢ DÒNG nêu ví dụ', "// ví dụ: import x from './khong-ton-tai.mjs'\nimport a from './that.mjs';\n", ['./that.mjs']],
+    ['block comment nêu ví dụ', "/**\n * `import('./trong-van-xuoi.mjs')` chỉ là minh hoạ.\n */\nimport b from './that.mjs';\n", ['./that.mjs']],
+    ['import động thật vẫn bắt được', "const m = await import('./dong.mjs');\n", ['./dong.mjs']],
+    ['package name KHÔNG bị bắt', "import { x } from 'node:fs';\nimport y from 'minimatch';\n", []],
+  ];
+  const bad = cases.filter(([, src, want]) => JSON.stringify(found(src)) !== JSON.stringify(want));
+  if (bad.length) fail.push(`upgrade.mjs quét import   ${bad.length}/${cases.length} ca sai: ${bad.map(b => b[0]).join(' · ')}`);
+  else ok.push(`upgrade.mjs${' '.repeat(17)} quét import neo vào CODE: ${cases.length} ca (comment dòng, block, import động, package name)`);
+}
+
 // ─── rituals.mjs: BA GIÁ TRỊ, và "tới hạn" phải kèm SỐ ĐO ────────────────────
 //
 // Khẳng định vào `evaluate()` — hàm THUẦN — bằng trạng thái DỰNG SẴN. Không dựng repo giả:
@@ -743,7 +769,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 87;
+const RATCHET = 88;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

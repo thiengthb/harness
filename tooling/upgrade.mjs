@@ -360,14 +360,24 @@ if (dangling.length) {
 // không sang được (xem điều kiện nổ pha 2 ở trên), và cả BA repo tiêu thụ vỡ suite. Điều kiện
 // nổ pha 2 đã được sửa; check này bắt CẢ LỚP, kể cả những cách hỏng chưa gặp.
 //
-// Chỉ quét `import ... from './x.mjs'` và `import('./x.mjs')` — tức đường dẫn TƯƠNG ĐỐI trong
-// lớp cơ chế. Package name và built-in (`node:fs`) không phải việc của check này.
+// Chỉ quét đường dẫn TƯƠNG ĐỐI trong lớp cơ chế. Package name và built-in (`node:fs`) không
+// phải việc của check này.
+//
+// BỎ COMMENT TRƯỚC KHI KHỚP. Bản đầu quét cả văn xuôi, và nó bắn nhầm ngay lần chạy thật đầu
+// tiên: chính đoạn comment Ở ĐÂY nêu ví dụ một đường dẫn tương đối, nên check báo
+// `tooling/upgrade.mjs` import một file không tồn tại. Neo vào CODE, đừng neo vào comment
+// GIẢI THÍCH code — bài học đã có trong repo này (engine mutant của `test-migrations`, check
+// CODEOWNERS của `harness-doctor`), và đây là lần thứ ba.
+//
+// Bỏ block comment và comment CẢ DÒNG; KHÔNG bỏ `//` giữa dòng — làm vậy sẽ cắt cả URL trong
+// chuỗi. `import` không bao giờ nằm sau một `//` giữa dòng, nên phạm vi này là đủ.
 {
   const bad = [];
   for (const rel of filesUnder(REPO_ROOT, 'tooling').concat(filesUnder(REPO_ROOT, '.claude/hooks'), filesUnder(REPO_ROOT, 'evals'))) {
     if (!rel.endsWith('.mjs')) continue;
     let src = '';
     try { src = readFileSync(repoPath(rel), 'utf8'); } catch { continue; }
+    src = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
     const dir = dirname(repoPath(rel));
     for (const m of src.matchAll(/(?:from|import)\s*\(?\s*['"](\.[^'"]+)['"]/g)) {
       const target = resolve(dir, m[1]);
