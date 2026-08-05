@@ -11,6 +11,82 @@
 
 ---
 
+## 2.12.0 — 2026-08-05
+
+**minor.** Ba mục, tất cả lấy từ đợt nghiên cứu repo `fleet` bên cạnh. Mục ① là **lỗ hổng
+bảo mật đo được**, không phải cải tiến.
+
+### ① Một cái gác ném lỗi giờ CHẶN, thay vì im lặng cho qua
+
+**ĐÂY LÀ MỤC ĐÁNG ĐỌC.** Một ngoại lệ ở bất cứ đâu trong hook làm tiến trình thoát mã **1**,
+và Claude Code đọc mọi mã khác 0/2 là *"lỗi không chặn"* ⇒ **tool call ĐI QUA**. Đo trên
+harness 2026-08-05 bằng cách tiêm lỗi ngay sau `import`, trước mọi phép kiểm:
+
+| hook | payload | sạch | ném lỗi |
+|---|---|---|---|
+| `block-secrets` | `sk-ant-…` thật vào `config.ts` | `exit=2` | `exit=1` ⇒ **LỌT** |
+| `dcg` | `git push --force origin main` | `exit=2` | `exit=1` ⇒ **LỌT** |
+| `dcg` | `rm -rf /` | `exit=2` | `exit=1` ⇒ **LỌT** |
+| `protect-harness` | ghi `.claude/settings.json` | `exit=2` | `exit=1` ⇒ **LỌT** |
+
+Cả bốn cái gác của **ba nhóm nguy hiểm** đều fail-OPEN. Và nó im theo một cách riêng:
+`hookRan()` nằm ở CUỐI hook nên crash không ghi gì, và `harness-doctor` đếm 0 — đọc y hệt
+*"gác này chạy suốt mà chưa bắt gì"*. Ba tình huống gộp thành một: gác đang làm việc · gác
+không được cắm · gác đang crash.
+
+`declareFailMode(code, why)` ở `lib/harness.mjs` biến việc đó thành **lựa chọn có viết ra**:
+
+- **mode 2 — fail-CLOSED** (6 hook): `block-secrets` · `dcg` · `protect-migrations` ·
+  `protect-harness` · `protect-tests` · `protect-feature-files`.
+- **mode 1 — fail-open NHƯNG HIỆN RA** (4 hook): `block-generated-edit` · `post-edit-lint` ·
+  `observe` · `session-start`. Với hook cố vấn, exit 1 vốn ĐÃ đúng: tool đi qua *và* lỗi hiện
+  ra. Ép chúng về 0 là giấu crash đi.
+- Crash được ghi vào `hook-runs.log` với outcome `crash` — không còn đọc thành "chưa bắt gì".
+- **Cửa thoát `HARNESS_FAIL_OPEN=1`**, được ghi log. Mọi hook import cùng một lib, nên một lỗi
+  trong lib làm MỌI hook fail-closed cùng lúc (config sai cú pháp là ca thực tế nhất). Một lỗ
+  hổng được khai báo thì cãi lại được; một vụ khoá cứng im lặng thì không.
+
+### ② Nghi thức thứ 9: Claude Code lên bản mới ⇒ hỏi MỘT câu
+
+`claude-code-drift` so version đang chạy (`CLAUDE_CODE_EXECPATH`) với `.claude/claude-code-baseline.json`.
+Khác ⇒ tới hạn, kèm cả hai số. Câu hỏi: *bản mới có ra sẵn thứ harness đang tự viết không?*
+
+`fleet` bỏ ~6 phiên xây "auto-pilot" tháng 6/2026 — nó chạy được — rồi **xoá sạch** ngày
+2026-07-28 vì Claude Code đã ra sẵn scheduled agents. Không bước nào trong quy trình đi kiểm
+lại tiền đề. Harness tự viết rất nhiều nên phơi ra đúng rủi ro đó.
+
+Đây là **nghi thức, không phải hook mới** — một hook mới cần sửa `settings.json` ở mọi repo đã
+áp, tức một migration đăng ký, tức ba bước có thể hỏng để mua một câu hỏi. `rituals.mjs` đã
+được SessionStart gọi sẵn.
+
+```
+node tooling/rituals.mjs --reviewed-claude-code "<thấy gì>"
+```
+
+Lý do BẮT BUỘC: một baseline bị bump lặng lẽ không phân biệt được với việc chưa ai đọc.
+**File baseline KHÔNG được ship** — bản rà của template không nói gì về máy của project khác,
+nên repo mới thấy mục này `due`, và đó là câu trả lời đúng.
+
+### ③ Điều CẤM viết ra phải khớp điều guard CƯỠNG CHẾ
+
+`harness-doctor` đối chiếu `paths.harness` với dòng **KHÔNG sửa** trong `AGENTS.md`, hai chiều.
+Đo được ngay lần chạy đầu: guard cưỡng chế **8** lớp, văn bản nêu **5**. Ba lớp —
+`.claude/rules/**`, `CLAUDE.md`, `.github/CODEOWNERS` — bị chặn mà **chưa từng được nói ra**;
+người đọc `AGENTS.md` tưởng sửa được rồi bị chặn bởi một luật chưa đọc. Đã bổ sung cả ba.
+
+`fleet` đo cùng hình dạng 2026-08-01: `CLAUDE.md` ghi 7, gate giữ 12, và `.claude/agents/**`
+không có ở **cả hai** — system prompt của subagent, không ai gác, suốt thời gian nó tồn tại.
+Lớp đó là mutant của test này.
+
+### Xác minh
+
+`test-hooks` **101/101, sàn 89 → 101** · `test-migrations` exit 0 · `test-evals` exit 0 ·
+`apply-to --audit` 153 file được phủ. Ratchet `hooks-without-mutant` hạ **7 → 6** cùng commit.
+Mục ① được kiểm bằng **tiêm lỗi thật vào bản sao của hook**, không bằng cách quét mã nguồn —
+`declareFailMode` có xuất hiện hay không là sự CÓ MẶT của một dòng chữ, không phải HÀNH VI.
+
+---
+
 ## 2.11.0 — 2026-08-05
 
 **minor.** Lớp phân phối biết **XOÁ**, và fixlog biết **ĐÓNG**. Hai lỗ hổng cùng một hình

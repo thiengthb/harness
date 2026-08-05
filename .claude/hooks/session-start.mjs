@@ -12,7 +12,9 @@
  */
 import { readFileSync, writeFileSync, statSync, unlinkSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { REPO_ROOT, repoPath, git, currentBranch, issueFromBranch, config, limit, readJson, writeJson, exists, hookRan, stateDir } from '../../tooling/lib/harness.mjs';
+import { REPO_ROOT, repoPath, git, currentBranch, issueFromBranch, config, limit, readJson, writeJson, exists, hookRan, stateDir, declareFailMode } from '../../tooling/lib/harness.mjs';
+
+declareFailMode(1, 'Không dựng được bản tin đầu phiên. Phiên vẫn phải mở được — nhưng crash phải HIỆN RA, không được im.');
 
 const lines = [];
 

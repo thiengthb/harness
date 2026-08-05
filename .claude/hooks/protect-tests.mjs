@@ -13,7 +13,9 @@
  * (dùng khi thật sự xoá test đã lỗi thời — và nó nằm trong diff để reviewer thấy).
  */
 import { readFileSync, existsSync } from 'node:fs';
-import { hookInput, toolFilePath, toRepoRel, repoPath, block, pass, telemetry, hookRan } from '../../tooling/lib/harness.mjs';
+import { hookInput, toolFilePath, toRepoRel, repoPath, block, pass, telemetry, hookRan, declareFailMode } from '../../tooling/lib/harness.mjs';
+
+declareFailMode(2, 'Không kiểm được đây có phải test bị sửa cho pass không. Lọt một lần là toàn bộ tầng xác minh thành trang trí, và không gì khác báo.');
 
 const input = hookInput();
 const rel = toRepoRel(toolFilePath(input));

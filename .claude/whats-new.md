@@ -1,4 +1,4 @@
-<!-- version: 2026-08-05-h -->
+<!-- version: 2026-08-05-i -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,23 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-05 — Gác ném lỗi giờ CHẶN, không im lặng cho qua (v2.12.0)
+
+**Đọc mục này.** Đo được hôm nay: một hook ném lỗi thoát mã **1**, và Claude Code đọc mọi mã
+khác 0/2 là *"lỗi không chặn"* ⇒ **lệnh đi lọt**. Cả bốn cái gác của ba nhóm nguy hiểm —
+`block-secrets` · `dcg` · `protect-harness` · `protect-migrations` — đều đang như vậy.
+
+Giờ 6 gác bất biến cứng **fail-CLOSED**; 4 hook cố vấn fail-open nhưng **hiện ra** (exit 1 —
+tool đi qua *và* lỗi lộ, chứ không im). Nếu chính cái gác đang hỏng và bạn cần đi tiếp:
+`HARNESS_FAIL_OPEN=1` — được ghi log.
+
+Và một nghi thức mới **tự hiện** ở SessionStart: khi Claude Code lên bản mới, nó hỏi MỘT câu —
+*bản mới có ra sẵn thứ mình đang tự viết không?* Đóng nó bằng:
+
+```
+node tooling/rituals.mjs --reviewed-claude-code "<thấy gì>"
+```
 
 ## 2026-08-05 — Không cần nhớ nghi thức nữa (v2.10.0)
 

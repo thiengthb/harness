@@ -19,7 +19,9 @@
  * Cửa thoát này tường minh và audit được. Không có nó, DRI không dùng được agent
  * để bảo trì chính harness — và một harness không bảo trì được sẽ mục.
  */
-import { hookInput, toolFilePath, toRepoRel, matchAny, pathsFor, config, block, pass, telemetry, hookRan, currentBranch } from '../../tooling/lib/harness.mjs';
+import { hookInput, toolFilePath, toRepoRel, matchAny, pathsFor, config, block, pass, telemetry, hookRan, currentBranch, declareFailMode } from '../../tooling/lib/harness.mjs';
+
+declareFailMode(2, 'Không kiểm được đường dẫn có thuộc cấu hình harness không. Một agent sửa được luật của chính nó làm mọi luật còn lại vô nghĩa.');
 
 const rel = toRepoRel(toolFilePath(hookInput()));
 if (!rel) pass();

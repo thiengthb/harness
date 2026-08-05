@@ -185,6 +185,11 @@ if (AUDIT) {
     // (Gặp thật ở v1.4.0 với evals/tasks/0004.)
     /^knowledge\/incoming\//,                         // pack nạp về, không ship
     /^reservations\/.*\.json$/,
+    // Bản rà Claude Code là kết luận CỦA REPO NÀY về MỘT version cụ thể. Ship nó đi nghĩa là
+    // project đích khởi đầu với "đã rà xong" cho một version có thể họ không chạy — tức là
+    // nghi thức `claude-code-drift` im lặng ngay lần đầu, đúng lúc nó cần lên tiếng nhất.
+    // Thiếu file này ⇒ nghi thức báo `due`, và đó là câu trả lời ĐÚNG cho một repo mới.
+    /^\.claude\/claude-code-baseline\.json$/,
     /^\.claude\/settings\.local\.json$/, /^\.env/,
   ];
   const all = filesUnder('.').filter(f => !IGNORE.some(re => re.test(f)));

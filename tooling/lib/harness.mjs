@@ -329,6 +329,75 @@ export function pass() {
 }
 
 /**
+ * Khai báo hook này làm gì khi LOGIC CỦA CHÍNH NÓ ném lỗi — và biến việc đó thành một
+ * LỰA CHỌN CÓ VIẾT RA, không phải một tai nạn.
+ *
+ * ── VÌ SAO FILE NÀY CẦN NÓ. ĐO ĐƯỢC, KHÔNG PHẢI PHÒNG XA.
+ *
+ * Một ngoại lệ ở bất cứ đâu trong hook làm tiến trình kết thúc với mã 1, và Claude Code
+ * đọc mọi mã KHÁC 0 và 2 là "lỗi không chặn" ⇒ tool call **ĐI QUA**. Tức là một cái gác
+ * mà regex của nó ném lỗi thì không chặn — nó CHO PHÉP, im lặng.
+ *
+ * Đo trên harness ngày 2026-08-05 bằng cách tiêm lỗi ngay sau `import`, trước mọi phép
+ * kiểm, rồi đưa vào đúng payload mà hook phải chặn:
+ *
+ *     hook                 input                              sạch     ném lỗi
+ *     block-secrets        `sk-ant-…` thật vào config.ts       exit=2   exit=1  ⇒ LỌT
+ *     dcg                  `git push --force origin main`      exit=2   exit=1  ⇒ LỌT
+ *     dcg                  `rm -rf /`                          exit=2   exit=1  ⇒ LỌT
+ *     protect-harness      ghi `.claude/settings.json`         exit=2   exit=1  ⇒ LỌT
+ *
+ * CẢ BỐN cái gác của ba nhóm nguy hiểm (`.claude/rules/danger-zones.md`) đều fail-OPEN.
+ * Và nó im lặng theo một cách riêng: `hookRan()` nằm ở CUỐI hook nên crash không ghi gì,
+ * và `harness-doctor` đếm 0 — đọc y hệt *"cái gác này chạy suốt mà chưa bắt gì"*. Ba
+ * tình huống gộp thành một: gác đang làm việc · gác không được cắm · gác đang crash.
+ *
+ * Cơ chế này lấy từ `fleet/.claude/hooks/_util.mjs` (`declareFailMode`), nơi nó sinh ra
+ * từ cùng một thí nghiệm trên `secret-guard` ngày 2026-07-31. Phát biểu ngoài của cùng
+ * luật: *"For a protection hook, an error should mean block, not allow."*
+ *
+ * ── NHƯNG KHÔNG PHẢI HOOK NÀO CŨNG NÊN FAIL-CLOSED. Đây là phần một bản sửa đồng loạt
+ * làm sai. Chặn-khi-lỗi chỉ đúng ở nơi hook cưỡng chế một BẤT BIẾN CỨNG. Với hook CỐ VẤN
+ * thì exit 1 vốn đã là kết quả đúng — tool call đi qua VÀ lỗi hiện ra trong transcript.
+ * Ép chúng về 0 còn tệ hơn không làm gì: crash trở thành vô hình.
+ *
+ * @param {0|1|2} code  2 = fail CLOSED (chặn; CHỈ cho bất biến cứng)
+ *                      1 = fail OPEN nhưng HIỆN RA (cố vấn — mặc định đúng cho hầu hết)
+ *                      0 = fail open và IM LẶNG (gần như không bao giờ đúng)
+ * @param {string} why  một câu ngắn, nói THỨ GÌ không kiểm được — hiện ra cho Claude đọc
+ */
+export function declareFailMode(code, why) {
+  const name = (process.argv[1] || '').split(/[\\/]/).pop()?.replace(/\.mjs$/, '') || 'hook';
+  const bail = (err) => {
+    const msg = String(err?.message || err || 'không rõ').split('\n')[0].slice(0, 200);
+    // Ghi crash NGAY, trước khi thoát. Không ghi thì tầng đếm đọc crash thành "chưa bắt gì".
+    try { hookRan(name, 'crash', msg); } catch { /* kế toán không bao giờ là lý do hook chết */ }
+
+    // ĐƯỜNG THOÁT ĐƯỢC KHAI BÁO, và nó có lý do. Mọi hook đều import module này, nên một
+    // lỗi Ở ĐÂY (config lỗi cú pháp là ca thực tế nhất) làm MỌI hook fail-closed cùng lúc
+    // và repo thành không dùng được. Một lỗ hổng được khai báo thì cãi lại được; một vụ
+    // khoá cứng im lặng thì chỉ còn cách đi tìm trong mã nguồn lúc đang gấp.
+    const escape = /^(1|true|yes)$/i.test(String(process.env.HARNESS_FAIL_OPEN || ''));
+    const effective = escape ? 1 : code;
+    if (escape) telemetry('harness-edits', [name, 'HARNESS_FAIL_OPEN', msg]);
+
+    const mode = effective === 2 ? 'FAIL-CLOSED, đang chặn'
+      : effective === 1 ? 'fail-open, có báo' : 'fail-open, im lặng';
+    console.error(`${name}: không kiểm được — ${msg}`);
+    console.error(`   ${why} [${mode}: exit ${effective}]`);
+    if (effective === 2) {
+      console.error('   Đây là gác bất biến cứng nên lỗi = CHẶN, không phải cho qua.');
+      console.error('   Nếu chính cái gác đang hỏng và bạn cần đi tiếp: HARNESS_FAIL_OPEN=1 (sẽ được ghi log).');
+    }
+    process.exit(effective);
+  };
+  // BẮT CẢ HAI. `await` ở cấp cao nhất biến một hook ném lỗi thành unhandled REJECTION chứ
+  // không phải uncaught exception — chỉ bắt loại sau thì mọi hook có `await` vẫn fail-open.
+  process.on('uncaughtException', bail);
+  process.on('unhandledRejection', bail);
+}
+
+/**
  * Rút file_path từ mọi biến thể tool input (Write/Edit/NotebookEdit).
  *
  * FALLBACK `input.file_path` LÀ BẮT BUỘC, KHÔNG PHẢI PHÒNG XA: các sự kiện vòng đời
@@ -527,6 +596,68 @@ export const REMOVED_PATHS = [
       + 'Một skill phải GỌI mới chạy thì không bao giờ được gọi đúng lúc cần — và nó tiêu một suất trong trần skill.',
   },
 ];
+
+/**
+ * LỆCH giữa điều CẤM viết ra và điều guard CƯỠNG CHẾ. HÀM THUẦN, không đọc đĩa.
+ *
+ * Thuần là điều kiện, không phải sở thích: check này sống trong `harness-doctor`, và
+ * `harness-doctor` CHẠY `tooling/test-hooks.mjs` như một bước của nó (dòng 25). Bản đầu của
+ * test spawn `harness-doctor` để kiểm hộp đen ⇒ **đệ quy lẫn nhau, suite treo quá 120 giây**.
+ * Tách phần phán đoán ra khỏi phần thu thập là đúng bài học `knowledge/lessons/0003` mà
+ * `rituals.mjs` đã áp: test khẳng định vào hàm thuần bằng dữ liệu dựng sẵn.
+ *
+ * @param {object} a
+ * @param {string[]} a.enforced  glob mà guard THẬT SỰ chặn (`paths.harness`)
+ * @param {string}   a.banText   văn bản điều cấm, ĐÃ gộp dòng tiếp và chuẩn hoá khoảng trắng
+ * @param {(p:string)=>boolean} a.matched  đường dẫn này có được cưỡng chế ở đâu đó không
+ * @returns {{unspoken:string[], unenforced:string[]}}
+ */
+export function governanceDrift({ enforced = [], banText = '', matched = () => false }) {
+  /** `.claude/hooks/**` → `hooks` · `.claude/settings.json` → `settings.json` · `.github/CODEOWNERS` → `CODEOWNERS` */
+  const token = (glob) => {
+    const parts = String(glob).replace(/\/\*+$/, '').split('/').filter(p => p && p !== '**' && p !== '*');
+    return parts[parts.length - 1] ?? '';
+  };
+  const live = enforced.filter(g => typeof g === 'string' && g && !g.startsWith('!'));
+  const unspoken = live.filter(g => { const t = token(g); return t && !banText.includes(t); });
+
+  const spoken = [...String(banText).matchAll(/`([^`]+)`/g)].map(m => m[1].trim())
+    // `/harness-propose` là TÊN SKILL, không phải đường dẫn — và nó có dấu `/` nên một phép
+    // lọc `/[/.]/ ` nhận nó vào. Bản đầu báo oan đúng ba mục, cả ba là lỗi PHẠM VI chứ không
+    // phải lỗi logic: chỗ cần nhìn trước tiên khi một check kêu oan.
+    .filter(p => !/^\/[a-z][a-z0-9-]*$/i.test(p))
+    // Đòi dấu `/` HOẶC một đuôi file THẬT. Bản trước chỉ đòi "có dấu chấm" và nó báo oan
+    // `paths.harness` — một KHOÁ CONFIG mà chính ghi chú giải thích check nhắc tới. Cùng lớp
+    // với *"neo vào CODE, đừng neo vào comment giải thích code"*, đã gặp ba lần ở repo này.
+    .filter(p => p.includes('/') || /\.(json|md|mjs|cjs|js|jsx|ts|tsx|ya?ml|toml|sql|sh|ps1|lock|env|pem)$/i.test(p))
+    .filter(p => !p.includes(' '));
+  const unenforced = spoken.filter(p => !matched(p));
+  return { unspoken, unenforced };
+}
+
+/**
+ * Rút văn bản điều cấm từ một tài liệu markdown: dòng mang điều cấm + MỌI DÒNG TIẾP của
+ * cùng mục, rồi chuẩn hoá khoảng trắng.
+ *
+ * GỘP DÒNG TIẾP LÀ BẮT BUỘC. Bản đầu lọc theo TỪNG DÒNG và báo sai ngay lần thử đầu:
+ * `AGENTS.md` gói dòng ở ~110 cột, nên khi danh sách cấm dài ra thành hai dòng thì bốn lớp
+ * ĐANG NẰM TRONG FILE bị báo là thiếu. `fleet/.claude/scripts/claude-md-budget.mjs` đã ghi
+ * lại đúng ca này trước đó: *"three prohibitions reported missing while all three sat in the
+ * file, wrapped. A check that answers 'missing' for something present is worse than no check,
+ * because its output looks like a finding."* — đọc rồi vẫn đi vào, nên nó được ghi ở đây.
+ */
+export function prohibitionText(markdown, re = /KHÔNG\s+(được\s+)?sửa/i) {
+  const lines = String(markdown).split('\n');
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (!re.test(lines[i])) continue;
+    out.push(lines[i]);
+    for (let j = i + 1; j < lines.length && /^\s+\S/.test(lines[j]) && !/^\s*[-*]\s/.test(lines[j]); j++) {
+      out.push(lines[j]);
+    }
+  }
+  return out.join(' ').replace(/\s+/g, ' ');
+}
 
 export const MECHANISM_PATHS = [
   '.claude/hooks', '.claude/skills', '.claude/agents',

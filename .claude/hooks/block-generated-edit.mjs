@@ -6,7 +6,9 @@
  * file .gen.* (vì đó là chỗ lỗi hiện ra), build sau ghi đè, và bạn mất 40 phút
  * để hiểu tại sao "sửa rồi mà vẫn lỗi".
  */
-import { hookInput, toolFilePath, toRepoRel, matchAny, pathsFor, config, block, pass, telemetry, hookRan } from '../../tooling/lib/harness.mjs';
+import { hookInput, toolFilePath, toRepoRel, matchAny, pathsFor, config, block, pass, telemetry, hookRan, declareFailMode } from '../../tooling/lib/harness.mjs';
+
+declareFailMode(1, 'Không kiểm được file này có phải generated không; sửa nhầm thì lần `gen` sau ghi đè lại, hồi phục được.');
 
 const rel = toRepoRel(toolFilePath(hookInput()));
 if (!rel) pass();

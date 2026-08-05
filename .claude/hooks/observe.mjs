@@ -27,8 +27,10 @@
  * tiếp thì gỡ nhánh đó — nó là thiết bị đo, không phải gate.
  * ĐIỀU KIỆN THOÁT (StopFailure): khi org bật spend limit cứng ở gateway.
  */
-import { hookInput, telemetry, hookRan, unattended, config, pass, stateDir, writeJson } from '../../tooling/lib/harness.mjs';
+import { hookInput, telemetry, hookRan, unattended, config, pass, stateDir, writeJson, declareFailMode } from '../../tooling/lib/harness.mjs';
 import { join } from 'node:path';
+
+declareFailMode(1, 'Không ghi được quan sát. Hook này CỐ Ý không bao giờ chặn — mất một dòng đo không đáng đổi bằng một lệnh bị chặn.');
 
 const i = hookInput();
 const ev = i?.hook_event_name ?? '';

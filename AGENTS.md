@@ -51,8 +51,9 @@ Cấu hình harness: `harness.config.json` — mọi lệnh, ngưỡng, vùng n�
 - Trước khi sửa file trong **vùng nóng** (xem `harness.config.json → paths.hot`):
   kiểm `gh pr list --state open`. Có chồng lấn → **báo người, đừng tự quyết**.
   (Reservation thì KHÔNG cần nhớ: SessionStart in ra, pre-commit chặn.)
-- **KHÔNG sửa**: `.claude/settings.json`, `.claude/hooks/**`, `.mcp.json`, `AGENTS.md`, `harness.config.json`.
-  Dùng `/harness-propose`. (Hook sẽ chặn — đó là cố ý.)
+- **KHÔNG sửa**: `.claude/settings.json`, `.claude/hooks/**`, `.claude/rules/**`, `.mcp.json`,
+  `CLAUDE.md`, `AGENTS.md`, `harness.config.json`, `.github/CODEOWNERS`.
+  Dùng `/harness-propose`. (Hook chặn — cố ý. `harness-doctor` đối chiếu danh sách này với guard.)
 - **KHÔNG sửa** file feature của issue khác. **KHÔNG sửa** `features/_index.json`.
 - **KHÔNG** push lên nhánh người khác. **KHÔNG** force push. **KHÔNG** rebase nhánh chung.
 - Nhật ký vào `docs/progress/<issue>.md`, **không** vào một file chung.
@@ -139,8 +140,7 @@ Phần máy làm được thì máy đã làm: sự có mặt của phiên đư�
 phiên trên cùng máy được **phát hiện mà không ai phải gõ `/claim`**. `/claim` giữ lại đúng phần
 cần phán đoán — đọc nhật ký cũ, đặt chỗ vùng nóng cho cả đội, quyết phạm vi.
 
-> Vì sao mục này tồn tại: đo 2026-08-05, `/claim` và `/handoff` **chưa chạy lần nào** dù dòng
-> nhắc chúng được in ở mọi phiên. Một nhắc nhở nói mọi thứ ở mọi lúc thì không nói gì ở lúc nào.
+> Đo 2026-08-05: `/claim` và `/handoff` **chưa chạy lần nào** dù được nhắc mỗi phiên — một nhắc nhở nói mọi thứ ở mọi lúc thì không nói gì ở lúc nào. (Số đo: header `tooling/rituals.mjs`.)
 
 ## Khi bạn học được điều gì
 

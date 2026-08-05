@@ -30,6 +30,10 @@ const TEST_ENV = {
   HARNESS_DRI: '',
   HARNESS_ALLOW_MIGRATION_EDIT: '',
   HARNESS_ALLOW_SKIPPED_GATES: '',
+  // Cửa thoát của `declareFailMode`. Không xoá ở đây thì mọi ca "gác ném lỗi phải CHẶN"
+  // chuyển sang xanh-giả trên máy của người đang phải mở cửa thoát đó để đi tiếp — tức là
+  // đúng lúc suite cần nói thật nhất.
+  HARNESS_FAIL_OPEN: '',
   HARNESS_TELEMETRY_DIR: join(tmpdir(), 'harness-test-telemetry'),
   // Không có dòng này, mỗi lần chạy suite sẽ ăn mất thông báo `.claude/whats-new.md` của chính
   // bạn: cơ chế đó cố ý chỉ in MỘT LẦN cho mỗi version, nên "đã in rồi" là trạng thái
@@ -660,6 +664,7 @@ for (const [env, expect, label, msg] of GATE_CASES) {
     issue: '', progressExists: false, commitsSinceProgress: 0, ahead: 0, integrationBranch: 'origin/main',
     fixlogTotal: 0, fixlogRepeated: 0, learningsNewerThanLessons: 0,
     skillCount: 5, maxSkills: 12, worktrees: 1, maxWorktrees: 4, pendingPacks: 0,
+    claudeCodeVersion: '2.1.221', reviewedClaudeCode: '2.1.221', reviewedClaudeCodeAt: '2026-08-05T00:00:00.000Z',
   };
   const get = (state, id) => evaluate({ ...base, ...state }).find(r => r.id === id);
 
@@ -676,7 +681,11 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   // ② `null` là KHÔNG ĐO ĐƯỢC ⇒ `?`, KHÔNG được thành `ok`. Đây là chỗ một bảng điều khiển
   //    hay nói dối theo hướng dễ chịu: chưa nhìn thì báo ổn.
   const nulls = [['ahead', 'pre-merge'], ['fixlogTotal', 'harness-retro'], ['skillCount', 'entropy-sweep'],
-    ['worktrees', 'wt'], ['pendingPacks', 'accept-packs'], ['learningsNewerThanLessons', 'knowledge-promote']];
+    ['worktrees', 'wt'], ['pendingPacks', 'accept-packs'], ['learningsNewerThanLessons', 'knowledge-promote'],
+    // Không đọc được version Claude Code ⇒ `?`. KHÔNG được thành `due`: cách cài không đặt
+    // `CLAUDE_CODE_EXECPATH` là chuyện bình thường, và một mục đỏ vĩnh viễn không sửa được
+    // dạy đúng cái thói bỏ qua màu đỏ mà cả tầng nghi thức tồn tại để chống.
+    ['claudeCodeVersion', 'claude-code-drift']];
   const wrong = nulls.filter(([k, id]) => get({ [k]: null }, id)?.state !== '?');
   if (wrong.length) fail.push(`rituals.mjs${' '.repeat(17)} ${wrong.length} nghi thức coi \`null\` (không đo được) là trạng thái BÌNH THƯỜNG: ${wrong.map(w => w[1]).join(' · ')}`);
   else ok.push(`rituals.mjs${' '.repeat(17)} \`null\` ⇒ \`?\` ở cả ${nulls.length} nghi thức đo bằng số (không gộp "chưa nhìn" vào "ổn")`);
@@ -694,6 +703,36 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   if (dues.length < 6) fail.push(`rituals.mjs${' '.repeat(17)} trạng thái đầy vi phạm mà chỉ ${dues.length} mục tới hạn — có nghi thức không phản ứng`);
   else if (noNumber.length) fail.push(`rituals.mjs${' '.repeat(17)} ${noNumber.length} mục tới hạn KHÔNG có số đo trong \`why\`: ${noNumber.map(r => r.id).join(' · ')}`);
   else ok.push(`rituals.mjs${' '.repeat(17)} ${dues.length} mục tới hạn, mục nào cũng kèm SỐ ĐO trong \`why\``);
+
+  // ④b `claude-code-drift`: ba trạng thái phải PHÂN BIỆT ĐƯỢC, và hai cái `null` khác nghĩa.
+  //     `claudeCodeVersion: null` = không đo được (`?`, đã kiểm ở ②).
+  //     `reviewedClaudeCode: null` = ĐO ĐƯỢC mà chưa ai rà (`due`).
+  //     Gộp hai cái đó là cách một việc tới hạn thật biến thành một dòng im lặng.
+  const DRIFT = [
+    [{ reviewedClaudeCode: null }, 'due', /CHƯA có bản rà/, 'chưa có baseline ⇒ tới hạn (không phải `?`)'],
+    [{ reviewedClaudeCode: '2.1.200' }, 'due', /2\.1\.200 → 2\.1\.221/, 'version đổi ⇒ tới hạn, và nêu CẢ HAI số'],
+    [{}, 'ok', /2\.1\.221/, 'đã rà đúng version đang chạy ⇒ im lặng'],
+  ];
+  for (const [state, want, msg, label] of DRIFT) {
+    const r = get(state, 'claude-code-drift');
+    if (r?.state !== want) fail.push(`rituals.mjs${' '.repeat(17)} claude-code-drift: ${label} → state=${r?.state}, mong đợi ${want}`);
+    else if (!msg.test(r.why)) fail.push(`rituals.mjs${' '.repeat(17)} claude-code-drift: ${label} → \`why\` không khớp ${msg}`);
+    else ok.push(`rituals.mjs${' '.repeat(17)} claude-code-drift: ${label}`);
+  }
+
+  // ④c Phép rút version từ đường dẫn thực thi. Đo được: `…/versions/2.1.221`. Thứ gì KHÔNG
+  //     phải version thì trả `null` — không đoán. Một chuỗi đoán sai làm nghi thức so hai
+  //     version bịa và đỏ mãi.
+  const { claudeCodeVersion } = await import('./rituals.mjs');
+  const VER = [
+    ['/home/x/.local/share/claude/versions/2.1.221', '2.1.221'],
+    ['C:\\Users\\x\\AppData\\claude\\versions\\2.1.221', '2.1.221'],   // Parity Contract: Windows
+    ['/usr/local/bin/claude', null],
+    ['', null],
+  ];
+  const badVer = VER.filter(([inp, want]) => claudeCodeVersion(inp) !== want);
+  if (badVer.length) fail.push(`rituals.mjs${' '.repeat(17)} claudeCodeVersion() sai ở ${badVer.length}/${VER.length} ca: ${badVer.map(([i]) => JSON.stringify(i)).join(' · ')}`);
+  else ok.push(`rituals.mjs${' '.repeat(17)} claudeCodeVersion(): ${VER.length} ca kể cả đường dẫn Windows, không đoán khi không phải version`);
 
   // ⑤ MUTANT: một `check` throw thì phải thành `?`, KHÔNG được làm sập cả bảng. `rituals` được
   //    gọi từ SessionStart — một exception ở đó làm mất TOÀN BỘ định hướng đầu phiên.
@@ -785,6 +824,121 @@ if (repoRole() === 'template') {
   skipped++;
 }
 
+// ─── ① CHẾ ĐỘ HỎNG: một cái gác ném lỗi phải CHẶN, không được cho qua ────────
+//
+// Đây là ca test quan trọng nhất trong file này, vì nó khẳng định một thứ ĐÃ ĐO ĐƯỢC LÀ SAI
+// và vừa được sửa. Đo 2026-08-05: tiêm lỗi vào `block-secrets`/`dcg`/`protect-harness` rồi
+// đưa vào đúng payload chúng phải chặn ⇒ cả ba `exit=1`, và Claude Code đọc mọi mã khác 0/2
+// là "lỗi không chặn" ⇒ **lệnh ghi đi lọt**.
+//
+// KHÔNG khẳng định bằng cách đọc mã nguồn (`declareFailMode` có xuất hiện không) — đó là đo
+// sự CÓ MẶT của một dòng chữ, không phải HÀNH VI. Ở đây tiêm lỗi thật vào một BẢN SAO, cho
+// chạy, và đọc exit code + thông điệp. Cùng lý do repo này bỏ phép quét `import` ở 2.10.3.
+{
+  const FAULT = '\nnull.x; // FAULT INJECTED bởi test-hooks\n';
+  const inject = (src) => src.replace(/^(declareFailMode\([^\n]*\);)$/m, `$1${FAULT}`);
+  const SECRET_PAY = { tool_name: 'Write', tool_input: { file_path: repoPath('cfg.ts'), content: 'const k = "sk-ant-api03-' + 'A'.repeat(80) + '";' } };
+  const GEN_PAY = { tool_name: 'Write', tool_input: { file_path: repoPath('cfg.ts'), content: 'x' } };
+
+  // [hook, payload, mã mong đợi khi ném lỗi, nhãn, regex thông điệp, env thêm]
+  const FAILMODE = [
+    ['block-secrets.mjs', SECRET_PAY, BLOCK, 'gác bất biến cứng ném lỗi → CHẶN', /FAIL-CLOSED/, {}],
+    ['dcg.mjs', { tool_name: 'Bash', tool_input: { command: 'echo ok' } }, BLOCK, 'dcg ném lỗi → CHẶN (kể cả lệnh vô hại: không phân tích được thì không biết)', /FAIL-CLOSED/, {}],
+    ['protect-tests.mjs', GEN_PAY, BLOCK, 'gác tầng xác minh ném lỗi → CHẶN', /FAIL-CLOSED/, {}],
+    // Mong đợi là **1**, không phải 0 — và đó là toàn bộ ý của mode 1. Claude Code đọc mã
+    // khác 0/2 là "lỗi không chặn": tool call ĐI QUA *và* lỗi HIỆN RA trong transcript. Ép
+    // hook cố vấn về 0 sẽ giấu crash đi, và khi đó tầng đếm ghi một số 0 sạch sẽ cho một
+    // hook đang hỏng — đúng chế độ hỏng mà `declareFailMode` ra đời để diệt.
+    ['block-generated-edit.mjs', GEN_PAY, 1, 'hook cố vấn ném lỗi → CHO QUA nhưng CÓ BÁO (exit 1, không phải 0)', /fail-open, có báo/, {}],
+    // Cửa thoát: mọi hook import cùng một lib, nên một lỗi trong lib làm MỌI hook fail-closed
+    // cùng lúc. Không có đường thoát tường minh thì cách duy nhất đi tiếp là đọc mã nguồn
+    // lúc đang gấp. Nó được ghi log, nên nó là cửa thoát AUDIT ĐƯỢC, không phải một lỗ hổng.
+    ['block-secrets.mjs', SECRET_PAY, 1, 'HARNESS_FAIL_OPEN=1 hạ khoá cứng xuống fail-open (và được ghi log)', /fail-open/, { HARNESS_FAIL_OPEN: '1' }],
+  ];
+  for (const [hook, pay, expect, label, msg, extra] of FAILMODE) {
+    const src = repoPath('.claude', 'hooks', hook);
+    if (!exists(src)) { fail.push(`${hook}: KHÔNG TỒN TẠI (test chế độ hỏng)`); continue; }
+    const original = readFileSync(src, 'utf8');
+    const mutated = inject(original);
+    if (mutated === original) {
+      fail.push(`${hook.padEnd(28)} KHÔNG cắm được lỗi — hook thiếu dòng \`declareFailMode(...)\`, tức là nó ĐANG fail-open. Đây là lỗi của HOOK, không phải của test.`);
+      continue;
+    }
+    const tmp = repoPath('.claude', 'hooks', '.failmode.tmp.mjs');
+    try {
+      writeFileSync(tmp, mutated, 'utf8');
+      const r = spawnSync(process.execPath, [tmp], {
+        input: JSON.stringify(pay), encoding: 'utf8', cwd: repoPath(''),
+        env: { ...process.env, ...TEST_ENV, ...extra },
+      });
+      const status = r.status ?? -1;
+      const err = (r.stderr ?? '').trim();
+      if (status !== expect) {
+        fail.push(`${hook.padEnd(28)} ${label}  →  exit=${status}, mong đợi ${expect}${err ? `\n         stderr: ${err.split('\n')[0]}` : ''}`);
+      } else if (!msg.test(err)) {
+        // ② KHẲNG ĐỊNH CÂU CHỮ. Exit code là bảng chữ cái 3 giá trị: một crash và một cú chặn
+        //    đúng dùng CHUNG một mã. Không assert thông điệp thì hai thứ đó không phân biệt được,
+        //    và test này mất đúng cái nó tồn tại để phân biệt.
+        fail.push(`${hook.padEnd(28)} ${label}  →  exit đúng nhưng thông điệp không nói CHẾ ĐỘ (${msg})`);
+      } else {
+        ok.push(`${hook.padEnd(28)} ${label}`);
+      }
+    } finally { try { rmSync(tmp, { force: true }); } catch {} }
+  }
+}
+
+// ─── ④ LỆCH giữa điều CẤM viết ra và điều guard CƯỠNG CHẾ ────────────────────
+//
+// Khẳng định vào HÀM THUẦN `governanceDrift` / `prohibitionText` ở `lib/harness.mjs`, bằng dữ
+// liệu dựng sẵn. KHÔNG spawn `harness-doctor`: bản đầu của khối này làm đúng thế và nó ĐỆ QUY
+// LẪN NHAU — `harness-doctor` chạy chính `test-hooks.mjs` như một bước của nó, nên suite treo
+// quá 120 giây. Ca đó là bằng chứng cho luật tách thuần/không-thuần, không phải một sự cố phụ.
+{
+  const { governanceDrift, prohibitionText } = await import("./lib/harness.mjs");
+  const BAN = [
+    "- **KHÔNG sửa**: \`.claude/settings.json\`, \`.claude/hooks/**\`, \`.mcp.json\`,",
+    "  \`AGENTS.md\`, \`harness.config.json\`.",
+    "  Dùng \`/harness-propose\`. (Hook chặn — cố ý.)",
+    "- Mục khác không liên quan.",
+  ].join("\n");
+  const banText = prohibitionText(BAN);
+
+  // ① GÓI DÒNG. Đây là ca đã làm bản đầu báo sai: `AGENTS.md` gói ở ~110 cột, nên bốn lớp ĐANG
+  //    NẰM TRONG FILE bị báo thiếu. Một check trả lời "thiếu" cho thứ đang có thì tệ hơn không
+  //    có check, vì output của nó ĐỌC như một phát hiện.
+  const wrapped = governanceDrift({
+    enforced: [".claude/settings.json", ".claude/hooks/**", ".mcp.json", "AGENTS.md", "harness.config.json"],
+    banText, matched: () => true,
+  });
+  if (wrapped.unspoken.length) {
+    fail.push(`governanceDrift${" ".repeat(10)} báo thiếu ${wrapped.unspoken.length} lớp ĐANG NẰM ở dòng TIẾP của điều cấm: ${wrapped.unspoken.join(" · ")} — phép gói dòng chưa được xử lý`);
+  } else ok.push(`governanceDrift${" ".repeat(10)} điều cấm gói xuống nhiều dòng vẫn được đọc là MỘT mục`);
+
+  // ② MUTANT: thêm một lớp bị cưỡng chế mà KHÔNG được nói ra ⇒ PHẢI đỏ và phải GỌI ĐÚNG TÊN.
+  //    Lớp dùng làm mutant là `.claude/agents/**` — cố ý: đó chính là lớp `fleet` đo được là
+  //    thiếu ở CẢ HAI phía (văn bản và gate) suốt thời gian thư mục đó tồn tại. Mutant lấy từ
+  //    một ca có thật thì kiểm đúng thứ sẽ xảy ra.
+  const m = governanceDrift({
+    enforced: [".claude/settings.json", ".claude/agents/**"],
+    banText, matched: () => true,
+  });
+  if (!m.unspoken.includes(".claude/agents/**")) {
+    fail.push(`governanceDrift${" ".repeat(10)} MUTANT SỐNG SÓT: \`.claude/agents/**\` bị cưỡng chế mà không ai nói ra, check KHÔNG báo — check là trang trí`);
+  } else ok.push(`governanceDrift${" ".repeat(10)} MUTANT: \`.claude/agents/**\` bị cưỡng chế-mà-không-nói-ra ⇒ bị bắt, đúng tên`);
+
+  // ③ CHIỀU NGƯỢC + hai dương tính giả đã đo được. `/harness-propose` là TÊN SKILL;
+  //    `paths.harness` là KHOÁ CONFIG. Cả hai từng bị báo là "đường dẫn không được cưỡng chế".
+  const rev = governanceDrift({
+    enforced: [], banText: prohibitionText("- **KHÔNG sửa**: \`/harness-propose\`, \`paths.harness\`, \`docs/x.md\`."),
+    matched: (pth) => pth !== "docs/x.md",
+  });
+  if (rev.unenforced.includes("/harness-propose") || rev.unenforced.includes("paths.harness")) {
+    fail.push(`governanceDrift${" ".repeat(10)} DƯƠNG TÍNH GIẢ: coi tên skill/khoá config là đường dẫn (${rev.unenforced.join(" · ")})`);
+  } else if (!rev.unenforced.includes("docs/x.md")) {
+    fail.push(`governanceDrift${" ".repeat(10)} chiều ngược KHÔNG bắt được đường dẫn thật bị cấm mà không gì chặn`);
+  } else ok.push(`governanceDrift${" ".repeat(10)} chiều ngược: bắt đường dẫn thật, BỎ QUA tên skill và khoá config`);
+}
+
 // SỐ MẪU không phải một phép cộng viết tay. Bản trước in
 // `ok.length / (cases + MUTANTS + GATE_CASES + 3)` và ĐO ĐƯỢC 2026-08-05: **`75/72`** — tử số
 // lớn hơn mẫu số. Tỉ số đó không sai vô hại: mẫu số tồn tại để trả lời "có case nào NGỪNG
@@ -800,7 +954,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 89;
+const RATCHET = 101;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

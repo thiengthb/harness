@@ -110,7 +110,7 @@ for (const [k, v] of Object.entries(metrics)) {
 // HẬU QUẢ CAM KẾT TRƯỚC: sau 60 ngày mà KHÔNG mốc nào được hạ trong một commit nào,
 // ratchet đang CHE một backlog thay vì tiêu nó — bỏ nó đi, đừng gia hạn.
 const BASELINES = {
-  'hooks-without-mutant': { n: 7, since: '2026-08-04', by: '@dri', why: 'dcg · block-secrets · protect-harness đã có mutant bị giết; 7 hook còn lại chưa' },
+  'hooks-without-mutant': { n: 6, since: '2026-08-05', by: '@dri', why: 'dcg · block-secrets · protect-harness · protect-feature-files đã có mutant bị giết; 6 hook còn lại chưa. Test chế độ hỏng (FAILMODE) KHÔNG tính ở đây: nó chứng minh hook hỏng thì CHẶN, không chứng minh phép kiểm của nó có thật.' },
 };
 // KHÔNG khai mốc cho thứ file này không tự đo. Một mốc không có phép đo đi kèm là
 // một field ma — nó trông như đang gác, và không ai phát hiện ra là không.

@@ -16,7 +16,7 @@
  * Chạy: sau khi áp template · sau khi nâng cấp · mỗi 2 tuần · khi thấy "agent hôm nay lạ".
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch } from './lib/harness.mjs';
+import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText } from './lib/harness.mjs';
 
 const QUICK = process.argv.includes('--quick');
 const cfg = config();
@@ -441,6 +441,66 @@ for (const f of onDisk) {
   }
 }
 if (!carriesHooks && onDisk.length) advice.push('apply-to.mjs không mang `.claude/hooks/` — repo tiêu thụ sẽ nhận settings.json trỏ vào file không tồn tại');
+
+// ── LỆCH giữa ĐIỀU CẤM VIẾT RA và ĐIỀU GUARD CƯỠNG CHẾ ──────────────────────
+//
+// Hai nửa, và không nửa nào tự thấy nửa kia đang trôi:
+//   · một điều cấm CHỈ nằm trong guard  ⇒ được cưỡng chế nhưng KHÔNG ai biết. Người đọc
+//     `AGENTS.md` tưởng đường dẫn đó sửa được, rồi bị chặn bởi một luật chưa từng đọc —
+//     và một cú chặn không giải thích được là cú chặn làm người ta đi tìm cách tắt guard.
+//   · một điều cấm CHỈ nằm trong văn bản ⇒ ai cũng biết nhưng KHÔNG gì chặn. Đây là dạng
+//     tệ hơn: nó ĐỌC như một lớp bảo vệ.
+//
+// Cơ chế lấy từ `fleet/.claude/scripts/claude-md-budget.mjs` (`governanceTokens`), nơi nó
+// sinh ra từ một phép đo 2026-08-01: `CLAUDE.md` của họ ghi 7 bề mặt quản trị và nói
+// *"enforced by autonomy-gate"* — gate thật giữ 12. Lệch CẢ HAI CHIỀU, và
+// `.claude/agents/**` (system prompt của subagent) không có ở CẢ HAI: không ai gác, suốt
+// thời gian thư mục đó tồn tại.
+//
+// Harness đo cùng ngày, cùng kết quả về hình dạng: `paths.harness` cưỡng chế 8 lớp,
+// dòng CẤM trong `AGENTS.md` nêu 5. Ba lớp — `.claude/rules/**`, `CLAUDE.md`,
+// `.github/CODEOWNERS` — bị chặn mà chưa từng được nói ra.
+//
+// SO TỪ KHOÁ, KHÔNG SO MẪU. Đây là phần fleet phải học lần thứ hai: khớp regex của guard
+// với văn xuôi thì giòn theo đúng kiểu *"luật đúng, cái thước ngắn"*, và một check kêu oan
+// về cách hành văn sẽ bị xoá. Cái đáng bắt là một LỚP bị thiếu hẳn.
+const agentsTxt = exists(repoPath("AGENTS.md")) ? readFileSync(repoPath("AGENTS.md"), "utf8") : "";
+if (agentsTxt) {
+  // Phần PHÁN ĐOÁN nằm ở `lib/harness.mjs` (`governanceDrift` / `prohibitionText`) — hàm THUẦN,
+  // test khẳng định trực tiếp vào đó. Ở đây chỉ còn phần THU THẬP. Tách như vậy là bắt buộc chứ
+  // không phải cho gọn: `harness-doctor` CHẠY `test-hooks.mjs` (dòng 25), nên một test kiểm
+  // check này bằng cách spawn `harness-doctor` sẽ đệ quy lẫn nhau — đã đo, suite treo >120 giây.
+  const banText = prohibitionText(agentsTxt);
+  const enforced = pathsFor("harness");
+  // Một đường dẫn có thể được cưỡng chế qua `paths.*` HOẶC bằng chuỗi viết thẳng trong hook:
+  // `features/_index.json` do `protect-feature-files.mjs` chặn bằng `rel.endsWith("_index.json")`.
+  // Không nhìn chỗ thứ hai thì check báo "không gì chặn" về một thứ đang bị chặn — tức là nó nói
+  // y hệt cái nó tồn tại để phát hiện.
+  const groups = Object.keys(config().paths ?? {}).filter(k => !k.startsWith("$"));
+  const hookSrc = onDisk.map(f => readFileSync(repoPath(".claude", "hooks", f), "utf8")).join("\n");
+  const matched = (pth) => {
+    // Glob thư mục (`x/**`) KHÔNG khớp chính đường dẫn thư mục, nên phải thử bằng một con giả
+    // bên trong. Bỏ `/**` rồi so là lý do bản đầu báo `.claude/hooks/**` là không được cưỡng
+    // chế, trong khi nó là mục ĐẦU TIÊN của `paths.harness`.
+    const probes = [pth, pth.replace(/\/\*+$/, "/probe.txt"), pth.replace(/^\//, "")];
+    if (groups.some(g => probes.some(x => matchAny(x, pathsFor(g))))) return true;
+    const base = pth.split("/").filter(s => s && s !== "**").pop() ?? "";
+    return Boolean(base && hookSrc.includes(base));
+  };
+  const { unspoken, unenforced } = governanceDrift({ enforced, banText, matched });
+  const live = enforced.filter(g => typeof g === "string" && g && !g.startsWith("!"));
+  if (unspoken.length) {
+    advice.push(`${unspoken.length}/${live.length} lớp bị \`protect-harness\` CHẶN mà dòng CẤM trong AGENTS.md không nêu: `
+      + unspoken.map(g => `\`${g}\``).join(" · ")
+      + `\n         Người đọc AGENTS.md tưởng sửa được, rồi bị chặn bởi một luật chưa từng đọc.`
+      + `\n         Sửa: thêm chúng vào dòng "**KHÔNG sửa**:" của AGENTS.md — hoặc bỏ khỏi \`paths.harness\` nếu không còn muốn chặn.`);
+  }
+  if (unenforced.length) {
+    advice.push(`${unenforced.length} đường dẫn được AGENTS.md CẤM mà KHÔNG gì cưỡng chế: `
+      + unenforced.map(pth => `\`${pth}\``).join(" · ")
+      + `\n         Một điều cấm chỉ nằm trong văn bản thì ĐỌC như một lớp bảo vệ. Cắm nó vào \`paths.*\`, hoặc nói rõ trong AGENTS.md rằng nó là quy ước chứ không phải cổng.`);
+  }
+}
 
 // ── Con số MÁY ĐẾM ĐƯỢC mà NGƯỜI gõ tay trong tài liệu vào-cửa ───────────────
 // Nguyên lý: thứ máy đếm được thì không bao giờ gõ tay. Ở đây KHÔNG sinh được cả

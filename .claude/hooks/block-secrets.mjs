@@ -3,7 +3,9 @@
  * Chặn agent ghi vào file secret, và chặn secret lọt vào nội dung file thường.
  * PreToolUse trên Write|Edit
  */
-import { hookInput, toolFilePath, toolContent, toRepoRel, matchAny, pathsFor, block, pass, telemetry, hookRan, SECRET_PATTERNS } from '../../tooling/lib/harness.mjs';
+import { hookInput, toolFilePath, toolContent, toRepoRel, matchAny, pathsFor, block, pass, telemetry, hookRan, SECRET_PATTERNS, declareFailMode } from '../../tooling/lib/harness.mjs';
+
+declareFailMode(2, 'Không quét được nội dung nên không biết có secret hay không (nhóm nguy hiểm 2).');
 
 const input = hookInput();
 const rel = toRepoRel(toolFilePath(input));
