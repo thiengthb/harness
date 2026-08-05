@@ -86,7 +86,21 @@ export const RITUALS = [
     check: (s) => {
       if (s.ahead === null) return { state: '?', why: 'không resolve được nhánh tích hợp — không đo được. Kiểm `project.integrationBranch`' };
       if (s.ahead === 0) return { state: 'ok', why: 'không có commit nào đi trước nhánh tích hợp' };
-      return { state: 'due', why: `${s.ahead} commit đi trước ${s.integrationBranch} và chưa thấy dấu gate preMerge chạy ở phiên này` };
+      // Bản trước in "chưa thấy dấu gate preMerge chạy" mà KHÔNG đi tìm dấu nào — `gates.mjs`
+      // chỉ ghi telemetry khi HỎNG, nên dấu đó chưa từng tồn tại. Nghi thức đỏ theo `ahead > 0`
+      // và ở đỏ mãi, chạy gate bao nhiêu lần cũng vậy. Một lý do mô tả phép đo chưa từng xảy ra
+      // dạy người đọc rằng mục này không đáng phản ứng — và sau đó nó không được phản ứng thật.
+      if (s.preMergeRanAt == null) {
+        return { state: 'due', why: `${s.ahead} commit đi trước ${s.integrationBranch}, và CHƯA có lần chạy gate preMerge nào được ghi (\`gate-runs.log\`)` };
+      }
+      if (s.lastCommitAt == null) {
+        return { state: '?', why: `${s.ahead} commit đi trước ${s.integrationBranch} và gate preMerge CÓ chạy, nhưng không đọc được thời điểm commit cuối — không so được hai mốc` };
+      }
+      if (s.preMergeRanAt < s.lastCommitAt) {
+        const mins = Math.round((s.lastCommitAt - s.preMergeRanAt) / 60000);
+        return { state: 'due', why: `gate preMerge chạy lần cuối ${mins} phút TRƯỚC commit mới nhất — lần chạy đó không nói gì về cây hiện tại. Chạy lại: \`node tooling/gates.mjs --stage preMerge\`` };
+      }
+      return { state: 'ok', why: `gate preMerge đã chạy sau commit cuối (${new Date(s.preMergeRanAt).toISOString().slice(0, 16).replace('T', ' ')})` };
     },
   },
   {
@@ -292,6 +306,26 @@ export function collect() {
       if (r.status !== 0) return null;
       return Number(r.stdout.trim());
     }),
+
+    // Lần chạy gate `preMerge` gần nhất, và commit gần nhất — so HAI MỐC, không so một.
+    // Chạy gate rồi commit thêm thì lần chạy đó không còn nói gì về cây hiện tại, nên
+    // "đã chạy rồi" phải nghĩa là "đã chạy SAU commit cuối". Cả hai đều `null` được, và
+    // `null` ở đây chạy tiếp thành `?` — KHÔNG thành `ok`.
+    preMergeRanAt: num(() => {
+      const f = join(telemetryDir(), 'gate-runs.log');
+      if (!existsSync(f)) return null;
+      const times = readFileSync(f, 'utf8').split('\n')
+        .filter(l => l.split('|')[2] === 'gates:preMerge')
+        .map(l => Date.parse(l.split('|')[0]))
+        .filter(Number.isFinite);
+      return times.length ? Math.max(...times) : null;
+    }, null),
+    lastCommitAt: num(() => {
+      const r = git(['log', '-1', '--format=%cI']);
+      if (r.status !== 0 || !r.stdout.trim()) return null;
+      const t = Date.parse(r.stdout.trim());
+      return Number.isFinite(t) ? t : null;
+    }, null),
 
     ...fixlogState(),
 

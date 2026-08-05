@@ -17,10 +17,13 @@ chú thích — đang được đếm là "1 lệnh đã khai", nên nhánh cả
 từng chạy ở bất kỳ repo nào. Điền `commands.verify` / `test` / `typecheck`, hoặc đọc lý do
 trong `HARNESS-CHANGELOG.md` §2.13.0 ①.
 
-Ba thứ nữa thôi nói dối: lời khuyên *"chạy `test-hooks.mjs` để lấy bằng chứng"* (suite ghi
-telemetry sang thư mục khác — chạy bao nhiêu lần cũng không đổi gì); nghi thức
-`claude-code-drift` đứng `?` trên mọi máy cài bằng npm; và `init.mjs` gọi placeholder của
-template là FAIL trong khi `harness-doctor` gọi đúng cái đó là ĐÚNG.
+Bốn thứ nữa thôi nói dối: lời khuyên *"chạy `test-hooks.mjs` để lấy bằng chứng"* (suite ghi
+telemetry sang thư mục khác — chạy bao nhiêu lần cũng không đổi gì); **`/pre-merge` in "chưa
+thấy dấu gate preMerge chạy" trong khi nó chưa từng đi tìm dấu nào — `gates.mjs` chỉ ghi log
+khi HỎNG, nên nghi thức đó đỏ mãi dù bạn chạy gate bao nhiêu lần** (giờ gate ghi cả lần xanh,
+và nghi thức so lần chạy với commit mới nhất); nghi thức `claude-code-drift` đứng `?` trên mọi
+máy cài bằng npm; và `init.mjs` gọi placeholder của template là FAIL trong khi `harness-doctor`
+gọi đúng cái đó là ĐÚNG.
 
 `harness-doctor` → "Nên làm": **19 → 4**, và 15 dòng biến mất là 15 dòng **không ai được phép
 làm**. Không hook nào bị sửa.

@@ -737,6 +737,32 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   if (badVer.length) fail.push(`rituals.mjs${' '.repeat(17)} claudeCodeVersion() sai ở ${badVer.length}/${VER.length} ca: ${badVer.map(([i]) => JSON.stringify(i)).join(' · ')}`);
   else ok.push(`rituals.mjs${' '.repeat(17)} claudeCodeVersion(): ${VER.length} ca kể cả đường dẫn Windows, không đoán khi không phải version`);
 
+  // ④c-bis `/pre-merge` phải ĐO, không được khẳng định suông. Bản trước in "chưa thấy dấu gate
+  //     preMerge chạy ở phiên này" trong khi `collect()` KHÔNG đi tìm dấu nào — `gates.mjs` chỉ
+  //     ghi telemetry khi HỎNG, nên dấu đó chưa từng tồn tại. Nghi thức đỏ theo `ahead > 0` và ở
+  //     đỏ mãi: chạy gate bao nhiêu lần cũng không đổi được gì. Bốn ca dưới đây khoá đúng chỗ đó.
+  const T = Date.parse('2026-08-06T10:00:00.000Z');
+  const PM = [
+    [{ ahead: 2, preMergeRanAt: null, lastCommitAt: T }, 'due', /CHƯA có lần chạy gate preMerge nào/, 'chưa chạy bao giờ ⇒ tới hạn, và nói rõ là CHƯA CHẠY'],
+    [{ ahead: 2, preMergeRanAt: T - 600_000, lastCommitAt: T }, 'due', /10 phút TRƯỚC commit mới nhất/, 'chạy TRƯỚC commit cuối ⇒ vẫn tới hạn, kèm số phút'],
+    [{ ahead: 2, preMergeRanAt: T + 1000, lastCommitAt: T }, 'ok', /đã chạy sau commit cuối/, 'chạy SAU commit cuối ⇒ im lặng'],
+    [{ ahead: 2, preMergeRanAt: T, lastCommitAt: null }, '?', /không đọc được thời điểm commit cuối/, 'thiếu một trong hai mốc ⇒ `?`, KHÔNG phải `ok`'],
+  ];
+  for (const [state, want, msg, label] of PM) {
+    const r = get(state, 'pre-merge');
+    if (r?.state !== want) fail.push(`rituals.mjs${' '.repeat(17)} pre-merge: ${label} → state=${r?.state}, mong đợi ${want}`);
+    else if (!msg.test(r.why)) fail.push(`rituals.mjs${' '.repeat(17)} pre-merge: ${label} → \`why\` không khớp ${msg}`);
+    else ok.push(`rituals.mjs${' '.repeat(17)} pre-merge: ${label}`);
+  }
+
+  // ④c-ter Và đầu KIA của phép đo: `gates.mjs` phải GHI cả lần chạy XANH. Không có dòng đó thì
+  //     nghi thức trên vĩnh viễn ở ca một, và ba trạng thái "gate luôn xanh · gate chưa từng
+  //     chạy · gate chạy hỏng" lại gộp làm một — đúng phép gộp mà `hookRan()` đã tách cho hook.
+  const gatesSrc = readFileSync(repoPath('tooling', 'gates.mjs'), 'utf8');
+  if (!/telemetry\('gate-runs'/.test(gatesSrc)) {
+    fail.push(`gates.mjs${' '.repeat(19)} không ghi \`gate-runs\` — /pre-merge sẽ không bao giờ xanh được dù gate chạy bao nhiêu lần`);
+  } else ok.push(`gates.mjs${' '.repeat(19)} ghi \`gate-runs\` cả khi XANH — /pre-merge có cái để đo`);
+
   // ④d NGUỒN THỨ HAI. Ca `/usr/local/bin/claude → null` ở trên KHÔNG phải "không có version" —
   //     nó là "version không nằm trong đường dẫn". Cách cài bằng npm cho ra đúng hình dạng đó
   //     (`…/node_modules/@anthropic-ai/claude-code/bin/claude.exe`), và trước 2.13.0 nghi thức
@@ -1088,7 +1114,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 108;
+const RATCHET = 113;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

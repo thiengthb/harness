@@ -13,10 +13,11 @@
 
 ## 2.13.0 — 2026-08-06
 
-**minor.** Năm mục, một chủ đề: **công cụ đo nói sai về chính nó**. Không mục nào là cơ chế
-mới — tất cả là những chỗ mà một cái gác đang làm việc bị báo cáo là im lặng, hoặc một cái
-gác đang im lặng được báo cáo là ổn. Cả năm đều đo được trên chính repo này ngày 2026-08-06,
-với `harness-doctor` mở đầu bằng **19 dòng "Nên làm"** mà **15 dòng không ai được phép làm**.
+**minor.** Sáu mục, một chủ đề: **công cụ đo nói sai về chính nó**. Không mục nào là cơ chế
+mới — tất cả là những chỗ mà một cái gác đang làm việc bị báo cáo là im lặng, một cái gác đang
+im lặng được báo cáo là ổn, hoặc một lời khẳng định đứng ở chỗ đáng lẽ phải có một phép đo.
+Cả sáu đều đo được trên chính repo này ngày 2026-08-06, với `harness-doctor` mở đầu bằng
+**19 dòng "Nên làm"** mà **15 dòng không ai được phép làm**.
 
 ### ① `$comment_*` bị đếm là LỆNH — nên cảnh báo to nhất của cả hệ bị câm
 
@@ -99,6 +100,25 @@ lý do giờ nói rõ **đã thử nguồn nào**. Chỗ ĐỌC và chỗ GHI ba
 *Đo ngay sau khi vá: máy này chạy 2.1.222, baseline ghi 2.1.221 ⇒ nghi thức chuyển từ `?`
 sang **tới hạn**. Một việc thật đã bị một phép đo hỏng giấu đi.*
 
+### ③b `/pre-merge` in một lý do mô tả phép đo CHƯA TỪNG XẢY RA
+
+Nghi thức `/pre-merge` in *"N commit đi trước, và **chưa thấy dấu gate preMerge chạy ở phiên
+này**"*. Nhưng `collect()` **không đi tìm dấu nào cả** — và không thể tìm, vì `gates.mjs` chỉ
+ghi telemetry khi **HỎNG**. Một lần chạy xanh không để lại gì.
+
+Nên nghi thức đỏ theo đúng `ahead > 0` và **ở đỏ mãi**: chạy gate bao nhiêu lần cũng vậy. Câu
+chữ thì nói rằng nó đã nhìn. Đây là cùng lớp lỗi với ①/② — một lời khẳng định đứng ở chỗ đáng
+lẽ phải có một phép đo — và nó dạy đúng thứ nguy hiểm nhất: **mục này đỏ cũng không sao**.
+
+Hai đầu cùng sửa:
+
+- `gates.mjs` ghi `gate-runs` **kể cả khi xanh** (`pass`/`fail`, kèm `ok= skip= ms=`). Đây đúng
+  ba trạng thái mà `hookRan()` đã tách cho hook từ 2.12.0, chỉ là gate chưa được hưởng: *gate
+  chạy suốt và luôn xanh · gate chưa từng chạy · gate chạy hỏng*. Cái ở giữa là cái nguy hiểm.
+- Nghi thức so **HAI mốc**, không phải một: lần chạy gate gần nhất so với **commit mới nhất**.
+  Chạy gate rồi commit thêm ⇒ lần chạy đó không còn nói gì về cây hiện tại ⇒ vẫn tới hạn, kèm
+  số phút lệch. Thiếu một trong hai mốc ⇒ `?`, **không** phải `ok`.
+
 ### ④ `init.mjs` gọi placeholder của template là FAIL — `harness-doctor` gọi nó là ĐÚNG
 
 Hai công cụ, một repo, hai phán quyết ngược nhau về **cùng một dòng**. `node tooling/init.mjs`
@@ -128,7 +148,7 @@ tên thì migration nhắc tên bịa nào cũng lọt.
 | `harness-doctor` → "Nên làm" | 19 | **4** (mọi mục còn lại đều hành động được) |
 | trong đó dương tính giả | 15 | **0** |
 | `rituals --all` → mục `?` | 1 (không đo được) | **0** — và lộ ra 1 việc thật |
-| `test-hooks.mjs` | sàn 101 | **108 khẳng định, sàn 108** (+7) |
+| `test-hooks.mjs` | sàn 101 | **113 khẳng định, sàn 113** (+12) |
 
 Không có file nào trong `.claude/hooks/**` bị sửa ở bản này.
 
