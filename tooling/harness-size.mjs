@@ -110,7 +110,7 @@ for (const [k, v] of Object.entries(metrics)) {
 // HẬU QUẢ CAM KẾT TRƯỚC: sau 60 ngày mà KHÔNG mốc nào được hạ trong một commit nào,
 // ratchet đang CHE một backlog thay vì tiêu nó — bỏ nó đi, đừng gia hạn.
 const BASELINES = {
-  'hooks-without-mutant': { n: 3, since: '2026-08-06', by: '@dri', why: '7/10 hook có mutant bị giết: dcg · block-secrets · protect-harness · protect-feature-files · protect-tests · protect-migrations (dạng bảng) + observe (dạng rời). 3 hook còn lại chưa: block-generated-edit · post-edit-lint · session-start. Hạ 6→3 ngày 2026-08-06 (thêm 2 mutant + đếm cả dạng rời, trước đó observe bị tính oan). Test chế độ hỏng (FAILMODE) KHÔNG tính ở đây: nó chứng minh hook hỏng thì CHẶN, không chứng minh phép kiểm của nó có thật.' },
+  'hooks-without-mutant': { n: 1, since: '2026-08-06', by: '@dri', why: '9/10 hook có mutant bị giết. Còn lại: session-start.mjs — nó KHÔNG CÓ phép kiểm nào để chứng minh, nó chỉ IN. Mutant trả lời câu "phép kiểm này có thật không"; hook không có phép kiểm thì câu hỏi đó vô nghĩa, và một mutant gượng ép cho nó sẽ chỉ khẳng định "đoạn in này chưa chết". Nên mốc này KHÔNG về 0 bằng cách viết thêm test — nó về 0 khi DRI quyết định mẫu số chỉ gồm hook CÓ nhánh chặn. Hạ 6→3→1 ngày 2026-08-06. Test chế độ hỏng (FAILMODE) KHÔNG tính ở đây: nó chứng minh hook hỏng thì CHẶN, không chứng minh phép kiểm của nó có thật.' },
 };
 // KHÔNG khai mốc cho thứ file này không tự đo. Một mốc không có phép đo đi kèm là
 // một field ma — nó trông như đang gác, và không ai phát hiện ra là không.
