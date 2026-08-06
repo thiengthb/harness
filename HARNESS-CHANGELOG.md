@@ -11,6 +11,67 @@
 
 ---
 
+## 2.20.0 — 2026-08-06
+
+**minor.** `entropy-scan` nói hai chuyện khác nhau tuỳ hệ điều hành — **Parity Contract**.
+
+### Triệu chứng
+
+Trên Windows 11, mỗi lần chạy `node tooling/entropy-scan.mjs`:
+
+```
+WARN \.claude\rules\danger-zones.md: thiếu `paths` — thuế context cho MỌI người ở MỌI request
+WARN \.claude\rules\README.md: thiếu `paths` …
+WARN \.claude\rules\README.md: thiếu `owner` …
+WARN \.claude\rules\README.md: thiếu `expires-review` …
+WARN \.claude\rules\README.md: thiếu `why` …
+```
+
+Trên Linux/macOS: **im lặng**. Hai file đó **đã nằm trong `GLOBAL_OK`** ngay phía trên vòng lặp,
+từ đầu.
+
+### Nguyên nhân
+
+```js
+const name = f.split('/').pop();     // f do walk() dựng bằng join()
+```
+
+Trên Windows `f` là `...\rules\README.md`, không có ký tự `/` nào — nên `split('/')` trả về
+**nguyên đường dẫn**, và `GLOBAL_OK.includes(<cả đường dẫn>)` không bao giờ đúng. Allowlist
+tồn tại, đúng nội dung, và **chưa từng chạy** trên một trong ba OS bắt buộc.
+
+Cùng lỗi ở `rel()` (dòng 35) làm mọi đường dẫn in ra thành `\.claude\...` — thừa một dấu gạch,
+đúng cái đầu mối lẽ ra phải khiến ai đó nhìn kỹ hơn.
+
+### Vì sao nó tệ hơn "chỉ là nhiễu"
+
+Nó **không làm gì đỏ cả** — nên không ai sửa. Nhưng:
+
+- `harness-doctor` đếm **1** rule không có `paths`; `entropy-scan` trên Windows kể như **2**.
+  Hai công cụ, hai sự thật, không gì báo.
+- Năm cảnh báo vĩnh viễn dạy người ta bỏ qua **toàn bộ** output của công cụ này — và cảnh báo
+  THẬT nằm cạnh chết chung. Đây là `knowledge/lessons/0003` tầng 1, ở một công cụ mà cả tầng
+  chống-phình phụ thuộc vào.
+
+### Sửa
+
+`basename()` thay `split('/')`; `relative()` + chuẩn hoá POSIX cho `rel()`. Cùng lỗi ở
+`evidenceFor()` (người Windows hay dán đường dẫn có `\`) cũng sửa luôn.
+
+Kiểm lại các chỗ `split('/')` khác trong `tooling/`: **đều đúng** — chúng cắt *glob pattern*
+hoặc *hằng chuỗi viết tay*, vốn luôn dùng `/`. `apply-to.mjs` thì đã chuẩn hoá sẵn bằng
+`.split(sep).join('/')`. Chỉ `entropy-scan.mjs` cắt đường dẫn thật của hệ thống tệp.
+
+### Test
+
+Đọc `GLOBAL_OK` **từ nguồn** (chép lại là bản sao thứ hai sẽ trôi), chạy `entropy-scan` thật,
+và khẳng định **không file nào trong allowlist còn xuất hiện trong output**. Ca này chỉ đỏ trên
+Windows — đúng lý do CI chạy cả ba OS.
+
+Đo lại: **5 cảnh báo vĩnh viễn → 0**. **Sàn test:** 133 → **134**.
+
+---
+
 ## 2.19.0 — 2026-08-06
 
 **minor.** Ratchet `hooks-without-mutant`: **6 → 3**. Và một trong ba bậc đó là sửa phép đếm.

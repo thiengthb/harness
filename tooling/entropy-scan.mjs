@@ -11,7 +11,7 @@
  * ("mục này còn đúng không?") vẫn thuộc về skill /entropy-sweep và con người.
  */
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
-import { join, extname } from 'node:path';
+import { join, extname, basename, relative, sep } from 'node:path';
 import { parseFrontmatter } from './lib/frontmatter.mjs';
 import { repoPath, config, limit, report, git, matchAny, pathsFor, readJson, stateDir, repoRole } from './lib/harness.mjs';
 
@@ -32,12 +32,23 @@ function walk(dir, filter = () => true) {
   }
   return out;
 }
-const rel = p => p.replace(repoPath('') + '/', '').replace(repoPath(''), '');
+// PARITY CONTRACT. `walk()` dựng đường dẫn bằng `join()` ⇒ dấu phân cách của HỆ ĐIỀU HÀNH.
+// Bản cũ cắt chuỗi bằng `'/'`, nên trên Windows nó không cắt được gì và mọi đường dẫn in ra
+// thành `\.claude\rules\...` — thừa một dấu gạch, sai kiểu, và (tệ hơn) trùng đúng chỗ mà
+// `basename` phía dưới cũng hỏng. `relative()` + chuẩn hoá về POSIX là cách duy nhất cho ra
+// CÙNG một chuỗi trên cả ba OS, và đó là điều kiện để so sánh/allowlist hoạt động.
+const rel = p => relative(repoPath(''), p).split(sep).join('/');
 
 // ── 1. Rule: thiếu paths / owner / expires-review ────────────────────────────
 const GLOBAL_OK = ['danger-zones.md', 'README.md', '_TEMPLATE.md'];
 for (const f of walk(repoPath('.claude', 'rules'), p => extname(p) === '.md')) {
-  const name = f.split('/').pop();
+  // `basename()`, KHÔNG `split('/')`. Trên Windows `walk()` trả `...\rules\README.md`, nên
+  // `split('/')` trả về NGUYÊN đường dẫn — và `GLOBAL_OK.includes(<cả đường dẫn>)` luôn false.
+  // Hậu quả đo được 2026-08-06: allowlist ngay phía trên KHÔNG BAO GIỜ khớp trên Windows, và
+  // người dùng Windows thấy 5 cảnh báo vĩnh viễn về hai file đã được miễn từ đầu — trong khi
+  // Linux/macOS im lặng. Một công cụ nói hai chuyện khác nhau tuỳ máy thì không ai tin nó nữa,
+  // và cảnh báo thật nằm cạnh sẽ chết chung.
+  const name = basename(f);
   const { data } = parseFrontmatter(readFileSync(f, 'utf8'));
   if (GLOBAL_OK.includes(name)) continue;
 
@@ -260,7 +271,9 @@ const readAttic = () => { try { return JSON.parse(readFileSync(ATTIC, 'utf8')); 
  */
 function evidenceFor(target) {
   const t = String(target).replace(/^\.\//, '');
-  const base = t.split('/').pop().replace(/\.[^.]+$/, '');
+  // `basename()` xử lý cả hai dấu phân cách trên Windows — `target` ở đây là chuỗi người gõ,
+  // và người trên Windows hay dán đường dẫn có `\`.
+  const base = basename(t).replace(/\.[^.]+$/, '');
   const inbound = git(['grep', '-l', '--', base]).stdout.split('\n')
     .filter(Boolean).filter(f => f !== t);
   const commits = git(['log', '--oneline', '--', t]).stdout.split('\n').filter(Boolean).length;

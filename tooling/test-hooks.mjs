@@ -1220,6 +1220,42 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   else ok.push(`fixlog.mjs${' '.repeat(18)} --group từ chối từ khoá khớp 0 dòng và nói rõ — không ghi luật chết`);
 }
 
+// ─── PARITY: allowlist của entropy-scan phải khớp trên MỌI OS ────────────────
+//
+// `walk()` dựng đường dẫn bằng `join()` ⇒ dấu phân cách của hệ điều hành. Bản trước lấy tên
+// file bằng `f.split('/').pop()`, nên TRÊN WINDOWS nó trả về nguyên đường dẫn và
+// `GLOBAL_OK.includes(...)` không bao giờ đúng.
+//
+// Hậu quả đo được 2026-08-06 (Windows 11): 5 cảnh báo VĨNH VIỄN về `danger-zones.md` và
+// `README.md` — hai file đã nằm trong allowlist từ đầu. Trên Linux/macOS: im lặng.
+//
+// Vì sao đáng một test riêng: đây là lớp lỗi mà Parity Contract sinh ra để bắt, và nó KHÔNG
+// làm gì đỏ cả — nó chỉ thêm nhiễu, ở đúng một OS. Công cụ nói hai chuyện khác nhau tuỳ máy
+// thì mất tin cậy, và cảnh báo THẬT nằm cạnh sẽ chết chung. `harness-doctor` đếm 1 rule
+// không có `paths`; `entropy-scan` trên Windows kể như 2 — hai công cụ, hai sự thật.
+//
+// Test đọc allowlist TỪ NGUỒN, không chép lại: chép lại là bản sao thứ hai sẽ trôi.
+{
+  const esSrc = readFileSync(repoPath('tooling', 'entropy-scan.mjs'), 'utf8');
+  const listed = (esSrc.match(/const GLOBAL_OK = \[([^\]]*)\]/)?.[1] || '')
+    .split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+  const present = listed.filter(n => exists(repoPath('.claude', 'rules', n)));
+  const r = spawnSync(process.execPath, [repoPath('tooling', 'entropy-scan.mjs')], {
+    encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, ...TEST_ENV },
+  });
+  const out = `${r.stdout || ''}${r.stderr || ''}`;
+  const leaked = present.filter(n => out.includes(n));
+
+  if (!listed.length) {
+    fail.push(`entropy-scan.mjs${' '.repeat(12)} không rút được \`GLOBAL_OK\` — neo của check này đã trôi, sửa neo thay vì xoá check`);
+  } else if (!present.length) {
+    fail.push(`entropy-scan.mjs${' '.repeat(12)} không file nào trong GLOBAL_OK còn tồn tại ⇒ ca này MẤT PHẠM VI, nó sẽ xanh mãi mà không kiểm gì`);
+  } else if (leaked.length) {
+    fail.push(`entropy-scan.mjs${' '.repeat(12)} ${leaked.length}/${present.length} file trong GLOBAL_OK VẪN bị cảnh báo: ${leaked.join(' · ')}`
+      + ` — allowlist không khớp. Gần như luôn là so tên file bằng \`split('/')\` trên đường dẫn do \`join()\` dựng (Parity Contract)`);
+  } else ok.push(`entropy-scan.mjs${' '.repeat(12)} allowlist GLOBAL_OK khớp thật trên OS này (${present.length} file được miễn, 0 rò)`);
+}
+
 // ─── ③④ MUTANT ───────────────────────────────────────────────────────────────
 // Mỗi mutant tiêu vào PHẠM VI của check trước, không phải logic của nó.
 const MUTANTS = [
@@ -1502,7 +1538,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 133;
+const RATCHET = 134;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {
