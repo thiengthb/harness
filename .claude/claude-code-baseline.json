@@ -1,8 +1,13 @@
 {
   "$comment": "Bản rà Claude Code gần nhất. Nghi thức `claude-code-drift` so `reviewedVersion` với version đang chạy. Đừng sửa tay — dùng `node tooling/rituals.mjs --reviewed-claude-code \"<thấy gì>\"`.",
-  "reviewedVersion": "2.1.222",
-  "reviewedAt": "2026-08-05T22:55:41.038Z",
+  "reviewedVersion": "2.1.223",
+  "reviewedAt": "2026-08-06T04:43:13.397Z",
   "history": [
+    {
+      "version": "2.1.223",
+      "at": "2026-08-06T04:43:13.397Z",
+      "found": "2.1.223 ra 2026-08-06. Tra loi cau hoi cua nghi thuc: KHONG — khong muc nao Claude Code ra san lam thu harness tu viet thanh thua. Nhung ban nay LAM LO mot lo hong trong chinh harness. Hai muc vendor vua va: (a) mot lenh bash duoc che tac co the giau bot phan cua no khoi phep kiem quyen, (b) lenh don bang tab hoac Unicode vo hinh giau bot phan hien trong hop thoai duyet. Do la dung lop ma dcg.mjs tu lam tay, va do thu 2026-08-06 cho thay dcg CO cung lo hong: no khop regex tren CHUOI THO, nen 5/5 bien the nguy trang bang cu phap nhay cua shell (bao token bang nhay kep, chen cap nhay rong giua mot co, cho co di qua mot bien shell) deu LOT, trong khi ban khong nguy trang thi CHAN dung. Vendor da cung hoa tang permission cua ho; tang thu hai cua harness thi chua. Phat hien phu: dcg khop ca noi dung heredoc, nen viet test hoac tai lieu chua chuoi lenh bi chan nham — gap THAT hai lan trong nam phut khi dang ghi chinh ban ra nay. Ca hai vao fixlog. .claude/hooks/ la vung cam nen phai di /harness-propose. Kiem them: khong agent nao trong .claude/agents/ dat bypassPermissions; khong file nao nhac lenh review cua vendor nen viec doi alias khong tao tham chieu chet. Nguon: CHANGELOG anthropics/claude-code muc 2.1.223 + bang do bang script trong scratchpad."
+    },
     {
       "version": "2.1.222",
       "at": "2026-08-05T22:55:41.038Z",
