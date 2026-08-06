@@ -11,6 +11,119 @@
 
 ---
 
+## 2.14.0 — 2026-08-06
+
+**minor.** Ba mục, một câu hỏi: *cái gì nên đi xuống repo con?*
+
+Tiêu chí đúng **không phải** "cái này có liên quan tới việc phát triển harness không" — theo
+tiêu chí đó thì `tooling/test-hooks.mjs` (86 KB, thuần phát triển harness) phải ở lại, trong
+khi repo con **chạy** nó mỗi lần `harness-doctor`. Tiêu chí đúng là: **ở repo con, có thứ gì
+ĐỌC hoặc CHẠY nó không?**
+
+`apply-to.mjs` đã áp tiêu chí đó khá kỹ — `IGNORE` có ~15 mục, mỗi mục kèm lý do viết ra, và
+mấy mục hay nhất là những mục mà "tinh tuý" lại là lý do **không** ship: `claude-code-baseline.json`
+bị giữ lại vì ship nó đi thì repo mới khởi đầu với *"đã rà xong"* cho một version họ không
+chạy, tức nghi thức im đúng lúc cần kêu.
+
+Nhưng hai file lọt lưới — và chúng là hai file **to nhất** trong toàn bộ payload.
+
+### ① 210 KB lịch sử phát triển harness ở mỗi repo con, không ai đọc
+
+Đo trên một repo con thật (v2.12.0, 2026-08-06):
+
+| ship xuống repo con | kích thước | ai đọc ở đó |
+|---|---|---|
+| `HARNESS-CHANGELOG.md` | **120 KB** | **không ai** |
+| `harness-migrations/` | **92 KB** | **không ai** |
+
+Bằng chứng nằm trong `upgrade.mjs`, không phải suy luận:
+
+```js
+const changelogPath = join(TPL, 'HARNESS-CHANGELOG.md');   // dòng 123
+const migDir        = join(TPL, 'harness-migrations');     // dòng 182
+```
+
+`TPL` là bản template người dùng trỏ tới bằng `--from`, **không** phải cây đang chạy. Hướng
+dẫn cuối `upgrade.mjs` cũng viết *"đọc `HARNESS-CHANGELOG.md` **của template**"*. Cả hai nằm
+trong `MECHANISM_PATHS` nên bị **ghi đè lại ở mỗi lần nâng cấp** — cập nhật đều đặn, phục vụ
+không cơ chế nào phía nhận.
+
+Cả hai chuyển sang `NOT_FOR_CONSUMER`, và vào `REMOVED_PATHS` để bia mộ (2.11.0) dọn chúng
+khỏi repo đã áp. `tooling/test-migrations.mjs` **vẫn ship**: nó đã tự khai `n/a — không có
+migration nào để test` khi thư mục vắng, nên bỏ thư mục không sinh ra dấu xanh rỗng nào.
+
+Repo con muốn biết harness đổi gì: `.claude/whats-new.md` — SEED sinh ra đúng cho việc đó.
+
+### ② Dấu hiệu nhận vai lại chính là thứ được ship
+
+**Mục này nghiêm trọng hơn mục ①, và nó là hệ quả của ①.**
+
+```js
+if (exists('HARNESS-CHANGELOG.md') && exists('tooling/apply-to.mjs')) return 'template';
+```
+
+Cả hai vế **đều đi xuống repo con**. Nghĩa là mọi repo tiêu thụ đều mang đủ giấy tờ để bị
+nhận nhầm là template; thứ duy nhất ngăn điều đó là `.claude/harness-manifest.json` được xét
+**trước**. Một phép nhận dạng mà bằng chứng dương tính của nó có mặt ở cả hai phía thì không
+phân biệt được gì — nó đang được cứu bởi thứ tự câu lệnh.
+
+Và "có harness mà không có manifest" **không phải giả thuyết**: `harness-migrations/010` có
+hẳn một nhánh cho nó (*"repo áp bằng đường khác ⇒ không có manifest ⇒ không xoá gì"*). Rơi
+vào đó thì repo con tự nhận là template, và **mọi thứ hạ cấp theo vai template sẽ im** — kể
+cả dòng CHẶN `commands rỗng ⇒ GATE KHÔNG TỒN TẠI`, ở đúng nơi nó cần kêu nhất. 2.13.0 còn
+làm nó **êm hơn**: placeholder ở template giờ in dấu `✓` thay vì xuống "Nên làm".
+
+Dấu hiệu mới là `tooling/cli.mjs` — điểm vào `npx github:…` của template, nằm trong `IGNORE`
+với lý do viết sẵn (*"ở project đích nó không có việc gì làm"*), nên **không thể** xuất hiện
+ở repo con qua đường chính thức. Đó là điều kiện cần của một dấu hiệu nhận vai: **chỉ tồn tại
+ở đúng một phía**. Mất nó ⇒ `unknown` ⇒ `harness-doctor` CHẶN kèm thông báo, chứ không nhận
+nhầm vai trong im lặng.
+
+Bất biến đó giờ là **check tất định**, không phải trí nhớ: một test đối chiếu mọi đường dẫn
+mà `repoRole()` dùng làm dấu hiệu "template" với `MECHANISM_PATHS`, và đỏ nếu có giao nhau.
+Nó bắt được lỗi ngay trong lần chạy đầu tiên — bản vá đầu vẫn để `cli.mjs && apply-to.mjs`
+cho "chắc ăn", mà `apply-to.mjs` thì được ship, nên vế đó đúng ở cả hai phía và không bảo vệ
+gì. Còn một test nữa đối chiếu `NOT_FOR_CONSUMER` với `MECHANISM_PATHS`: hai danh sách nói
+ngược nhau thì `MECHANISM_PATHS` là cái thắng, và không ai biết.
+
+### ③ Bia mộ thêm sau 2.11.0 chưa từng có một dòng test nào
+
+Phát hiện khi viết mục ①. Hai ca test của `migration 010` gọi `up()` **không truyền `tplPath`**,
+nên migration rơi về **danh sách NHÚNG** (`[whats-new]`) — tức mọi bia mộ thêm về sau chạy qua
+suite mà **không được khẳng định gì**. Thêm hai bia mộ ở bản này, suite vẫn xanh, và chưa từng
+chạy chúng lần nào.
+
+Ca thứ ba truyền `tplPath` để migration đọc `REMOVED_PATHS` **thật**, và khẳng định ba hình
+dạng — vì đây là migration DUY NHẤT được phép xoá file ở repo người khác:
+
+| | khẳng định |
+|---|---|
+| `HARNESS-CHANGELOG.md` | xoá được một **file lẻ ở gốc repo** |
+| `harness-migrations/` | xoá được **cả một thư mục** |
+| `docs/cua-project.md` | và **DỪNG TAY** ở file của project (không có trong manifest) |
+
+Fixture đi kèm được sinh bằng `tooling/fixtures/make-fixture-2.14.0.mjs`, **có commit**. Fixture
+này neo vào `sha` trong manifest: sai một ký tự thì migration coi là *"người dùng đã sửa"* ⇒
+không xoá ⇒ **fixture xanh mà không kiểm được gì**. Fixture 2.11.0 đã giải đúng rủi ro đó bằng
+một script — nhưng script đó nằm trong `scratchpad/`, không được commit, nên không ai dựng lại
+được. Cái này nằm trong repo.
+
+### Với repo đã áp template
+
+Nâng lên 2.14.0 sẽ **xoá** `HARNESS-CHANGELOG.md` và `harness-migrations/` khỏi repo bạn —
+chỉ khi chúng còn **nguyên như harness đặt** (so `sha` với manifest). Bạn có sửa ⇒ giữ lại và
+báo. Không mất gì đọc được: changelog đầy đủ luôn nằm ở bản template.
+
+### Kết quả đo
+
+| | trước | sau |
+|---|---|---|
+| payload xuống repo con | — | **−210 KB, −13 file** |
+| dấu hiệu "template" bị ship | 2/2 | **0/1** |
+| `test-hooks.mjs` | 113, sàn 113 | **116, sàn 116** (+3) |
+
+---
+
 ## 2.13.0 — 2026-08-06
 
 **minor.** Sáu mục, một chủ đề: **công cụ đo nói sai về chính nó**. Không mục nào là cơ chế

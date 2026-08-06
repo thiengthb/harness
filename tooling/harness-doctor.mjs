@@ -90,7 +90,7 @@ if (IS_TEMPLATE) console.log('  ℹ  Đây là REPO TEMPLATE — placeholder CHA
 // được — và `upgrade` sau này sẽ ghi đè MÙ vì nó không có hash nào để so.
 if (ROLE === 'unknown') {
   blockers.push('không xác định được VAI của repo này: không có `.claude/harness-manifest.json` (dấu của repo đã áp) '
-    + 'và cũng không có `HARNESS-CHANGELOG.md` (dấu của repo template). Harness tới đây bằng đường không ai theo dõi được — '
+    + 'và cũng không có `tooling/cli.mjs` (dấu của repo template — thứ DUY NHẤT không bao giờ ship xuống repo con). Harness tới đây bằng đường không ai theo dõi được — '
     + 'nâng cấp sau này sẽ ghi đè MÙ vì không có hash nào để so. Sửa: `node <template>/tooling/apply-to.mjs . --apply --update` một lần để tạo manifest.');
 }
 
