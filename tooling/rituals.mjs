@@ -141,6 +141,30 @@ export const RITUALS = [
     },
   },
   {
+    // `/harness-propose` là skill NGƯỜI GỌI, và tới 2.14.0 nó là **skill duy nhất KHÔNG có bất
+    // kỳ cơ chế nào nhắc tới nó** — 8/9 skill người-gọi có nghi thức, riêng nó thì không. Hệ
+    // quả: con đường HỢP PHÁP DUY NHẤT để đổi vùng cấm (`hooks/`, `settings.json`, `AGENTS.md`,
+    // `harness.config.json`) chỉ chạy khi ai đó tình cờ nhớ ra nó tồn tại.
+    //
+    // TÍN HIỆU LÀ THỨ ĐÃ CÓ SẴN, không phải cờ mới: mỗi lần `protect-harness` chặn một lần
+    // sửa vùng cấm, nó ghi một dòng `protect-harness` vào `gate-fails.log`. Bị chặn nhiều lần
+    // nghĩa là **có thứ trong harness đang cản việc thật** — đúng điều kiện mà chính skill đó
+    // đòi ("agent làm sai cùng một thứ ≥2 lần, hoặc bị hook chặn mà bạn nghĩ hook sai").
+    //
+    // Ngưỡng 2 khớp với ngưỡng của skill: một lần là ngẫu nhiên, hai lần là một hình dạng.
+    id: 'harness-propose',
+    cmd: '/harness-propose',
+    what: 'đổi vùng cấm bằng đường hợp pháp — hook, settings, AGENTS.md, harness.config.json',
+    check: (s) => {
+      if (s.harnessBlocks === null) return { state: '?', why: 'không đọc được gate-fails.log — không đo được' };
+      if (s.harnessBlocks >= 2) {
+        return { state: 'due', why: `${s.harnessBlocks} lần bị \`protect-harness\` chặn khi sửa vùng cấm (gate-fails.log) — `
+          + 'hoặc harness đang cản một việc chính đáng, hoặc ai đó đang thử sửa tay thứ phải đi qua PR. Cả hai đều là lý do chạy skill này' };
+      }
+      return { state: 'ok', why: s.harnessBlocks ? `${s.harnessBlocks} lần bị chặn ở vùng cấm, chưa đạt ngưỡng 2` : 'chưa lần nào bị chặn ở vùng cấm' };
+    },
+  },
+  {
     id: 'wt',
     cmd: '/wt',
     what: 'dọn worktree đã merge',
@@ -311,6 +335,15 @@ export function collect() {
     // Chạy gate rồi commit thêm thì lần chạy đó không còn nói gì về cây hiện tại, nên
     // "đã chạy rồi" phải nghĩa là "đã chạy SAU commit cuối". Cả hai đều `null` được, và
     // `null` ở đây chạy tiếp thành `?` — KHÔNG thành `ok`.
+    // Số lần `protect-harness` CHẶN một lần sửa vùng cấm. Đọc từ cùng log mà hook ghi vào,
+    // nên không có cờ mới nào phải nhớ bật. `null` = không đọc được ⇒ `?`, KHÔNG phải 0:
+    // "chưa có log" và "chưa lần nào bị chặn" là hai chuyện khác nhau.
+    harnessBlocks: num(() => {
+      const f = join(telemetryDir(), 'gate-fails.log');
+      if (!existsSync(f)) return 0;              // log tồn tại được nhưng rỗng là 0 THẬT
+      return readFileSync(f, 'utf8').split('\n').filter(l => l.split('|')[2] === 'protect-harness').length;
+    }, null),
+
     preMergeRanAt: num(() => {
       const f = join(telemetryDir(), 'gate-runs.log');
       if (!existsSync(f)) return null;

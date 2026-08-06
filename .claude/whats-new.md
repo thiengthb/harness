@@ -1,4 +1,4 @@
-<!-- version: 2026-08-06-b -->
+<!-- version: 2026-08-06-c -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,20 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-06 — Skill chỉ-người-gõ giờ có người nhắc (v2.15.0)
+
+9 skill trong repo này **chỉ bạn gõ được** — agent gọi thì Claude Code từ chối. Đo hôm nay:
+**chưa cái nào từng chạy**, và 2 trong số đó (`/harness-propose`, `/verify-ui`) **không có bất
+kỳ cơ chế nào** nhắc tới. `/harness-propose` là cánh cửa hợp pháp duy nhất vào vùng cấm.
+
+Giờ `/harness-propose` **tự hiện đỏ ở SessionStart** khi `protect-harness` đã chặn ≥2 lần —
+tín hiệu lấy từ log có sẵn, không thêm cờ nào. Còn `/verify-ui` vẫn chưa có, vì nó cần khai
+`paths.ui` trong `harness.config.json` (vùng cấm) — nói ra thay vì lặng lẽ bỏ.
+
+Và phần **máy làm được** của `/claim` bước 3 tách thành `node tooling/overlap-scan.mjs`: dò PR
+đang mở + vùng nóng + reservation, **agent chạy được**, đưa bạn kết quả. Phần quyết định vẫn
+là `/claim` của bạn — nó **không chặn gì bao giờ**. Chạy trước khi bắt tay vào một việc mới.
 
 ## 2026-08-06 — Repo con thôi mang lịch sử của harness (v2.14.0)
 

@@ -11,6 +11,67 @@
 
 ---
 
+## 2.15.0 — 2026-08-06
+
+**minor.** Một quy trình chỉ chạy khi có người nhớ ra nó tồn tại thì nó **không tồn tại**.
+
+Đo 2026-08-06: 9 skill có `disable-model-invocation: true` — tức **chỉ người gõ được**, agent
+gọi thì vendor từ chối (2.1.222 còn siết thêm: Claude được bảo *"nhờ người chạy"* thay vì tự
+diễn lại workflow). Trong 9 skill đó, **7 có nghi thức tự nhắc**, và **2 không có gì cả**:
+`/harness-propose` và `/verify-ui`. Chưa skill nào trong nhóm này từng chạy kể từ khi harness
+ra đời.
+
+`/harness-propose` là con đường **hợp pháp duy nhất** để đổi vùng cấm (`.claude/hooks/`,
+`settings.json`, `AGENTS.md`, `harness.config.json`). Một cánh cửa duy nhất, không biển chỉ dẫn.
+
+### ① Nghi thức cho `/harness-propose` — tín hiệu đã có sẵn, không thêm cờ nào
+
+Mỗi lần `protect-harness` chặn một lần sửa vùng cấm, nó **đã** ghi một dòng vào `gate-fails.log`.
+Bị chặn **≥2 lần** nghĩa là *có thứ trong harness đang cản một việc thật* — đúng điều kiện mà
+chính skill đó đòi ("agent làm sai cùng một thứ ≥2 lần, hoặc bị hook chặn mà bạn nghĩ hook sai").
+
+Ngưỡng 2 khớp ngưỡng của skill: một lần là ngẫu nhiên, hai lần là một hình dạng. Hạ xuống 1 là
+biến nó thành tiếng ồn ở **mỗi lần guard làm đúng việc của guard**.
+
+`gate-fails.log` không đọc được ⇒ `?`, **không** phải "chưa lần nào bị chặn" — có test khoá,
+vì gộp hai cái đó là làm câm nghi thức canh cánh cửa duy nhất vào vùng cấm.
+
+Còn lại đúng `/verify-ui` chưa có cơ chế: nó cần khai `paths.ui` trong `harness.config.json`,
+mà file đó **thuộc vùng cấm**. Nói ra thay vì lặng lẽ bỏ.
+
+### ② `tooling/overlap-scan.mjs` — phần MÁY LÀM ĐƯỢC của `/claim` bước 3
+
+`/claim` phải do người gõ, vì bước 3 của nó kết bằng *"KHÔNG tự quyết. Hỏi người."* — đó là
+phán đoán phối hợp giữa người, không phải phép tính. Nhưng phần **đi tìm** thì thuần cơ học:
+đọc PR đang mở, đối chiếu `paths.hot`, đọc `reservations/`. AGENTS.md đã nói đúng hướng từ đầu:
+*"Phần máy làm được thì máy đã làm; `/claim` giữ lại đúng phần cần phán đoán."*
+
+Tách thành script để **agent chạy được phần dò** rồi đưa người kết quả — thay vì người phải nhớ
+gõ `/claim` mới biết mình đang giẫm chân ai. Đo được: `/claim` chưa chạy lần nào, nên bước 3
+trên thực tế **chưa từng được thực hiện**.
+
+Khác `check-reservations.mjs`: cái kia là guard ở **pre-commit** — bạn đã viết code rồi nó mới
+chặn. Cái này chạy **trước khi viết**, và nhìn rộng hơn (PR đang mở + vùng nóng, không chỉ
+reservation). Hai đầu của cùng một việc.
+
+**Nó không chặn gì bao giờ**, và có test khoá đúng bất biến đó: một công cụ cố vấn exit khác 0
+là quả mìn — nó không nằm trong `gates`, nên ngày nào đó ai đó cắm nó vào pre-commit hay CI thì
+một "cảnh báo" thành một lần chặn, và cách sửa nhanh nhất lúc ấy là gỡ nó ra.
+
+Ba giá trị được giữ: `gh` chưa cài / chưa `auth login` / repo không có remote GitHub ⇒
+**`?` KHÔNG ĐO ĐƯỢC**, không phải "đường quang". Đó là nhánh chồng lấn hay gặp nhất, và báo
+xanh khi chưa hề nhìn thì nguy hiểm hơn là không có công cụ.
+
+### Kết quả đo
+
+| | trước | sau |
+|---|---|---|
+| skill người-gọi có cơ chế nhắc | 7/9 | **8/9** (còn `/verify-ui`, bị chặn bởi vùng cấm) |
+| phần dò chồng lấn của `/claim` | chỉ chạy khi người gõ | **agent chạy được** |
+| `test-hooks.mjs` | 116, sàn 116 | **121, sàn 121** (+5) |
+
+---
+
 ## 2.14.0 — 2026-08-06
 
 **minor.** Ba mục, một câu hỏi: *cái gì nên đi xuống repo con?*

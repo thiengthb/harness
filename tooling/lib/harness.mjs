@@ -759,7 +759,7 @@ export const MECHANISM_PATHS = [
   'tooling/fixlog.mjs', 'tooling/coactivity.mjs', 'tooling/harness-size.mjs',
   'tooling/capo-report.mjs', 'tooling/harness-doctor.mjs', 'tooling/doctor.mjs',
   'tooling/entropy-scan.mjs', 'tooling/rituals.mjs',
-  'tooling/check-reservations.mjs', 'tooling/check-feature-integrity.mjs',
+  'tooling/check-reservations.mjs', 'tooling/check-feature-integrity.mjs', 'tooling/overlap-scan.mjs',
   'tooling/wt-clean.mjs', 'tooling/statusline.mjs', 'tooling/precommit-scan.mjs',
   '.githooks', 'evals/run.mjs', 'evals/fixtures',
   'tooling/test-evals.mjs',
