@@ -891,6 +891,9 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   //    hay nói dối theo hướng dễ chịu: chưa nhìn thì báo ổn.
   const nulls = [['ahead', 'pre-merge'], ['fixlogTotal', 'harness-retro'], ['skillCount', 'entropy-sweep'],
     ['worktrees', 'wt'], ['pendingPacks', 'accept-packs'], ['learningsNewerThanLessons', 'knowledge-promote'],
+    // `features/` không đọc được ⇒ `?`. KHÔNG được thành "không có gì để chụp" — đó là câu
+    // trả lời DỄ CHỊU, và nó xoá đúng cái nghi thức vừa được thêm để chống việc bỏ quên UI.
+    ['ui', 'verify-ui'],
     // Không đọc được version Claude Code ⇒ `?`. KHÔNG được thành `due`: cách cài không đặt
     // `CLAUDE_CODE_EXECPATH` là chuyện bình thường, và một mục đỏ vĩnh viễn không sửa được
     // dạy đúng cái thói bỏ qua màu đỏ mà cả tầng nghi thức tồn tại để chống.
@@ -915,6 +918,31 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   if (dues.length < 6) fail.push(`rituals.mjs${' '.repeat(17)} trạng thái đầy vi phạm mà chỉ ${dues.length} mục tới hạn — có nghi thức không phản ứng`);
   else if (noNumber.length) fail.push(`rituals.mjs${' '.repeat(17)} ${noNumber.length} mục tới hạn KHÔNG có số đo trong \`why\`: ${noNumber.map(r => r.id).join(' · ')}`);
   else ok.push(`rituals.mjs${' '.repeat(17)} ${dues.length} mục tới hạn, mục nào cũng kèm SỐ ĐO trong \`why\``);
+
+  // ④d `/verify-ui` — nghi thức cuối cùng của 9 skill chỉ-người-gõ chưa có gì nhắc (2.15.0 ghi
+  //     thẳng điều đó). Bảng dưới khoá cả năm trạng thái, và cái quan trọng nhất là ca `n/a`:
+  //     một project không làm web mà bị nhắc chụp ảnh mỗi phiên sẽ tắt nghi thức, và lúc đó
+  //     mất luôn ca `owed` — mục đỏ sai làm hỏng mục đỏ đúng nằm cạnh nó.
+  const UI = [
+    [{ issue: '' }, 'ok', 'nhánh tích hợp ⇒ không có gì để chụp'],
+    [{ issue: 'SKB-1', ui: undefined }, 'ok', 'issue không có file feature ⇒ im, không đoán'],
+    [{ issue: 'SKB-1', ui: { id: 'f', state: 'n/a', why: 'CLI thuần' } }, 'ok', 'web ngoài scope ⇒ im (nếu không, project không-web sẽ tắt nghi thức)'],
+    [{ issue: 'SKB-1', ui: { id: 'f', state: 'no-web' } }, 'ok', 'feature không khai nền web ⇒ im'],
+    [{ issue: 'SKB-1', ui: { id: 'f', state: 'done', evidence: 'docs/evidence/SKB-1/web-desktop-1440x900.png' } }, 'ok', 'đã có bằng chứng ⇒ im'],
+    [{ issue: 'SKB-1', ui: { id: 'f', state: 'owed' } }, 'due', 'web trong scope mà chưa pass ⇒ TỚI HẠN'],
+  ];
+  const badUI = UI.filter(([state, want]) => get(state, 'verify-ui')?.state !== want);
+  if (badUI.length) fail.push(`rituals.mjs${' '.repeat(17)} verify-ui sai ở ${badUI.length}/${UI.length} ca: ${badUI.map(([, , l]) => l).join(' · ')}`);
+  else ok.push(`rituals.mjs${' '.repeat(17)} verify-ui: ${UI.length} trạng thái phân biệt được, chỉ ca "còn nợ ảnh" mới đỏ`);
+
+  // ④e Mục `?` phải NÊU TÊN ở bản ngắn (bản SessionStart gọi), không chỉ đếm. Gặp thật
+  //     2026-08-06: một mục `?` hiện ở SessionStart rồi biến mất trước khi kịp chạy `--all`,
+  //     nên lời khuyên "chạy --all để xem" không trả lời được cho chính ca nó phục vụ.
+  const ritCli = readFileSync(repoPath('tooling', 'rituals.mjs'), 'utf8');
+  const shortForm = ritCli.slice(ritCli.indexOf('if (!ALL)'), ritCli.indexOf('report(') > 0 ? ritCli.indexOf('report(', ritCli.indexOf('if (!ALL)')) : undefined);
+  if (!/for \(const r of unknown\)/.test(shortForm)) {
+    fail.push(`rituals.mjs${' '.repeat(17)} bản ngắn không duyệt \`unknown\` để nêu TÊN — một mục \`?\` chập chờn sẽ không bao giờ tra được`);
+  } else ok.push(`rituals.mjs${' '.repeat(17)} bản ngắn NÊU TÊN mục \`?\`, không chỉ đếm — \`?\` chập chờn vẫn tra được sau khi đã qua`);
 
   // ④b `claude-code-drift`: ba trạng thái phải PHÂN BIỆT ĐƯỢC, và hai cái `null` khác nghĩa.
   //     `claudeCodeVersion: null` = không đo được (`?`, đã kiểm ở ②).
@@ -1400,6 +1428,39 @@ if (repoRole() === 'template') {
   } else ok.push(`lib/harness.mjs${' '.repeat(13)} template: ${cmt.length} chú thích trong \`commands\` ⇒ vẫn đếm ra 0 lệnh`);
 } else skipped += 1;
 
+// ── `harness.version` PHẢI KHỚP MỤC MỚI NHẤT CỦA CHANGELOG ──────────────────
+//
+// `harness.version` KHÔNG phải một dòng trang trí. Nó là con số `apply-to.mjs` ĐÓNG DẤU vào
+// `.claude/harness-manifest.json` của repo con, là mốc `consumers.mjs` so để biết ai đang tụt
+// lại, và là thứ `upstream.mjs` gắn vào mọi pack đi lên.
+//
+// GẶP THẬT 2026-08-06: hai bản phát hành liên tiếp (2.16.0, 2.17.0) bump changelog + tag mà
+// QUÊN file này. Nó vẫn ghi `2.15.0`. Hậu quả không phải "một số hiển thị sai":
+//   · repo con áp template hôm nay bị đóng dấu 2.15.0 trong khi nhận code 2.18.0,
+//   · `consumers.mjs` báo độ lệch NHỎ HƠN sự thật — tức nó nói dối về đúng thứ nó tồn tại để đo,
+//   · và cả hai đều im lặng, vì không có gì đối chiếu hai nguồn.
+//
+// Ba nguồn version (file · changelog · git tag) mà không có ràng buộc nào giữa chúng thì chúng
+// SẼ trôi. `harness-doctor` đã đối chiếu file ↔ tag từ trước; đây là cạnh còn thiếu.
+//
+// TEMPLATE-ONLY: `HARNESS-CHANGELOG.md` nằm trong `NOT_FOR_CONSUMER` từ 2.14.0 — repo con
+// không có file đó. Chạy check này ở repo con là đúng ca `knowledge/lessons/0003`
+// (self-test của template giả định repo của nó).
+if (repoRole() === 'template') {
+  const verFile = exists(repoPath('harness.version'))
+    ? readFileSync(repoPath('harness.version'), 'utf8').trim() : null;
+  const chg = exists(repoPath('HARNESS-CHANGELOG.md'))
+    ? readFileSync(repoPath('HARNESS-CHANGELOG.md'), 'utf8') : '';
+  const newest = chg.match(/^##\s+(\d+\.\d+\.\d+)/m)?.[1] || null;
+
+  if (!verFile || !newest) {
+    fail.push(`harness.version${' '.repeat(13)} không đọc được ${!verFile ? '`harness.version`' : 'mục `## x.y.z` đầu tiên của HARNESS-CHANGELOG.md'} — neo của check này đã trôi, sửa neo thay vì xoá check`);
+  } else if (verFile !== newest) {
+    fail.push(`harness.version${' '.repeat(13)} = ${verFile} nhưng changelog mới nhất là ${newest} — repo con áp template sẽ bị ĐÓNG DẤU ${verFile} trong khi nhận code ${newest}, `
+      + `và \`consumers.mjs\` sẽ báo độ lệch NHỎ HƠN sự thật. Sửa \`harness.version\` (và nhớ tag \`v${newest}\`)`);
+  } else ok.push(`harness.version${' '.repeat(13)} = ${verFile}, khớp mục mới nhất của changelog — dấu đóng vào repo con nói đúng code họ nhận`);
+} else skipped += 1;
+
 // SỐ MẪU không phải một phép cộng viết tay. Bản trước in
 // `ok.length / (cases + MUTANTS + GATE_CASES + 3)` và ĐO ĐƯỢC 2026-08-05: **`75/72`** — tử số
 // lớn hơn mẫu số. Tỉ số đó không sai vô hại: mẫu số tồn tại để trả lời "có case nào NGỪNG
@@ -1415,7 +1476,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 128;
+const RATCHET = 131;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

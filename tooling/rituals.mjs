@@ -41,7 +41,7 @@
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules } from './lib/harness.mjs';
+import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, readJson } from './lib/harness.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHẦN THUẦN — không đọc đĩa, không gọi git. Test khẳng định trực tiếp vào đây.
@@ -134,6 +134,32 @@ export const RITUALS = [
         return { state: 'due', why: `${s.learningsNewerThanLessons} file trong .claude/learnings/ mới hơn bài học mới nhất ở knowledge/lessons/ — bài học đang ở dạng chỉ-repo-này-thấy, chưa mang được sang project khác` };
       }
       return { state: 'ok', why: 'không có learnings nào mới hơn lessons' };
+    },
+  },
+  {
+    // `/verify-ui` là 1 trong 2 skill chỉ-người-gõ mà 2.15.0 đã ghi thẳng là KHÔNG có bất kỳ
+    // cơ chế nào nhắc tới (`/harness-propose` là cái còn lại, đã có nghi thức ở 2.15.0).
+    //
+    // Lý do khi ấy: *"nó cần khai `paths.ui` trong `harness.config.json` (vùng cấm)"*. Câu đó
+    // SAI, và cái sai đáng ghi lại: `paths.ui` không cần thiết. Tín hiệu đúng nằm ở
+    // `features/<id>.json → platforms.web` — chính artefact mà skill này đọc và ghi ở bước 5.
+    // Giả định "cần vùng cấm" đến từ chỗ TRIỆU CHỨNG (skill nói về UI, config nói về path),
+    // không từ chỗ dữ liệu thật sự nằm.
+    //
+    // Không trùng `check-feature-integrity.mjs`: gate đó bắt chiều "khai `passes: true` mà
+    // KHÔNG có bằng chứng". Nó im lặng ở chiều ngược lại — "còn nợ một tấm ảnh" — và chiều đó
+    // mới là chiều cần NHẮC, vì nó không có triệu chứng nào khi bị bỏ qua (SKILL.md §mở đầu).
+    id: 'verify-ui',
+    cmd: '/verify-ui',
+    what: 'chụp UI thật ở 2 viewport làm bằng chứng, rồi giao design-evaluator chấm',
+    check: (s) => {
+      if (s.ui === null) return { state: '?', why: 'không đọc được features/ — không đo được' };
+      if (s.issue === null || !s.issue) return { state: 'ok', why: 'không ở trong một issue — không có feature nào để chụp' };
+      if (s.ui === undefined) return { state: 'ok', why: `không có features/*.json nào khai issue ${s.issue}` };
+      if (s.ui.state === 'n/a') return { state: 'ok', why: `${s.ui.id}: web ngoài scope${s.ui.why ? ` (${s.ui.why})` : ''}` };
+      if (s.ui.state === 'no-web') return { state: 'ok', why: `${s.ui.id}: không khai nền web` };
+      if (s.ui.state === 'done') return { state: 'ok', why: `${s.ui.id}: web.passes=true, bằng chứng ${s.ui.evidence || '(rỗng — gate check-feature-integrity sẽ bắt)'}` };
+      return { state: 'due', why: `${s.ui.id}: web trong scope mà passes vẫn false — còn nợ 2 ảnh ở docs/evidence/${s.issue}/, và không gì báo khi bỏ qua` };
     },
   },
   {
@@ -324,6 +350,35 @@ export function collect() {
 
   return {
     branch, integrationBranch, issue, progressExists,
+
+    // ── UI của ĐÚNG issue đang làm ────────────────────────────────────────────
+    //
+    // `null` = không đọc được thư mục features/ ⇒ `?`. `undefined` = issue này không có file
+    // feature nào (khác hẳn: không có gì để verify). Đọc `platforms.web` vì đó là nền duy
+    // nhất mà `/verify-ui` chụp được — ios/android/desktop cần công cụ của project.
+    //
+    // VÌ SAO KHOÁ VÀO ISSUE HIỆN TẠI, không quét cả repo: quét cả repo thì template (và mọi
+    // project thật) luôn có ít nhất một feature chưa xong ⇒ mục này ĐỎ VĨNH VIỄN. Một mục đỏ
+    // vĩnh viễn dạy người ta bỏ qua màu đỏ — đúng tầng 1 của `knowledge/lessons/0003`, và
+    // đúng lý do `fixlog --close` phải tồn tại. Khoá vào issue thì nó TỰ TẮT khi bạn xong.
+    ui: (() => {
+      if (!issue) return undefined;
+      try {
+        const dir = repoPath('features');
+        if (!exists(dir)) return undefined;
+        for (const f of readdirSync(dir)) {
+          if (!f.endsWith('.json') || f.startsWith('_')) continue;
+          const j = readJson(join(dir, f));
+          if (!j || j.issue !== issue) continue;
+          const web = j.platforms?.web;
+          if (!web) return { id: j.id || f, state: 'no-web' };
+          if (web.passes === 'n/a') return { id: j.id || f, state: 'n/a', why: String(web.evidence || '') };
+          if (web.passes === true) return { id: j.id || f, state: 'done', evidence: String(web.evidence || '') };
+          return { id: j.id || f, state: 'owed' };
+        }
+        return undefined;
+      } catch { return null; }
+    })(),
 
     // Số commit mới hơn lần sửa nhật ký gần nhất. Dùng mtime của file so với ngày commit —
     // thô nhưng đúng hướng, và nó KHÔNG đòi nhật ký phải được commit (thường nó chưa).
@@ -517,7 +572,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     // Bản NGẮN cho SessionStart: chỉ việc tới hạn. Không có gì tới hạn thì IM LẶNG —
     // một dòng "không có gì cần làm" mỗi phiên là chính loại nhiễu file này thay thế.
     for (const r of due) console.log(`   ▸ ${r.cmd.padEnd(20)} ${r.why}`);
-    if (unknown.length) console.log(`   ? ${unknown.length} nghi thức KHÔNG đo được — node tooling/rituals.mjs --all`);
+    // NÊU TÊN, không nêu số lượng. Bản cũ in `? 2 nghi thức KHÔNG đo được` rồi bảo chạy
+    // `--all` để biết thêm — và gặp thật 2026-08-06: một mục `?` xuất hiện ở SessionStart rồi
+    // BIẾN MẤT trước khi kịp chạy `--all`. Trạng thái `?` thường do một phép đo chập chờn
+    // (git bận, đường dẫn chưa sẵn), tức đúng loại hay tự khỏi — nên lời khuyên "chạy lại để
+    // xem" là lời khuyên KHÔNG BAO GIỜ trả lời được cho chính ca nó được sinh ra để phục vụ.
+    // Một cái tên tại chỗ thì rẻ hơn, và nó còn nguyên giá trị sau khi triệu chứng đã qua.
+    for (const r of unknown) console.log(`   ? ${r.cmd.padEnd(20)} KHÔNG đo được — ${r.why}`);
     process.exit(0);
   }
 

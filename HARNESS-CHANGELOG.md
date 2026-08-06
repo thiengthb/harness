@@ -11,6 +11,73 @@
 
 ---
 
+## 2.18.0 — 2026-08-06
+
+**minor.** `/verify-ui` thôi vô hình, và mục `?` thôi giấu tên.
+
+### ① `/verify-ui` giờ có nghi thức — và `paths.ui` chưa bao giờ cần thiết
+
+2.15.0 đo được 9 skill `disable-model-invocation: true` (chỉ người gõ được), trong đó **2 cái
+không có bất kỳ cơ chế nào nhắc tới**. `/harness-propose` đã được sửa ở 2.15.0. `/verify-ui`
+thì bị hoãn với lý do: *"nó cần khai `paths.ui` trong `harness.config.json` (vùng cấm)"*.
+
+**Lý do đó SAI.** Tín hiệu đúng nằm ở `features/<id>.json → platforms.web` — chính artefact mà
+skill này đọc ở bước 1 và ghi ở bước 5. Không cần `paths.ui`, không cần chạm vùng cấm nào.
+
+Giả định "cần vùng cấm" đến từ chỗ **triệu chứng** (skill nói về UI, config nói về path), không
+từ chỗ **dữ liệu** thật sự nằm. Cùng một lối nghĩ đã làm hỏng nháp đầu của 2.17.0 — hai lần
+trong một ngày, nên nó được ghi thành `.claude/learnings/`.
+
+Nghi thức khoá vào **issue của nhánh hiện tại**, không quét cả repo — quét cả repo thì mọi
+project luôn có ít nhất một feature chưa xong ⇒ **đỏ vĩnh viễn**, và một mục đỏ vĩnh viễn dạy
+người ta bỏ qua màu đỏ (`knowledge/lessons/0003` tầng 1). Khoá vào issue thì nó **tự tắt** khi
+bạn xong.
+
+Sáu trạng thái phân biệt được, và ca quan trọng nhất là `n/a`: project không làm web mà bị nhắc
+chụp ảnh mỗi phiên sẽ tắt nghi thức — **mục đỏ sai làm hỏng mục đỏ đúng nằm cạnh nó**.
+
+Không trùng `check-feature-integrity.mjs`: gate đó bắt chiều *"khai `passes: true` mà không có
+bằng chứng"*. Nó im ở chiều ngược lại — *"còn nợ một tấm ảnh"* — và chiều đó mới cần NHẮC, vì
+nó **không có triệu chứng nào khi bị bỏ qua**.
+
+### ② Mục `?` nêu TÊN, không nêu số lượng
+
+Bản ngắn in `? 2 nghi thức KHÔNG đo được` rồi bảo chạy `--all` để biết thêm.
+
+Gặp thật 2026-08-06: một mục `?` hiện ở đầu phiên rồi **biến mất** trước khi kịp chạy `--all`.
+Trạng thái `?` thường sinh ra từ một phép đo chập chờn (git bận, đường dẫn chưa sẵn) — tức đúng
+loại hay tự khỏi. Nên *"chạy lại để xem"* là lời khuyên **không bao giờ trả lời được cho chính
+ca nó được sinh ra để phục vụ**. Một cái tên tại chỗ rẻ hơn, và còn nguyên giá trị sau khi
+triệu chứng đã qua.
+
+> **CHƯA XONG MỘT NỬA, nói ra thay vì lặng lẽ.** `.claude/hooks/session-start.mjs:195` tự dựng
+> dòng `?` của nó (nó `import` `evaluate()` chứ không gọi CLI), nên **banner đầu phiên vẫn chỉ
+> đếm**. File đó thuộc `paths.harness`. Đây là ca DRI thật — khác hai ca ở trên, và lần này đã
+> kiểm chứ không giả định.
+
+### ③ `harness.version` thôi trôi khỏi changelog — một lỗi của chính hai bản vừa rồi
+
+`harness.version` **không** phải một dòng trang trí. Nó là con số `apply-to.mjs` **đóng dấu**
+vào `.claude/harness-manifest.json` của repo con, là mốc `consumers.mjs` so để biết ai đang tụt
+lại, và là thứ `upstream.mjs` gắn vào mọi pack đi lên.
+
+**2.16.0 và 2.17.0 bump changelog + tag mà QUÊN file này.** Nó vẫn ghi `2.15.0`. Hậu quả không
+phải "một số hiển thị sai":
+
+- repo con áp template hôm nay bị **đóng dấu 2.15.0** trong khi nhận code 2.18.0;
+- `consumers.mjs` báo độ lệch **nhỏ hơn sự thật** — nó nói dối về đúng thứ nó tồn tại để đo;
+- và cả hai đều **im lặng**, vì không có gì đối chiếu hai nguồn.
+
+Ba nguồn version (file · changelog · git tag) mà không có ràng buộc nào giữa chúng thì chúng
+**sẽ** trôi. `harness-doctor` đã đối chiếu file ↔ tag từ trước; đây là cạnh còn thiếu.
+Test template-only (`HARNESS-CHANGELOG.md` nằm trong `NOT_FOR_CONSUMER` từ 2.14.0).
+
+Đo lại sau khi sửa: `consumers.mjs` từ `SAU template (2.15.0)` → `SAU template (2.18.0)`.
+
+**Sàn test:** 128 → **131**.
+
+---
+
 ## 2.17.0 — 2026-08-06
 
 **minor.** Không còn cách nào viết ra một **gác câm**.
