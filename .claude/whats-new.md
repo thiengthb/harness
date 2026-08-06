@@ -1,4 +1,4 @@
-<!-- version: 2026-08-06-a -->
+<!-- version: 2026-08-06-b -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,21 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-06 — Repo con thôi mang lịch sử của harness (v2.14.0)
+
+**Nâng lên 2.14.0 sẽ XOÁ `HARNESS-CHANGELOG.md` và `harness-migrations/` khỏi repo bạn** —
+chỉ khi chúng còn nguyên như harness đặt. Không mất gì: `upgrade.mjs` xưa nay vẫn đọc cả hai
+từ **bản template**, không bao giờ từ cây của bạn. Đó là 210 KB lịch sử phát triển harness
+được ghi đè lại ở mỗi lần nâng cấp mà không cơ chế nào ở phía bạn đọc tới. Muốn biết harness
+đổi gì thì đọc chính file này.
+
+Nghiêm trọng hơn: `HARNESS-CHANGELOG.md` là **một nửa dấu hiệu để harness tự nhận biết mình
+là template hay repo con** — và nó được ship xuống repo con. Repo nào mất
+`.claude/harness-manifest.json` sẽ tự nhận là template, và **mọi dòng CHẶN sẽ im**, kể cả
+*"commands rỗng ⇒ GATE KHÔNG TỒN TẠI"*. Dấu hiệu giờ là `tooling/cli.mjs` — thứ duy nhất
+không bao giờ đi xuống repo con — và có test khoá lại: dấu hiệu nhận vai **không được** nằm
+trong danh sách ship.
 
 ## 2026-08-06 — Công cụ đo vừa bị đo (v2.13.0)
 

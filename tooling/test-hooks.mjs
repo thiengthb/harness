@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, rmSync, readdirSync, cpSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER } from './lib/harness.mjs';
 
 const BLOCK = 2, OK = 0;
 
@@ -653,6 +653,42 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   } finally {
     try { rmSync(work, { recursive: true, force: true }); } catch {}
   }
+
+  // ③ BIA MỘ THẬT, không phải bản nhúng. Hai ca ở trên gọi `up()` KHÔNG có `tplPath`, nên
+  //    migration dùng danh sách NHÚNG (`[whats-new]`) — tức mọi bia mộ thêm sau đó **không có
+  //    dòng test nào**. Đo được khi thêm hai bia mộ ở 2.14.0: suite vẫn xanh mà chưa từng
+  //    chạy chúng. Ca này truyền `tplPath` để migration đọc `REMOVED_PATHS` THẬT ở lib.
+  //
+  //    Và nó khẳng định ba hình dạng khác nhau, vì đây là migration DUY NHẤT xoá file:
+  //      · `HARNESS-CHANGELOG.md`  — một FILE ở gốc repo
+  //      · `harness-migrations/`   — một THƯ MỤC nhiều file
+  //      · `docs/cua-project.md`   — file của PROJECT, không có trong manifest ⇒ phải SỐNG
+  const work14 = join(tmpdir(), `harness-mig010-real-${process.pid}`);
+  try {
+    rmSync(work14, { recursive: true, force: true });
+    cpSync(repoPath('tooling', 'fixtures', 'migration-2.14.0'), work14, { recursive: true });
+    const logs = [];
+    const mod = await import(pathToFileURL(repoPath('harness-migrations', '010-bo-thu-template-da-bo.mjs')).href);
+    await mod.up({
+      repoPath: (...p) => join(work14, ...p),
+      tplPath: (...p) => repoPath(...p),          // ⇒ migration đọc REMOVED_PATHS thật
+      readJson: (p, fb = null) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return fb; } },
+      readFileSync, writeFileSync, existsSync: exists,
+      log: m => logs.push(String(m)),
+    });
+    const has = rel => exists(join(work14, rel));
+    const bad = [];
+    if (has('HARNESS-CHANGELOG.md')) bad.push('HARNESS-CHANGELOG.md (file ở gốc) KHÔNG bị xoá');
+    if (has('harness-migrations')) bad.push('harness-migrations/ (cả thư mục) KHÔNG bị xoá');
+    if (!has('docs/cua-project.md')) bad.push('XOÁ NHẦM docs/cua-project.md — file của project, không có trong manifest');
+    if (!logs.some(l => l.startsWith('✓'))) bad.push('xoá mà KHÔNG nói ra');
+    if (bad.length) fail.push(`migration 010              bia mộ THẬT: ${bad.join(' · ')}`);
+    else ok.push(`migration 010${' '.repeat(15)} bia mộ THẬT (tplPath): xoá được file lẻ ở gốc VÀ cả thư mục, giữ file của project`);
+  } catch (e) {
+    fail.push(`migration 010              THROW với bia mộ thật: ${String(e.message || e).slice(0, 100)}`);
+  } finally {
+    try { rmSync(work14, { recursive: true, force: true }); } catch {}
+  }
 }
 
 // ─── rituals.mjs: BA GIÁ TRỊ, và "tới hạn" phải kèm SỐ ĐO ────────────────────
@@ -827,6 +863,32 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   const badCmd = CMD.filter(([cfg, want]) => declaredCommands(cfg).length !== want);
   if (badCmd.length) fail.push(`lib/harness.mjs${' '.repeat(13)} declaredCommands() sai ở ${badCmd.length}/${CMD.length} ca: ${badCmd.map(([, , l]) => l).join(' · ')}`);
   else ok.push(`lib/harness.mjs${' '.repeat(13)} declaredCommands(): key \`$comment_*\` KHÔNG bị đếm là lệnh — cảnh báo "gate không tồn tại" nói được`);
+
+  // ①b DẤU HIỆU NHẬN VAI KHÔNG ĐƯỢC LÀ THỨ SHIP XUỐNG REPO CON.
+  //
+  //    Tới 2.13.0, `repoRole()` nhận ra template bằng `HARNESS-CHANGELOG.md` + `apply-to.mjs`
+  //    — và CẢ HAI đều nằm trong `MECHANISM_PATHS`, tức mọi repo tiêu thụ đều mang đủ giấy tờ
+  //    để bị nhận nhầm. Thứ duy nhất ngăn điều đó là manifest được xét TRƯỚC; mất manifest
+  //    (trạng thái mà migration 010 có hẳn một nhánh cho nó) là repo con thành "template",
+  //    và mọi dòng CHẶN hạ cấp theo vai template sẽ im — kể cả "commands rỗng ⇒ GATE KHÔNG
+  //    TỒN TẠI". Check này khoá tính chất đó bằng máy thay vì bằng trí nhớ.
+  const shipped = new Set([...MECHANISM_PATHS]);
+  const roleSrc = readFileSync(repoPath('tooling', 'lib', 'harness.mjs'), 'utf8');
+  const roleFn = roleSrc.slice(roleSrc.indexOf('export function repoRole()'));
+  const roleBody = roleFn.slice(0, roleFn.indexOf('\n}'));
+  const marks = [...roleBody.matchAll(/repoPath\(([^)]*)\)/g)]
+    .map(m => m[1].split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).join('/'))
+    .filter(p => !p.includes('harness-manifest'));   // manifest là dấu của CONSUMER, ship là đúng
+  const leaked = marks.filter(p => shipped.has(p));
+  if (!marks.length) fail.push(`lib/harness.mjs${' '.repeat(13)} không đọc được dấu hiệu nào trong repoRole() — neo của check này đã trôi, sửa neo thay vì xoá check`);
+  else if (leaked.length) fail.push(`lib/harness.mjs${' '.repeat(13)} repoRole() nhận vai "template" bằng ${leaked.join(' · ')} — thứ ĐƯỢC SHIP xuống repo con. Repo con mất manifest sẽ tự nhận là template và mọi dòng CHẶN im theo`);
+  else ok.push(`lib/harness.mjs${' '.repeat(13)} repoRole(): ${marks.length} dấu hiệu nhận vai, KHÔNG cái nào nằm trong MECHANISM_PATHS`);
+
+  // ①c Và chiều ngược: thứ đã tuyên bố "không cho repo con" thì không được lọt lại vào
+  //    danh sách ship. Hai hằng số ở hai chỗ khác nhau, nên chúng phải được đối chiếu.
+  const contradiction = NOT_FOR_CONSUMER.filter(p => shipped.has(p));
+  if (contradiction.length) fail.push(`lib/harness.mjs${' '.repeat(13)} ${contradiction.join(' · ')} vừa ở NOT_FOR_CONSUMER vừa ở MECHANISM_PATHS — hai danh sách nói ngược nhau, và MECHANISM_PATHS là cái thắng`);
+  else ok.push(`lib/harness.mjs${' '.repeat(13)} NOT_FOR_CONSUMER (${NOT_FOR_CONSUMER.length}) không mục nào lọt lại vào MECHANISM_PATHS`);
 
   // ② `isRecordedRemoval`: bia mộ được nhắc tên ở ĐÚNG nơi ghi việc xoá, và chỉ ở đó.
   //    Cả hai chiều đều là hồi quy: bỏ điều kiện "file" thì docs nhắc skill đã xoá cũng lọt
@@ -1114,7 +1176,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 113;
+const RATCHET = 116;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

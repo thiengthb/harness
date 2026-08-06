@@ -532,7 +532,7 @@ export const CI_ESCAPE_HATCH = /\n {4}env:\n(?: {6}#[^\n]*\n)* {6}HARNESS_ALLOW_
 /**
  * VAI của repo đang chạy. BA giá trị, không hai.
  *
- *   'template'  — nguồn: có HARNESS-CHANGELOG + apply-to, KHÔNG có manifest
+ *   'template'  — nguồn: có `tooling/cli.mjs`, KHÔNG có manifest
  *   'consumer'  — đã áp: có `.claude/harness-manifest.json` (chỉ apply-to/upgrade ghi ra)
  *   'unknown'   — không đủ dấu hiệu: cài tay, copy dở, hoặc manifest bị xoá
  *
@@ -546,10 +546,37 @@ export const CI_ESCAPE_HATCH = /\n {4}env:\n(?: {6}#[^\n]*\n)* {6}HARNESS_ALLOW_
  * cấm ở mọi nơi khác — chỉ có điều nó nằm trong phép TỰ NHẬN DIỆN của chính harness.
  *
  * `consumer` thắng khi có manifest: template không bao giờ có file đó.
+ *
+ * ── DẤU HIỆU "TEMPLATE" PHẢI LÀ THỨ KHÔNG BAO GIỜ ĐI XUỐNG REPO CON
+ *
+ * Tới 2.13.0 dấu hiệu đó là `HARNESS-CHANGELOG.md` + `tooling/apply-to.mjs` — và **cả hai
+ * đều được ship sang repo con**. Nghĩa là mọi repo tiêu thụ đều mang đủ giấy tờ để bị nhận
+ * nhầm là template; thứ duy nhất ngăn điều đó là manifest được xét TRƯỚC. Một phép nhận dạng
+ * mà bằng chứng dương tính của nó có mặt ở cả hai phía thì không phân biệt được gì — nó chỉ
+ * đang được cứu bởi thứ tự câu lệnh.
+ *
+ * Và trạng thái "có harness mà không có manifest" KHÔNG phải giả thuyết: `harness-migrations/010`
+ * có hẳn một nhánh cho nó ("repo áp bằng đường khác ⇒ không có manifest ⇒ không xoá gì").
+ * Rơi vào đó thì repo con bị gọi là template, và mọi thứ hạ cấp theo vai template — kể cả
+ * dòng CHẶN "commands rỗng ⇒ GATE KHÔNG TỒN TẠI" — sẽ im, ở đúng nơi nó cần kêu nhất.
+ *
+ * `tooling/cli.mjs` là điểm vào `npx github:…` của TEMPLATE. Nó nằm trong `IGNORE` của
+ * `apply-to.mjs` với lý do viết sẵn ("ở project đích nó không có việc gì làm"), nên nó
+ * **không thể** xuất hiện ở repo con qua đường chính thức. Đó là điều kiện cần của một dấu
+ * hiệu nhận vai: chỉ tồn tại ở đúng một phía.
+ *
+ * Hỏng thì hỏng về phía an toàn: xoá `cli.mjs` khỏi template ⇒ `unknown` ⇒ `harness-doctor`
+ * CHẶN kèm thông báo, chứ không âm thầm nhận nhầm vai.
+ *
+ * MỘT dấu hiệu, không phải hai. Bản đầu của bản vá này để `cli.mjs && apply-to.mjs` cho
+ * "chắc ăn" — nhưng `apply-to.mjs` ĐƯỢC ship, nên vế đó đúng ở CẢ HAI phía và không phân
+ * biệt được gì; nó chỉ làm bất biến khó đọc và mời gọi người sau tưởng nó đang bảo vệ điều
+ * gì đó. Test `repoRole(): dấu hiệu không nằm trong MECHANISM_PATHS` bắt đúng chỗ này, ngay
+ * trong lần chạy đầu tiên sau khi viết nó.
  */
 export function repoRole() {
   if (exists(repoPath('.claude', 'harness-manifest.json'))) return 'consumer';
-  if (exists(repoPath('HARNESS-CHANGELOG.md')) && exists(repoPath('tooling', 'apply-to.mjs'))) return 'template';
+  if (exists(repoPath('tooling', 'cli.mjs'))) return 'template';
   return 'unknown';
 }
 
@@ -594,6 +621,22 @@ export const REMOVED_PATHS = [
     since: '2.4.0',
     why: 'Thông báo harness đã do `session-start.mjs` in tự động mỗi phiên (đọc `.claude/whats-new.md`). '
       + 'Một skill phải GỌI mới chạy thì không bao giờ được gọi đúng lúc cần — và nó tiêu một suất trong trần skill.',
+  },
+  {
+    path: 'HARNESS-CHANGELOG.md',
+    since: '2.14.0',
+    why: 'Repo con không đọc nó: `upgrade.mjs` lấy changelog từ `TPL`, không từ cây đang chạy. '
+      + '120 KB lịch sử phát triển harness, ghi đè lại mỗi lần nâng cấp, phục vụ không cơ chế nào — '
+      + 'và tới 2.13.0 nó còn là một nửa dấu hiệu nhận vai `repoRole()`, tức một file chỉ nên có ở '
+      + 'template lại được dùng để trả lời "đây có phải template không" ở nơi nó không nên tồn tại. '
+      + 'Thay thế: `.claude/whats-new.md` (SEED, session-start in một lần mỗi version).',
+  },
+  {
+    path: 'harness-migrations',
+    since: '2.14.0',
+    why: 'Cùng lý do: `upgrade.mjs` đọc `join(TPL, "harness-migrations")`, không bao giờ đọc bản ở repo con. '
+      + '92 KB script chỉ chạy từ phía template. `tooling/test-migrations.mjs` vẫn ở lại và tự khai '
+      + '`n/a` khi không có migration, nên không có dấu xanh rỗng nào sinh ra từ việc bỏ thư mục này.',
   },
 ];
 
@@ -720,8 +763,37 @@ export const MECHANISM_PATHS = [
   'tooling/wt-clean.mjs', 'tooling/statusline.mjs', 'tooling/precommit-scan.mjs',
   '.githooks', 'evals/run.mjs', 'evals/fixtures',
   'tooling/test-evals.mjs',
-  'harness.version', 'HARNESS-CHANGELOG.md', 'harness-migrations',
+  // `harness.version` Ở LẠI: repo con ĐỌC nó (`harness-doctor` in version; `upgrade` so
+  // khoảng version để biết chạy migration nào). Hai thứ từng đứng cạnh nó thì KHÔNG — xem
+  // `NOT_FOR_CONSUMER` ngay dưới.
+  'harness.version',
 ];
+
+/**
+ * TRÔNG như cơ chế, nhưng repo con KHÔNG ĐỌC — nên không đi xuống.
+ *
+ * `HARNESS-CHANGELOG.md` (120 KB) và `harness-migrations/` (92 KB — đo ở một repo con thật,
+ * 2026-08-06). `upgrade.mjs` đọc CẢ HAI từ `TPL`, tức bản template mà người dùng trỏ tới
+ * bằng `--from`, chứ không từ cây đang chạy:
+ *
+ *     const changelogPath = join(TPL, 'HARNESS-CHANGELOG.md');
+ *     const migDir        = join(TPL, 'harness-migrations');
+ *
+ * Hướng dẫn cuối `upgrade.mjs` cũng viết "đọc HARNESS-CHANGELOG.md CỦA TEMPLATE". Nên tới
+ * 2.13.0 đây là ~210 KB lịch sử phát triển harness, **ghi đè lại ở MỖI lần nâng cấp**, phục
+ * vụ không cơ chế nào ở phía nhận.
+ *
+ * Changelog còn tệ hơn "thừa": tới 2.13.0 nó là một nửa dấu hiệu nhận vai trong `repoRole()`.
+ * Một file chỉ nên có ở template lại có mặt ở mọi repo con, và nó được dùng để trả lời câu
+ * "đây có phải template không". Xem lý do đầy đủ ở `repoRole`.
+ *
+ * Repo con muốn biết harness đổi gì thì đọc `.claude/whats-new.md` — SEED sinh ra đúng cho
+ * việc đó, và `session-start` in nó một lần mỗi version.
+ *
+ * `tooling/test-migrations.mjs` VẪN ship: nó đã tự khai `n/a — không có migration nào để
+ * test` khi thư mục vắng, nên nó không biến thành một dấu xanh rỗng.
+ */
+export const NOT_FOR_CONSUMER = ['HARNESS-CHANGELOG.md', 'harness-migrations'];
 
 /**
  * Dòng nào trong `required` chưa có trong `text`. So khớp sau khi trim, theo DÒNG
