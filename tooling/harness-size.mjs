@@ -110,7 +110,7 @@ for (const [k, v] of Object.entries(metrics)) {
 // HẬU QUẢ CAM KẾT TRƯỚC: sau 60 ngày mà KHÔNG mốc nào được hạ trong một commit nào,
 // ratchet đang CHE một backlog thay vì tiêu nó — bỏ nó đi, đừng gia hạn.
 const BASELINES = {
-  'hooks-without-mutant': { n: 6, since: '2026-08-05', by: '@dri', why: 'dcg · block-secrets · protect-harness · protect-feature-files đã có mutant bị giết; 6 hook còn lại chưa. Test chế độ hỏng (FAILMODE) KHÔNG tính ở đây: nó chứng minh hook hỏng thì CHẶN, không chứng minh phép kiểm của nó có thật.' },
+  'hooks-without-mutant': { n: 3, since: '2026-08-06', by: '@dri', why: '7/10 hook có mutant bị giết: dcg · block-secrets · protect-harness · protect-feature-files · protect-tests · protect-migrations (dạng bảng) + observe (dạng rời). 3 hook còn lại chưa: block-generated-edit · post-edit-lint · session-start. Hạ 6→3 ngày 2026-08-06 (thêm 2 mutant + đếm cả dạng rời, trước đó observe bị tính oan). Test chế độ hỏng (FAILMODE) KHÔNG tính ở đây: nó chứng minh hook hỏng thì CHẶN, không chứng minh phép kiểm của nó có thật.' },
 };
 // KHÔNG khai mốc cho thứ file này không tự đo. Một mốc không có phép đo đi kèm là
 // một field ma — nó trông như đang gác, và không ai phát hiện ra là không.
@@ -186,7 +186,23 @@ const testSrc = existsSync(repoPath('tooling', 'test-hooks.mjs'))
 // `mutate(<file>` — nhưng mutant được KHAI trong mảng và mutate() nhận biến, nên
 // check đếm 0 mãi mãi. Lại là PHẠM VI, không phải logic: chỗ cần nhìn trước tiên.
 const mutantBlock = testSrc.match(/const MUTANTS = \[([\s\S]*?)\n\];/)?.[1] ?? '';
-const noMutant = hookFiles.filter(f => !mutantBlock.includes(`'${f}'`)).length;
+// HAI dạng mutant, và bản đầu chỉ đếm một.
+//
+// Dạng BẢNG: khai trong `const MUTANTS = [...]`, chạy qua `mutate()`.
+// Dạng RỜI: viết tay khi mutant cần dựng bối cảnh riêng — `observe.mjs` phải xoá mẩu bánh mì
+// rồi bắn một sự kiện `StopFailure` trước khi kiểm, thứ bảng không diễn đạt được.
+//
+// Chỉ đếm dạng bảng thì `observe.mjs` bị tính là "chưa có mutant" VĨNH VIỄN, dù nó có một
+// mutant thật đang bị giết mỗi lần chạy suite. Sai theo chiều an toàn (bi quan), nhưng vẫn là
+// một con số không đúng nghĩa của nó — và tệ hơn: cái mốc này KHÔNG BAO GIỜ về 0 được, trong
+// khi chính file này khai ĐIỀU KIỆN THOÁT là *"một mốc về 0 → xoá dòng đó"*. Một ratchet không
+// thể về 0 thì không phải ratchet, nó là một dòng trang trí vĩnh viễn.
+//
+// Dạng rời nhận diện qua NHÃN `MUTANT <file>` mà nó in ra — dạng bảng dùng `${hook.padEnd(21)}`
+// nên không sinh ra chuỗi đó. Rủi ro: ai viết đúng chuỗi ấy trong một comment sẽ được tính oan.
+// Chấp nhận được, vì cái giá của chiều ngược lại (mốc kẹt mãi) đã đo được là cao hơn.
+const hasMutant = (f) => mutantBlock.includes(`'${f}'`) || testSrc.includes(`MUTANT ${f}`);
+const noMutant = hookFiles.filter(f => !hasMutant(f)).length;
 for (const [key, measured] of [['hooks-without-mutant', noMutant]]) {
   const b = BASELINES[key];
   if (!b) continue;
