@@ -691,6 +691,43 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   }
 }
 
+// ─── overlap-scan: CỐ VẤN, không phải gác ─────────────────────────────────────
+//
+// Đây là phần MÁY LÀM ĐƯỢC của `/claim` bước 3, tách ra để agent chạy được phần đi TÌM còn
+// người giữ phần QUYẾT ĐỊNH. Hai bất biến, và cái đầu quan trọng hơn:
+//
+//   ① NÓ KHÔNG BAO GIỜ ĐƯỢC CHẶN. Exit khác 0 ở một công cụ cố vấn là một quả mìn: nó
+//      không nằm trong `gates`, nên nếu một ngày ai đó cắm nó vào pre-commit hay CI, một
+//      "cảnh báo" sẽ thành một lần chặn — và cách sửa nhanh nhất lúc đó là gỡ nó ra.
+//   ② Nó phải ĐỎ ĐƯỢC. Một cái dò chưa từng tìm thấy gì thì không phân biệt được với một
+//      cái dò hỏng. Ca dưới đây đưa vào đúng một đường dẫn thuộc `paths.hot`.
+{
+  const scan = (args, extraEnv = {}) => spawnSync(process.execPath, [repoPath('tooling', 'overlap-scan.mjs'), ...args], {
+    encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, ...TEST_ENV, ...extraEnv },
+  });
+
+  const hotGlobs = (readJson(repoPath('harness.config.json'))?.paths?.hot) || [];
+  if (!hotGlobs.length) {
+    fail.push(`overlap-scan.mjs${' '.repeat(12)} \`paths.hot\` rỗng ⇒ ca "đỏ được" MẤT PHẠM VI. Sửa neo, đừng xoá test`);
+  } else {
+    // `package.json` khớp `paths.hot` ở template. Lấy từ config chứ không gõ tay, để test
+    // không mục khi ai đó đổi vùng nóng.
+    const probe = hotGlobs.find(g => !g.includes('*')) || 'package.json';
+    const hit = scan([probe, '--json']);
+    let parsed = null; try { parsed = JSON.parse(hit.stdout || 'null'); } catch { /* dưới bắt */ }
+    if (hit.status !== 0) fail.push(`overlap-scan.mjs${' '.repeat(12)} exit=${hit.status} với đầu vào CHẠM VÙNG NÓNG — công cụ cố vấn không được chặn`);
+    else if (!parsed) fail.push(`overlap-scan.mjs${' '.repeat(12)} --json không cho ra JSON đọc được`);
+    else if (!parsed.hot?.length) fail.push(`overlap-scan.mjs${' '.repeat(12)} đưa "${probe}" (thuộc paths.hot) mà KHÔNG báo vùng nóng — phép đối chiếu là trang trí`);
+    else ok.push(`overlap-scan.mjs${' '.repeat(12)} phát hiện vùng nóng, và exit 0 (cố vấn, không chặn)`);
+  }
+
+  // Đường im lặng: không đối số, không chồng lấn ⇒ vẫn exit 0 và vẫn nói ra phạm vi đã đối chiếu.
+  const quiet = scan([]);
+  if (quiet.status !== 0) fail.push(`overlap-scan.mjs${' '.repeat(12)} exit=${quiet.status} ở đường KHÔNG có chồng lấn — cố vấn mà chặn là mìn`);
+  else if (!/Phạm vi đối chiếu/.test(quiet.stdout)) fail.push(`overlap-scan.mjs${' '.repeat(12)} không nói ra ĐÃ ĐỐI CHIẾU CÁI GÌ — "không tìm thấy" mà không nêu phạm vi thì không đọc được`);
+  else ok.push(`overlap-scan.mjs${' '.repeat(12)} đường im lặng: exit 0 và vẫn nêu phạm vi đã đối chiếu`);
+}
+
 // ─── rituals.mjs: BA GIÁ TRỊ, và "tới hạn" phải kèm SỐ ĐO ────────────────────
 //
 // Khẳng định vào `evaluate()` — hàm THUẦN — bằng trạng thái DỰNG SẴN. Không dựng repo giả:
@@ -724,7 +761,10 @@ for (const [env, expect, label, msg] of GATE_CASES) {
     // Không đọc được version Claude Code ⇒ `?`. KHÔNG được thành `due`: cách cài không đặt
     // `CLAUDE_CODE_EXECPATH` là chuyện bình thường, và một mục đỏ vĩnh viễn không sửa được
     // dạy đúng cái thói bỏ qua màu đỏ mà cả tầng nghi thức tồn tại để chống.
-    ['claudeCodeVersion', 'claude-code-drift']];
+    ['claudeCodeVersion', 'claude-code-drift'],
+    // `gate-fails.log` không đọc được ⇒ `?`. KHÔNG được thành "chưa lần nào bị chặn": đó là
+    // gộp "chưa nhìn" vào "ổn" ở đúng nghi thức canh con đường HỢP PHÁP DUY NHẤT vào vùng cấm.
+    ['harnessBlocks', 'harness-propose']];
   const wrong = nulls.filter(([k, id]) => get({ [k]: null }, id)?.state !== '?');
   if (wrong.length) fail.push(`rituals.mjs${' '.repeat(17)} ${wrong.length} nghi thức coi \`null\` (không đo được) là trạng thái BÌNH THƯỜNG: ${wrong.map(w => w[1]).join(' · ')}`);
   else ok.push(`rituals.mjs${' '.repeat(17)} \`null\` ⇒ \`?\` ở cả ${nulls.length} nghi thức đo bằng số (không gộp "chưa nhìn" vào "ổn")`);
@@ -772,6 +812,23 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   const badVer = VER.filter(([inp, want]) => claudeCodeVersion(inp) !== want);
   if (badVer.length) fail.push(`rituals.mjs${' '.repeat(17)} claudeCodeVersion() sai ở ${badVer.length}/${VER.length} ca: ${badVer.map(([i]) => JSON.stringify(i)).join(' · ')}`);
   else ok.push(`rituals.mjs${' '.repeat(17)} claudeCodeVersion(): ${VER.length} ca kể cả đường dẫn Windows, không đoán khi không phải version`);
+
+  // ④b-bis `/harness-propose`: ngưỡng phải là 2, và "0 lần" phải im lặng.
+  //     Tới 2.14.0 đây là skill người-gọi DUY NHẤT không có cơ chế nào nhắc tới — con đường
+  //     hợp pháp duy nhất vào vùng cấm chỉ chạy khi ai đó tình cờ nhớ ra nó tồn tại. Ngưỡng 2
+  //     khớp ngưỡng của chính skill ("một lần là ngẫu nhiên"); hạ xuống 1 là biến nó thành
+  //     tiếng ồn ở mỗi lần guard làm đúng việc của guard.
+  const HP = [
+    [{ harnessBlocks: 0 }, 'ok', /chưa lần nào/, '0 lần ⇒ im lặng'],
+    [{ harnessBlocks: 1 }, 'ok', /chưa đạt ngưỡng 2/, '1 lần ⇒ vẫn im, nhưng NÓI RA con số'],
+    [{ harnessBlocks: 2 }, 'due', /2 lần bị .*protect-harness.* chặn/, '2 lần ⇒ tới hạn, kèm số đo'],
+  ];
+  for (const [state, want, msg, label] of HP) {
+    const r = get(state, 'harness-propose');
+    if (r?.state !== want) fail.push(`rituals.mjs${' '.repeat(17)} harness-propose: ${label} → state=${r?.state}, mong đợi ${want}`);
+    else if (!msg.test(r.why)) fail.push(`rituals.mjs${' '.repeat(17)} harness-propose: ${label} → \`why\` không khớp ${msg}`);
+    else ok.push(`rituals.mjs${' '.repeat(17)} harness-propose: ${label}`);
+  }
 
   // ④c-bis `/pre-merge` phải ĐO, không được khẳng định suông. Bản trước in "chưa thấy dấu gate
   //     preMerge chạy ở phiên này" trong khi `collect()` KHÔNG đi tìm dấu nào — `gates.mjs` chỉ
@@ -1176,7 +1233,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 116;
+const RATCHET = 121;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {
