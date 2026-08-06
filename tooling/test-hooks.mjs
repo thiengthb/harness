@@ -691,6 +691,71 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   }
 }
 
+// ─── HAI TẦNG: cái gác nào ĐANG THẬT SỰ cưỡng chế? ───────────────────────────
+//
+// `dcg.mjs` khớp regex trên CHUỖI lệnh. Đo 2026-08-06 (issue #43): 5/5 biến thể nguỵ trang
+// bằng cú pháp nháy của shell đều LỌT, trong khi dạng thẳng thì chặn đúng. Hook không hỏng —
+// nó làm đúng thứ nó được viết để làm, và regex thì không thắng được ngữ pháp shell.
+//
+// Nên câu hỏi đáng hỏi KHÔNG phải "regex đã kín chưa" (không bao giờ kín) mà là:
+// **mỗi điều cấm có một TẦNG MỘT do vendor cưỡng chế đứng sau không?** `permissions.deny`
+// được chính Claude Code kiểm, và 2.1.223 vừa cứng hoá nó đúng lớp lỗi này.
+//
+// Bảng dưới đây là HỢP ĐỒNG giữa hai tầng, và nó có ba tác dụng đo được:
+//   ① Thêm một mục `DENY` mới mà không khai tầng một ⇒ ĐỎ. Buộc phải trả lời "ai cưỡng chế".
+//   ② Số mục CHƯA có tầng một là một RATCHET — được giảm, không được tăng.
+//   ③ Khai một pattern tầng một không có thật trong settings.json ⇒ ĐỎ. Bảng không nói dối được.
+//
+// KHÔNG đặt bảng này trong `dcg.mjs`: file đó thuộc `paths.harness`. Đặt ở đây là cố ý —
+// nó cho phép đóng phần đo được của issue #43 mà không cần agent chạm vùng cấm.
+{
+  const dcgSrc = readFileSync(repoPath('.claude', 'hooks', 'dcg.mjs'), 'utf8');
+  const whys = [...dcgSrc.matchAll(/why:\s*'([^']+)'/g)].map(m => m[1]);
+  const deny = new Set((readJson(repoPath('.claude', 'settings.json'))?.permissions?.deny) || []);
+
+  // `null` = CHƯA có tầng một. Đó là sự thật đo được, không phải thiếu sót của bảng —
+  // và nó được đếm chứ không bị giấu.
+  const LAYER1 = new Map([
+    ['ghi lại lịch sử chung',                        'Bash(git push --force:*)'],
+    ['phá thay đổi chưa commit',                     'Bash(git reset --hard:*)'],
+    ['xoá không hồi phục ở gốc hoặc thư mục hiện tại', 'Bash(rm -rf /:*)'],
+    ['apply hạ tầng không review plan',              'Bash(terraform apply *-auto-approve:*)'],
+    ['xoá file untracked, không đường cứu',          null],
+    ['bỏ thay đổi working tree',                     null],
+    ['xoá nhánh chung',                              null],
+    ['viết lại nhánh chung',                         null],
+    ['phá dữ liệu',                                  null],
+    ['chạm production',                              null],
+    ['lệnh cấp hệ thống',                            null],
+    ['fork bomb',                                    null],
+  ]);
+
+  // Ratchet: đo 2026-08-06. GIẢM thì sửa số này xuống; TĂNG là đỏ, và đó là mục đích.
+  const UNCOVERED_RATCHET = 8;
+
+  const missing = whys.filter(w => !LAYER1.has(w));
+  const stale = [...LAYER1.keys()].filter(w => !whys.includes(w));
+  const lying = [...LAYER1].filter(([, p]) => p && !deny.has(p)).map(([w]) => w);
+  const uncovered = whys.filter(w => LAYER1.get(w) == null);
+
+  if (!whys.length) {
+    fail.push(`dcg ↔ permissions.deny${' '.repeat(6)} không rút được mục \`why\` nào từ dcg.mjs — neo của check này đã trôi, sửa neo thay vì xoá check`);
+  } else if (missing.length) {
+    fail.push(`dcg ↔ permissions.deny${' '.repeat(6)} ${missing.length} điều cấm trong dcg KHÔNG khai tầng một: ${missing.join(' · ')}`
+      + ` — thêm vào bảng LAYER1 kèm pattern \`permissions.deny\`, hoặc \`null\` nếu thật sự chưa có tầng nào cưỡng chế. Câu hỏi phải được TRẢ LỜI, không được bỏ trống`);
+  } else if (stale.length) {
+    fail.push(`dcg ↔ permissions.deny${' '.repeat(6)} ${stale.length} mục trong bảng không còn trong dcg.DENY: ${stale.join(' · ')} — bảng đang mô tả một cái gác không tồn tại`);
+  } else if (lying.length) {
+    fail.push(`dcg ↔ permissions.deny${' '.repeat(6)} ${lying.length} mục khai một pattern tầng một KHÔNG có trong settings.json: ${lying.join(' · ')}`
+      + ` — bảng nói có phòng thủ hai lớp trong khi chỉ có một`);
+  } else if (uncovered.length > UNCOVERED_RATCHET) {
+    fail.push(`dcg ↔ permissions.deny${' '.repeat(6)} ${uncovered.length} điều cấm CHỈ có dcg đứng sau (ratchet ${UNCOVERED_RATCHET}) — `
+      + `dcg né được bằng cú pháp nháy (issue #43), nên mỗi mục ở đây là một điều cấm KHÔNG có tầng nào cưỡng chế thật. Thêm dòng vào permissions.deny, đừng nới ratchet`);
+  } else {
+    ok.push(`dcg ↔ permissions.deny${' '.repeat(6)} ${whys.length} điều cấm đều khai tầng một; ${whys.length - uncovered.length} có, ${uncovered.length} chưa (ratchet ${UNCOVERED_RATCHET}, chỉ được giảm)`);
+  }
+}
+
 // ─── overlap-scan: CỐ VẤN, không phải gác ─────────────────────────────────────
 //
 // Đây là phần MÁY LÀM ĐƯỢC của `/claim` bước 3, tách ra để agent chạy được phần đi TÌM còn
@@ -1233,7 +1298,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 121;
+const RATCHET = 122;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {
