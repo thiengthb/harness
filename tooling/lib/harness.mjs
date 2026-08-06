@@ -317,11 +317,47 @@ export function hookInput() {
 export const EXIT_OK = 0;
 export const EXIT_BLOCK = 2;
 
-/** Chặn tool call và giải thích CÁCH SỬA (không chỉ nói sai). */
+/**
+ * Chặn tool call và giải thích CÁCH SỬA (không chỉ nói sai).
+ *
+ * ── GHI SỔ LÀ VIỆC CỦA `block()`, KHÔNG PHẢI CỦA CHỖ GỌI
+ *
+ * Trước 2.17.0, mỗi hook tự nhớ gọi `telemetry('gate-fails', …)` ngay trước `block()`.
+ * Quét 2026-08-06: **8/9 nhớ, 1 quên** — `protect-feature-files.mjs` nhánh
+ * `features/_index.json`, tức gác single-writer của DRI. Nhánh còn lại của CHÍNH file đó thì
+ * nhớ. Nên đây không phải quy ước chưa tồn tại; nó tồn tại và trượt đúng một chỗ.
+ *
+ * Hậu quả KHÔNG phải "thiếu một dòng log". Một gác chặn mà im thì:
+ *   · `harness-doctor` đọc là `? chưa đo`,
+ *   · `/harness-retro` bước 4 — chỗ BẮT BUỘC đề xuất cắt bỏ — đọc là gác chưa bắt được gì.
+ * Tức **gác càng đúng mà càng im thì càng dễ bị cắt**: chọn lọc ngược, và nạn nhân là những
+ * cái gác đang lặng lẽ làm việc.
+ *
+ * Sửa ở ĐÂY thay vì sửa từng hook, vì đây là chỗ duy nhất khiến việc đó KHÔNG THỂ quên nữa.
+ * Một ratchet đếm số chỗ trượt của một quy ước chỉ là giải pháp tạm cho việc quy ước ấy chưa
+ * được cưỡng chế tại nguồn.
+ *
+ * KHÔNG đếm hai lần: chỗ gọi nào đã tự ghi `gate-fails` (8/9 hook hiện tại, kèm chi tiết mà
+ * chỉ nó biết — issue nào, nhánh nào) thì `block()` im. Bộ đếm phải giữ nguyên nghĩa, nếu
+ * không thì bản vá này lại làm hỏng chính con số nó sinh ra để cứu.
+ */
 export function block(message, howToFix) {
+  if (!gateFailLogged) telemetry('gate-fails', [hookSelfName(), String(message).slice(0, 160)]);
   console.error(`⛔ BỊ CHẶN: ${message}`);
   if (howToFix) console.error(`   → ${howToFix}`);
   process.exit(EXIT_BLOCK);
+}
+
+/**
+ * Tên hook đang chạy, suy từ đường dẫn script. Hook luôn được spawn dưới dạng script nên
+ * `argv[1]` là nguồn tin cậy; không có thì trả `'(hook)'` chứ KHÔNG đoán — một cái tên bịa
+ * trong sổ còn tệ hơn không có tên, vì nó gộp nhầm hai gác khi đếm.
+ */
+function hookSelfName() {
+  try {
+    const b = String(process.argv[1] || '').split(/[\\/]/).pop() || '';
+    return b.replace(/\.mjs$/, '') || '(hook)';
+  } catch { return '(hook)'; }
 }
 
 export function pass() {
@@ -946,11 +982,20 @@ export function tallyLines(text, { field = 2, sinceMs = 0 } = {}) {
  * là toàn bộ hợp đồng giữa hook và harness. Đó là lý do có `try {} catch {}` rỗng.
  */
 export function telemetry(kind, fields) {
+  // Cờ này cho `block()` biết chỗ gọi đã tự ghi sổ rồi — xem `block()` cho lý do đầy đủ.
+  // Đặt TRƯỚC `try`: kể cả khi việc ghi thất bại (đĩa đầy), ý ĐỊNH ghi vẫn đã được nêu, và
+  // `block()` ghi thêm một dòng nữa cũng sẽ thất bại y hệt. Không có gì cứu được bằng cách
+  // ghi hai lần vào một cái đĩa đầy.
+  if (kind === 'gate-fails') gateFailLogged = true;
   try {
     const line = [new Date().toISOString(), config().project?.id ?? '-', ...fields.map(f => String(f).replace(/[|\n\r]/g, ' '))].join('|');
     appendFileSync(join(telemetryDir(), `${kind}.log`), line + '\n', 'utf8');
   } catch {}
 }
+
+/** Chỗ gọi đã tự ghi `gate-fails` trong tiến trình này chưa. Một tiến trình = một hook = một
+ *  lần chặn (hook exit ngay ở `block()`), nên một cờ boolean là đủ và không mất thông tin. */
+let gateFailLogged = false;
 
 /**
  * Ghi "hook này ĐÃ CHẠY" — kể cả khi nó cho qua.

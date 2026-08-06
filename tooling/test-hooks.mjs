@@ -760,6 +760,70 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   }
 }
 
+// ── KHÔNG CÒN CÁCH NÀO VIẾT RA MỘT GÁC CÂM ──────────────────────────────────
+//
+// Một cái gác CHẶN mà không để lại dòng nào tệ hơn một cái gác không chạy, và tệ theo hướng khó
+// thấy: nó chặn đúng, không ai phàn nàn, còn `harness-doctor` đọc là `? chưa đo` và
+// `/harness-retro` bước 4 — chỗ BẮT BUỘC đề xuất cắt bỏ — đọc là gác chưa bắt được gì.
+// **Gác càng đúng mà càng im thì càng dễ bị cắt.** Chọn lọc ngược.
+//
+// Quét 2026-08-06: 9 lời gọi `block()`, **8 tự ghi sổ, 1 quên** — `protect-feature-files.mjs`
+// nhánh `features/_index.json`, gác single-writer của DRI. Nhánh còn lại của CHÍNH file đó thì
+// nhớ. Quy ước có tồn tại; nó trượt đúng một chỗ.
+//
+// Bản vá KHÔNG phải một ratchet đếm chỗ trượt — mà là `block()` tự ghi (2.17.0). Nên test ở đây
+// khẳng định HÀNH VI, không quét văn bản: quét văn bản chỉ đo được "ai nhớ gọi", mà sau bản vá
+// thì không còn ai cần nhớ nữa.
+{
+  const probe = (body) => {
+    const f = join(tmpdir(), `harness-block-probe-${process.pid}-${Math.random().toString(36).slice(2)}.mjs`);
+    const logFile = join(TEST_TELEMETRY_DIR, 'gate-fails.log');
+    const before = exists(logFile) ? readFileSync(logFile, 'utf8').split('\n').filter(Boolean).length : 0;
+    writeFileSync(f, body, 'utf8');
+    const r = spawnSync(process.execPath, [f], {
+      encoding: 'utf8', input: '{}',
+      env: { ...process.env, HARNESS_TELEMETRY_DIR: TEST_TELEMETRY_DIR },
+    });
+    const lines = exists(logFile) ? readFileSync(logFile, 'utf8').split('\n').filter(Boolean) : [];
+    rmSync(f, { force: true });
+    return { status: r.status, added: lines.slice(before) };
+  };
+  const libUrl = JSON.stringify(pathToFileURL(repoPath('tooling', 'lib', 'harness.mjs')).href);
+
+  // ① `block()` một mình PHẢI để lại dấu, và dấu đó phải mang TÊN gác — một dòng vô danh
+  //    không nói được gác nào đã chặn, tức không dùng được cho quyết định cắt/giữ.
+  const solo = probe(`import { block } from ${libUrl};\nblock('probe chan mot minh', 'khong sao');\n`);
+  if (solo.status !== 2) fail.push(`lib/harness.mjs${' '.repeat(13)} block() không exit 2 (được ${solo.status}) — hợp đồng chặn đã vỡ`);
+  else if (solo.added.length !== 1) fail.push(`lib/harness.mjs${' '.repeat(13)} block() không tự ghi \`gate-fails\` (${solo.added.length} dòng mới) — gác câm vẫn viết ra được`);
+  else if (!/harness-block-probe/.test(solo.added[0])) fail.push(`lib/harness.mjs${' '.repeat(13)} block() ghi sổ nhưng KHÔNG kèm tên gác: ${solo.added[0].slice(0, 90)}`);
+  else ok.push(`lib/harness.mjs${' '.repeat(13)} block() TỰ ghi \`gate-fails\` kèm tên gác — không còn cách nào viết ra một gác câm`);
+
+  // ② Và KHÔNG đếm hai lần. 8/9 hook đã tự ghi kèm chi tiết mà chỉ chúng biết (issue nào, nhánh
+  //    nào); nếu `block()` ghi thêm một dòng nữa thì mọi con số "n lần chặn" tăng gấp đôi —
+  //    bản vá sinh ra để cứu bộ đếm lại làm hỏng đúng bộ đếm đó.
+  const dbl = probe(`import { block, telemetry } from ${libUrl};\ntelemetry('gate-fails', ['ten-that', 'chi tiet rieng']);\nblock('probe da tu ghi', 'khong sao');\n`);
+  if (dbl.added.length !== 1) fail.push(`lib/harness.mjs${' '.repeat(13)} chỗ gọi đã tự ghi mà block() ghi thêm ⇒ ${dbl.added.length} dòng cho MỘT lần chặn — mọi bộ đếm "n lần chặn" sai gấp đôi`);
+  else if (!/ten-that/.test(dbl.added[0])) fail.push(`lib/harness.mjs${' '.repeat(13)} dòng còn lại không phải dòng của chỗ gọi — chi tiết riêng của hook đã mất`);
+  else ok.push(`lib/harness.mjs${' '.repeat(13)} chỗ gọi đã tự ghi ⇒ block() im, giữ ĐÚNG một dòng và giữ chi tiết riêng của hook`);
+
+  // ③ Ca thật đã sinh ra tất cả những dòng trên: `features/_index.json`. Trước 2.17.0 nhánh này
+  //    chặn mà không để lại gì — hook duy nhất trong repo bị `harness-doctor` đọc là `? chưa đo`.
+  const real = (() => {
+    const logFile = join(TEST_TELEMETRY_DIR, 'gate-fails.log');
+    const before = exists(logFile) ? readFileSync(logFile, 'utf8').split('\n').filter(Boolean).length : 0;
+    const r = spawnSync(process.execPath, [repoPath('.claude', 'hooks', 'protect-feature-files.mjs')], {
+      encoding: 'utf8',
+      input: JSON.stringify({ tool_name: 'Write', tool_input: { file_path: 'features/_index.json' } }),
+      env: { ...process.env, HARNESS_TELEMETRY_DIR: TEST_TELEMETRY_DIR },
+    });
+    const lines = exists(logFile) ? readFileSync(logFile, 'utf8').split('\n').filter(Boolean) : [];
+    return { status: r.status, added: lines.slice(before) };
+  })();
+  if (real.status !== 2) fail.push(`protect-feature-files.mjs${' '.repeat(3)} _index.json KHÔNG còn bị chặn (exit ${real.status}) — gác single-writer của DRI đã mất`);
+  else if (!real.added.some(l => /protect-feature-files/.test(l))) fail.push(`protect-feature-files.mjs${' '.repeat(3)} chặn _index.json mà KHÔNG để lại dòng nào mang tên nó — doctor sẽ đọc "? chưa đo" và /harness-retro sẽ đọc là gác vô dụng`);
+  else ok.push(`protect-feature-files.mjs${' '.repeat(3)} chặn _index.json VÀ ghi sổ kèm tên — ca thật của lớp lỗi "gác câm" đã đóng`);
+}
+
 // ─── overlap-scan: CỐ VẤN, không phải gác ─────────────────────────────────────
 //
 // Đây là phần MÁY LÀM ĐƯỢC của `/claim` bước 3, tách ra để agent chạy được phần đi TÌM còn
@@ -1351,7 +1415,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 125;
+const RATCHET = 128;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

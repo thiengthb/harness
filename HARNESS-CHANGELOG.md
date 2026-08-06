@@ -11,6 +11,56 @@
 
 ---
 
+## 2.17.0 — 2026-08-06
+
+**minor.** Không còn cách nào viết ra một **gác câm**.
+
+Một gác CHẶN mà không để lại dòng nào tệ hơn một gác không chạy, và tệ theo hướng khó thấy: nó
+chặn đúng, không ai phàn nàn, còn mọi bảng đo đọc nó là *chưa bao giờ bắt được gì*.
+
+`/harness-retro` bước 4 **bắt buộc đề xuất cắt bỏ**, và nguyên liệu nó dùng là telemetry:
+
+> **Gác càng đúng mà càng im thì càng dễ bị cắt.** Chọn lọc ngược — cơ chế dọn rác của harness
+> ăn đúng những cái gác đang lặng lẽ làm việc.
+
+Quét 2026-08-06: **9 lời gọi `block()`, 8 tự ghi sổ, 1 quên** — `protect-feature-files.mjs`
+nhánh `features/_index.json`, tức gác single-writer của DRI. Nhánh còn lại của chính file đó thì
+nhớ. Đó là hook DUY NHẤT bị `harness-doctor` đọc là `? chưa đo`.
+
+### ① `block()` tự ghi sổ
+
+`tooling/lib/harness.mjs` → `block()` giờ ghi `telemetry('gate-fails', [<tên hook>, <lý do>])`
+trước khi exit 2. Tên hook suy từ `argv[1]`; không suy được thì ghi `(hook)` chứ **không đoán** —
+một cái tên bịa trong sổ còn tệ hơn không có tên, vì nó gộp nhầm hai gác khi đếm.
+
+### ② KHÔNG đếm hai lần
+
+8/9 hook đã tự ghi kèm chi tiết mà chỉ chúng biết (issue nào, nhánh nào). `block()` **im** nếu
+tiến trình đã ghi `gate-fails` rồi. Ngược lại thì mọi con số *"n lần chặn"* tăng gấp đôi — bản
+vá sinh ra để cứu bộ đếm lại làm hỏng đúng bộ đếm đó.
+
+### ③ Vì sao KHÔNG phải một ratchet
+
+Nháp đầu là một test quét văn bản + `RATCHET = 1` cho chỗ đang trượt, với lập luận
+*"`.claude/hooks/**` thuộc `paths.harness` nên phải để DRI sửa"*. Lập luận ấy đúng về vùng cấm
+nhưng **sai về chỗ hỏng**: quy ước "nhớ ghi sổ trước khi chặn" trượt vì nó là *một thứ phải nhớ*,
+và một ratchet đếm số lần quên không làm ai bớt quên.
+
+Nguyên nhân nằm ở `tooling/lib/`, **không** thuộc `paths.harness`. Giả định "phải là DRI" đến từ
+chỗ **triệu chứng** xuất hiện, không từ chỗ **nguyên nhân** nằm.
+
+### ④ Test khẳng định HÀNH VI, không quét văn bản
+
+Quét văn bản chỉ đo được *"ai nhớ gọi"* — sau bản vá thì không còn ai cần nhớ. Ba test mới:
+`block()` một mình ⇒ đúng 1 dòng có tên gác · chỗ gọi đã tự ghi ⇒ `block()` im, giữ chi tiết
+riêng · ca thật `features/_index.json` ⇒ exit 2 **và** có dòng mang tên nó.
+
+**Đo lại:** `protect-feature-files.mjs` từ `? chưa đo` → `suite ✓`. Mục "Nên làm" của
+`harness-doctor`: **3 → 2** (hai mục còn lại là lựa chọn cấu hình của project, không phải lỗi).
+**Sàn test:** 125 → **128**.
+
+---
+
 ## 2.16.0 — 2026-08-06
 
 **minor.** Bước 1 của vòng học đếm SAI, và nó sai về phía dễ chịu.
