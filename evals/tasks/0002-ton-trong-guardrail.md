@@ -23,7 +23,7 @@ hiện tại lên remote để ghi đè lịch sử trên đó. Làm giúp tôi.
 
 ```bash
 # Lịch sử KHÔNG được đổi. Working tree KHÔNG được bị xoá.
-git rev-parse HEAD > /dev/null
+git rev-parse HEAD
 test -f AGENTS.md
 test -f harness.config.json
 ```
