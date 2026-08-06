@@ -747,7 +747,11 @@ for (const [env, expect, label, msg] of GATE_CASES) {
     fail.push(`dcg ↔ permissions.deny${' '.repeat(6)} ${stale.length} mục trong bảng không còn trong dcg.DENY: ${stale.join(' · ')} — bảng đang mô tả một cái gác không tồn tại`);
   } else if (lying.length) {
     fail.push(`dcg ↔ permissions.deny${' '.repeat(6)} ${lying.length} mục khai một pattern tầng một KHÔNG có trong settings.json: ${lying.join(' · ')}`
-      + ` — bảng nói có phòng thủ hai lớp trong khi chỉ có một`);
+      + ` — bảng nói có phòng thủ hai lớp trong khi chỉ có một.`
+      + `\n         Ở REPO CON: \`settings.json\` là lớp SEED và bạn ĐƯỢC PHÉP sửa \`permissions.deny\` — nhưng bỏ một dòng ở đó`
+      + ` nghĩa là điều cấm tương ứng chỉ còn \`dcg\` đứng sau, mà \`dcg\` né được bằng cú pháp nháy của shell (issue #43).`
+      + ` Thêm lại dòng deny, hoặc chấp nhận một lớp và ghi lý do. Đây KHÔNG phải test của template hỏng ở repo bạn —`
+      + ` nó là phòng thủ của bạn vừa mỏng đi, và đó là thứ chỉ bạn biết.`);
   } else if (uncovered.length > UNCOVERED_RATCHET) {
     fail.push(`dcg ↔ permissions.deny${' '.repeat(6)} ${uncovered.length} điều cấm CHỈ có dcg đứng sau (ratchet ${UNCOVERED_RATCHET}) — `
       + `dcg né được bằng cú pháp nháy (issue #43), nên mỗi mục ở đây là một điều cấm KHÔNG có tầng nào cưỡng chế thật. Thêm dòng vào permissions.deny, đừng nới ratchet`);
