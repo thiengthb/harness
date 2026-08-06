@@ -11,6 +11,56 @@
 
 ---
 
+## 2.21.0 — 2026-08-06
+
+**minor.** Ratchet `hooks-without-mutant`: **3 → 1**. Và một hợp đồng output KHÔNG bị nới.
+
+### ① `block-generated-edit.mjs` — `paths.generated` bị vô hiệu
+
+Hook ROI cao nhất trong repo có codegen. Mutant: vô hiệu `matchAny(rel, pathsFor('generated'))`
+⇒ sửa `src/api.gen.ts` **lọt**.
+
+### ② `post-edit-lint.mjs` — nhánh chặn CHƯA TỪNG được chạy
+
+Bốn ca đang có đều đi vào `pass()` (chưa khai lệnh · file không lint được · file generated ·
+không có path). Tức **phần hook thật sự làm gì đó chưa ai chứng minh là chạy**.
+
+Fixture mới `config-lint-fails.json` + `lint-always-fails.mjs` cho nó một `lintFix` thất bại
+tất định. Là một **file** chứ không phải chuỗi `node -e "…"`: Parity Contract — dấu nháy và
+ngoặc được `cmd.exe`, PowerShell và `sh` hiểu khác nhau; một đường dẫn file thì cả ba đọc giống
+nhau.
+
+Mutant: vô hiệu `paths.lintable` ⇒ lint hỏng **không còn chặn**.
+
+### ③ Một hợp đồng output KHÔNG bị nới — và vì sao đó là kết quả, không phải thiếu sót
+
+Bảng `cases` cưỡng chế: mọi nhánh từ chối phải in `BỊ CHẶN` **và** một dòng gợi ý `→ `. Đúng
+**100%** với mọi ca đang có.
+
+`post-edit-lint` là nhánh chặn **duy nhất** không khớp — nó `process.exit(EXIT_BLOCK)` thẳng
+thay vì gọi `block()`. Không ai phát hiện, vì **chưa test nào chạm nhánh đó**.
+
+Và nó **có thể đúng khi khác**: đây là `PostToolUse` — file đã ghi xong, nên *"BỊ CHẶN"* là một
+câu **sai sự thật**. Hợp đồng kia mã hoá ngữ nghĩa `PreToolUse` vào một chuỗi ký tự.
+
+Nới hợp đồng (`/BỊ CHẶN/` → `/⛔/`) sẽ làm **ca mới của chính tôi** xanh, bằng cách làm yếu một
+check đang đúng với tất cả các ca khác. **Không làm.** Quyết định *"hook PostToolUse nói gì khi
+từ chối"* là hợp đồng output của harness ⇒ việc của DRI → **issue #54**. Mutant vẫn khẳng định
+được phạm vi, nên không mất gì.
+
+### ④ Vì sao mốc dừng ở 1, không phải 0
+
+Còn `session-start.mjs`. Nó **không có phép kiểm nào** để chứng minh — nó chỉ **in**. Mutant trả
+lời câu *"phép kiểm này có thật không"*; hook không có phép kiểm thì câu hỏi vô nghĩa, và một
+mutant gượng ép chỉ khẳng định được *"đoạn in này chưa chết"*.
+
+Nên mốc này **không về 0 bằng cách viết thêm test**. Nó về 0 khi DRI quyết định mẫu số chỉ gồm
+hook **có nhánh chặn**. Ghi ra thay vì nặn một mutant vô nghĩa để lấy con số đẹp.
+
+**Sàn test:** 134 → **136**.
+
+---
+
 ## 2.20.0 — 2026-08-06
 
 **minor.** `entropy-scan` nói hai chuyện khác nhau tuỳ hệ điều hành — **Parity Contract**.

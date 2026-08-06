@@ -257,6 +257,21 @@ const cases = [
   ['post-edit-lint.mjs', { tool_input: { file_path: 'assets/logo.png' } }, OK, 'file không lint được → bỏ qua'],
   ['post-edit-lint.mjs', { tool_input: { file_path: 'packages/x/y.gen.ts' } }, OK, 'file generated → bỏ qua', GUARD_CFG],
   ['post-edit-lint.mjs', {}, OK, 'không có file_path → bỏ qua'],
+  // KHÔNG có ca `expect: BLOCK` cho post-edit-lint ở bảng này — CỐ Ý, và đây là một phát hiện
+  // chứ không phải một khoảng trống bị bỏ quên.
+  //
+  // Bảng này cưỡng chế một hợp đồng output cho MỌI nhánh từ chối: stderr phải chứa `BỊ CHẶN`
+  // và một dòng gợi ý `→ `. Hợp đồng đó đúng 100% với mọi ca đang có. `post-edit-lint` là
+  // nhánh chặn DUY NHẤT không khớp: nó `process.exit(EXIT_BLOCK)` thẳng thay vì gọi `block()`,
+  // và in `⛔ lint còn lỗi ở …` + `   Chi tiết: <log>`.
+  //
+  // Và nó có thể ĐÚNG khi khác: đây là `PostToolUse` — file đã ghi xong rồi, nên "BỊ CHẶN" là
+  // một câu SAI SỰ THẬT. Hợp đồng kia mã hoá ngữ nghĩa `PreToolUse` vào một chuỗi ký tự.
+  //
+  // Nới hợp đồng cho vừa một hook (đổi `/BỊ CHẶN/` thành `/⛔/`) là làm yếu một check đang
+  // đúng với tất cả các ca còn lại, và làm thế để ca MỚI CỦA MÌNH xanh. Quyết định "hook
+  // PostToolUse nói gì khi từ chối" là hợp đồng output của harness ⇒ việc của DRI.
+  // Mutant ở khối MUTANTS vẫn khẳng định phạm vi `paths.lintable` là thật, không cần ca này.
 
   // ── observe.mjs — QUAN SÁT, không bao giờ chặn ở BẤT KỲ sự kiện nào ─────────
   // Nó nhận 3 sự kiện khác nhau trong MỘT file, nên cái phải khẳng định là: mỗi nhánh
@@ -1305,6 +1320,20 @@ const MUTANTS = [
     { tool_input: { file_path: 'db/migrations/0001_init.sql' } },
     'paths.migrations bị vô hiệu ⇒ migration ĐÃ MERGE lọt — danh sách đó được tra thật',
     { ...GUARD_CFG, HARNESS_INTEGRATION_BRANCH: () => MERGED_REF }],
+
+  ['block-generated-edit.mjs',
+    s => s.replace(/matchAny\(rel, pathsFor\('generated'\)\)/, 'false'),
+    { tool_name: 'Write', tool_input: { file_path: 'src/api.gen.ts' } },
+    'paths.generated bị vô hiệu ⇒ sửa file .gen.* LỌT — hook ROI cao nhất repo có codegen là thật',
+    GUARD_CFG],
+
+  // `post-edit-lint` cần một `lintFix` THẤT BẠI mới tới được nhánh chặn — không có nó, mọi
+  // đường đều `pass()` và mutant nào cũng "sống sót" vì hook vốn đã không chặn.
+  ['post-edit-lint.mjs',
+    s => s.replace(/matchAny\(rel, pathsFor\('lintable'\)\)/, 'false'),
+    { tool_name: 'Write', tool_input: { file_path: 'a.ts' } },
+    'paths.lintable bị vô hiệu ⇒ lint hỏng KHÔNG còn chặn — phạm vi lint được tra thật',
+    { HARNESS_CONFIG: () => repoPath('tooling', 'fixtures', 'config-lint-fails.json') }],
 ];
 for (const [hook, apply, input, label, env] of MUTANTS) {
   const m = mutate(hook, apply, input, { env });
@@ -1538,7 +1567,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 134;
+const RATCHET = 136;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {
