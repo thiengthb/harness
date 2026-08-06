@@ -1428,6 +1428,39 @@ if (repoRole() === 'template') {
   } else ok.push(`lib/harness.mjs${' '.repeat(13)} template: ${cmt.length} chú thích trong \`commands\` ⇒ vẫn đếm ra 0 lệnh`);
 } else skipped += 1;
 
+// ── `harness.version` PHẢI KHỚP MỤC MỚI NHẤT CỦA CHANGELOG ──────────────────
+//
+// `harness.version` KHÔNG phải một dòng trang trí. Nó là con số `apply-to.mjs` ĐÓNG DẤU vào
+// `.claude/harness-manifest.json` của repo con, là mốc `consumers.mjs` so để biết ai đang tụt
+// lại, và là thứ `upstream.mjs` gắn vào mọi pack đi lên.
+//
+// GẶP THẬT 2026-08-06: hai bản phát hành liên tiếp (2.16.0, 2.17.0) bump changelog + tag mà
+// QUÊN file này. Nó vẫn ghi `2.15.0`. Hậu quả không phải "một số hiển thị sai":
+//   · repo con áp template hôm nay bị đóng dấu 2.15.0 trong khi nhận code 2.18.0,
+//   · `consumers.mjs` báo độ lệch NHỎ HƠN sự thật — tức nó nói dối về đúng thứ nó tồn tại để đo,
+//   · và cả hai đều im lặng, vì không có gì đối chiếu hai nguồn.
+//
+// Ba nguồn version (file · changelog · git tag) mà không có ràng buộc nào giữa chúng thì chúng
+// SẼ trôi. `harness-doctor` đã đối chiếu file ↔ tag từ trước; đây là cạnh còn thiếu.
+//
+// TEMPLATE-ONLY: `HARNESS-CHANGELOG.md` nằm trong `NOT_FOR_CONSUMER` từ 2.14.0 — repo con
+// không có file đó. Chạy check này ở repo con là đúng ca `knowledge/lessons/0003`
+// (self-test của template giả định repo của nó).
+if (repoRole() === 'template') {
+  const verFile = exists(repoPath('harness.version'))
+    ? readFileSync(repoPath('harness.version'), 'utf8').trim() : null;
+  const chg = exists(repoPath('HARNESS-CHANGELOG.md'))
+    ? readFileSync(repoPath('HARNESS-CHANGELOG.md'), 'utf8') : '';
+  const newest = chg.match(/^##\s+(\d+\.\d+\.\d+)/m)?.[1] || null;
+
+  if (!verFile || !newest) {
+    fail.push(`harness.version${' '.repeat(13)} không đọc được ${!verFile ? '`harness.version`' : 'mục `## x.y.z` đầu tiên của HARNESS-CHANGELOG.md'} — neo của check này đã trôi, sửa neo thay vì xoá check`);
+  } else if (verFile !== newest) {
+    fail.push(`harness.version${' '.repeat(13)} = ${verFile} nhưng changelog mới nhất là ${newest} — repo con áp template sẽ bị ĐÓNG DẤU ${verFile} trong khi nhận code ${newest}, `
+      + `và \`consumers.mjs\` sẽ báo độ lệch NHỎ HƠN sự thật. Sửa \`harness.version\` (và nhớ tag \`v${newest}\`)`);
+  } else ok.push(`harness.version${' '.repeat(13)} = ${verFile}, khớp mục mới nhất của changelog — dấu đóng vào repo con nói đúng code họ nhận`);
+} else skipped += 1;
+
 // SỐ MẪU không phải một phép cộng viết tay. Bản trước in
 // `ok.length / (cases + MUTANTS + GATE_CASES + 3)` và ĐO ĐƯỢC 2026-08-05: **`75/72`** — tử số
 // lớn hơn mẫu số. Tỉ số đó không sai vô hại: mẫu số tồn tại để trả lời "có case nào NGỪNG
@@ -1443,7 +1476,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 130;
+const RATCHET = 131;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

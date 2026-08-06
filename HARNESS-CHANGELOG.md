@@ -55,7 +55,26 @@ triệu chứng đã qua.
 > đếm**. File đó thuộc `paths.harness`. Đây là ca DRI thật — khác hai ca ở trên, và lần này đã
 > kiểm chứ không giả định.
 
-**Sàn test:** 128 → **130**.
+### ③ `harness.version` thôi trôi khỏi changelog — một lỗi của chính hai bản vừa rồi
+
+`harness.version` **không** phải một dòng trang trí. Nó là con số `apply-to.mjs` **đóng dấu**
+vào `.claude/harness-manifest.json` của repo con, là mốc `consumers.mjs` so để biết ai đang tụt
+lại, và là thứ `upstream.mjs` gắn vào mọi pack đi lên.
+
+**2.16.0 và 2.17.0 bump changelog + tag mà QUÊN file này.** Nó vẫn ghi `2.15.0`. Hậu quả không
+phải "một số hiển thị sai":
+
+- repo con áp template hôm nay bị **đóng dấu 2.15.0** trong khi nhận code 2.18.0;
+- `consumers.mjs` báo độ lệch **nhỏ hơn sự thật** — nó nói dối về đúng thứ nó tồn tại để đo;
+- và cả hai đều **im lặng**, vì không có gì đối chiếu hai nguồn.
+
+Ba nguồn version (file · changelog · git tag) mà không có ràng buộc nào giữa chúng thì chúng
+**sẽ** trôi. `harness-doctor` đã đối chiếu file ↔ tag từ trước; đây là cạnh còn thiếu.
+Test template-only (`HARNESS-CHANGELOG.md` nằm trong `NOT_FOR_CONSUMER` từ 2.14.0).
+
+Đo lại sau khi sửa: `consumers.mjs` từ `SAU template (2.15.0)` → `SAU template (2.18.0)`.
+
+**Sàn test:** 128 → **131**.
 
 ---
 
