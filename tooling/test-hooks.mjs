@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, rmSync, readdirSync, cpSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer } from './lib/harness.mjs';
 
 const BLOCK = 2, OK = 0;
 
@@ -1235,6 +1235,120 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   else ok.push(`fixlog.mjs${' '.repeat(18)} --group từ chối từ khoá khớp 0 dòng và nói rõ — không ghi luật chết`);
 }
 
+// ─── LỚP PHỐI HỢP: `chưa khai` KHÔNG ĐƯỢC gộp vào `solo` ─────────────────────
+//
+// `project.teamSize` tắt được ba cơ chế phối hợp liên-người. Chế độ hỏng đáng sợ của nó
+// KHÔNG phải "solo mà không tắt" (tốn vài giây, nhìn thấy được) mà là **"chưa khai mà bị
+// đọc thành solo"**: mọi repo chưa chạy `setup.mjs` lặng lẽ mất guard đặt chỗ, và không ai
+// quyết định điều đó. Đúng lớp lỗi mà cả W32 đi sửa — một tín hiệu hai giá trị nuốt mất
+// trạng thái thứ ba và đổ về phía dễ chịu.
+//
+// Nên bảng này chủ yếu là các ca RÁC: `0`, `"1"` (chuỗi), `1.5`, `-1`, `null`, không có
+// khoá. Tất cả PHẢI ra `teamSize=null` + `isSolo=false`. Chỉ số nguyên dương mới là câu
+// trả lời, và chỉ đúng `1` mới bật solo.
+//
+// `config()` memo hoá trong một process ⇒ mỗi ca phải là một process riêng. Fixture in ra
+// là một FILE (`print-team.mjs`), không phải `node -e` — Parity Contract.
+{
+  const L = ' '.repeat(15);
+  const baseCfg = JSON.parse(readFileSync(repoPath('tooling', 'fixtures', 'config-guard-paths.json'), 'utf8'));
+  const work = join(tmpdir(), `harness-teamsize-${process.pid}`);
+  mkdirSync(work, { recursive: true });
+
+  //        tên ca      giá trị teamSize   mong đợi teamSize()   mong đợi isSolo()
+  const TABLE = [
+    ['solo',            1,                 '1',                  'true'],
+    ['đội 4 người',     4,                 '4',                  'false'],
+    ['0',               0,                 'null',               'false'],
+    ['chuỗi "1"',       '1',               'null',               'false'],
+    ['1.5',             1.5,               'null',               'false'],
+    ['-1',              -1,                'null',               'false'],
+    ['null tường minh', null,              'null',               'false'],
+    ['KHÔNG có khoá',   undefined,         'null',               'false'],
+  ];
+
+  const bad = [];
+  for (const [name, value, wantSize, wantSolo] of TABLE) {
+    const c = structuredClone(baseCfg);
+    if (value === undefined) delete c.project.teamSize; else c.project.teamSize = value;
+    const p = join(work, `cfg-${TABLE.findIndex(t => t[0] === name)}.json`);
+    writeFileSync(p, JSON.stringify(c), 'utf8');
+    const r = spawnSync(process.execPath, [repoPath('tooling', 'fixtures', 'print-team.mjs')], {
+      encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, ...TEST_ENV, HARNESS_CONFIG: p },
+    });
+    const out = String(r.stdout || '').trim();
+    const want = `teamSize=${wantSize} isSolo=${wantSolo}`;
+    if (out !== want) bad.push(`${name}: được \`${out || r.stderr?.trim().slice(0, 60)}\`, cần \`${want}\``);
+  }
+  rmSync(work, { recursive: true, force: true });
+
+  if (bad.length) fail.push(`teamSize/isSolo${L} ${bad.length}/${TABLE.length} ca sai: ${bad.join(' | ')}`);
+  else ok.push(`teamSize/isSolo${L} ${TABLE.length} ca — chỉ số nguyên dương là câu trả lời, chỉ \`1\` bật solo, 6 dạng rác đều ra \`chưa khai\``);
+}
+
+// ─── coordinationLayer: repo TEMPLATE không được bị đòi khai `teamSize` ──────
+//
+// Bug #56 đang mở là đúng lớp này: một advice đỏ VĨNH VIỄN trong repo template, về một việc
+// repo template KHÔNG ĐƯỢC làm. `harness.config.json` là SEED ⇒ một con số `teamSize` ở đây
+// ship sang MỌI consumer như câu trả lời của họ. "Chưa khai" là trạng thái ĐÚNG ở template.
+//
+// BỐN trạng thái, không ba: `template-na` phải tách khỏi `unknown`, vì chỉ `unknown` mới
+// sinh advice. Gộp hai cái đó là tái tạo lại #56 ở một file khác.
+{
+  const L = ' '.repeat(11);
+  //          teamSize    role         mode           có advice?
+  const TABLE = [
+    [1,          'consumer', 'solo',        false],
+    [4,          'consumer', 'team',        false],
+    [undefined,  'consumer', 'unknown',     true ],
+    [undefined,  'template', 'template-na', false],
+    [1,          'template', 'solo',        false],   // đã khai thì tôn trọng, kể cả ở template
+    [0,          'template', 'template-na', false],   // rác ⇒ coi như chưa khai ⇒ vẫn miễn
+    [0,          'consumer', 'unknown',     true ],
+    [undefined,  'unknown',  'unknown',     true ],   // không nhận ra vai ⇒ KHÔNG được miễn
+  ];
+  const bad = [];
+  for (const [ts, role, wantMode, wantAdvice] of TABLE) {
+    const r = coordinationLayer({ teamSize: ts, role });
+    const got = `${r.mode}/${Boolean(r.advice)}`;
+    const want = `${wantMode}/${wantAdvice}`;
+    if (got !== want) bad.push(`teamSize=${JSON.stringify(ts)} role=${role}: ${got} ≠ ${want}`);
+  }
+  if (bad.length) fail.push(`coordinationLayer${L} ${bad.length}/${TABLE.length} ca sai: ${bad.join(' | ')}`);
+  else ok.push(`coordinationLayer${L} ${TABLE.length} ca — template KHÔNG bị đòi khai teamSize (bug #56 không tái tạo), vai lạ thì vẫn bị đòi`);
+}
+
+// ─── /claim khi solo: cùng phép kiểm, khác NGƯỜI ĐỌC ─────────────────────────
+//
+// Solo KHÔNG tắt `/claim` — nhật ký vẫn cần, chỉ đổi người đọc. Nhưng lý do phải đổi theo:
+// "phiên sau (và người sau) không có gì để đọc" là câu rỗng khi bạn là người duy nhất, và
+// một lý do rỗng biến nghi thức thành thủ tục.
+//
+// Khẳng định vào `evaluate()` — THUẦN — qua `s.solo`. Đây cũng là lý do `collect()` đọc
+// config chứ không phải `check()`: một lần đọc đĩa lén trong `check` làm ca này không lái được.
+{
+  const { evaluate } = await import('./rituals.mjs');
+  const L = ' '.repeat(19);
+  const st = {
+    issue: 'SKB-1', progressExists: false, commitsSinceProgress: 0, ahead: 0, integrationBranch: 'origin/main',
+    fixlogTotal: 0, fixlogRepeated: 0, learningsNewerThanLessons: 0,
+    skillCount: 5, maxSkills: 12, worktrees: 1, maxWorktrees: 4, pendingPacks: 0,
+    claudeCodeVersion: '2.1.221', reviewedClaudeCode: '2.1.221', reviewedClaudeCodeAt: '2026-08-05T00:00:00.000Z',
+  };
+  const claimOf = (solo) => evaluate({ ...st, solo }).find(r => r.id === 'claim');
+  const soloR = claimOf(true), teamR = claimOf(false);
+
+  if (soloR?.state !== 'due' || teamR?.state !== 'due') {
+    fail.push(`/claim solo${L} nhật ký thiếu mà không \`due\` (solo=${soloR?.state} · đội=${teamR?.state}) — solo KHÔNG được tắt /claim`);
+  } else if (soloR.why === teamR.why) {
+    fail.push(`/claim solo${L} lý do y hệt nhau ở solo và đội — "người sau" là câu rỗng khi chỉ có một người`);
+  } else if (/người sau/.test(soloR.why)) {
+    fail.push(`/claim solo${L} lý do solo vẫn nhắc "người sau": ${soloR.why}`);
+  } else if (!/máy khác/.test(soloR.why)) {
+    fail.push(`/claim solo${L} lý do solo không nêu người đọc thật (phiên sau · máy khác của bạn): ${soloR.why}`);
+  } else ok.push(`/claim solo${L} vẫn \`due\` ở cả hai vai, nhưng nêu đúng người đọc (solo: phiên sau + máy khác của BẠN)`);
+}
+
 // ─── PARITY: allowlist của entropy-scan phải khớp trên MỌI OS ────────────────
 //
 // `walk()` dựng đường dẫn bằng `join()` ⇒ dấu phân cách của hệ điều hành. Bản trước lấy tên
@@ -1567,7 +1681,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 136;
+const RATCHET = 139;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

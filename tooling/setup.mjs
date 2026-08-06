@@ -41,7 +41,7 @@
 import { readFileSync, existsSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { REPO_ROOT, repoPath, readJson, writeJson, report, exists, repoRole } from './lib/harness.mjs';
+import { REPO_ROOT, repoPath, readJson, writeJson, report, exists, repoRole, commitAuthors } from './lib/harness.mjs';
 
 const argv = process.argv.slice(2);
 const has = (f) => argv.includes(f);
@@ -175,6 +175,24 @@ function detectDeployWorkflows() {
   return others.length ? [`github-actions (${others.join(', ')})`] : [];
 }
 
+/**
+ * BAO NHIÊU NGƯỜI — câu hỏi quyết định phân nửa lớp phối hợp có nghĩa hay không.
+ *
+ * Đây là CẬN TRÊN đo từ lịch sử git, không phải số người. `commitAuthors()` ghi rõ vì sao
+ * (một người hai email đếm ra hai). Nên nó đi vào `ev` như một bằng chứng để NGƯỜI đọc và
+ * sửa, không đi vào config như một kết luận.
+ */
+function detectTeam() {
+  const authors = commitAuthors();
+  if (!authors) {
+    unknown.push('không đọc được lịch sử git (repo chưa có commit nào?) — không đo được số người, phải trả lời tay');
+    return null;
+  }
+  ev.push(`project.teamSize ≤ ${authors.length}  ← ${authors.length} email tác giả distinct trong 500 commit gần nhất`
+    + ` (${authors.join(' · ')}) — CẬN TRÊN: một người dùng hai email đếm ra hai`);
+  return authors;
+}
+
 function detectAll() {
   const stack = detectNode() ?? detectOther();
   if (!stack) unknown.push('không nhận ra stack (không có package.json / pyproject.toml / go.mod / Cargo.toml) — mọi `commands` phải khai tay');
@@ -191,7 +209,7 @@ function detectAll() {
   if (deploy.length) ev.push(`deploy (ghi vào ADR, không vào config) = ${deploy.join(' · ')}  ← file chỉ dấu`);
   else unknown.push('không thấy dấu vết deploy nào (Dockerfile/vercel.json/fly.toml/k8s) — mục Deploy của ADR 0001 phải viết tay');
 
-  return { stack, migrations, generated, platforms, deploy };
+  return { stack, migrations, generated, platforms, deploy, authors: detectTeam() };
 }
 
 const d = detectAll();
@@ -227,6 +245,22 @@ if (ANSWERS_FILE && !preset) { console.error(`Không đọc được ${ANSWERS_F
 
 const QUESTIONS = [
   { id: 'projectId', ask: 'Mã project (dùng trong log, pack, tên nhánh)', def: () => basename(REPO_ROOT) },
+  // ĐẶT NGAY SAU `projectId`, TRƯỚC MỌI THỨ KHÁC — cố ý. Nửa lớp phối hợp của harness này
+  // (đặt chỗ · dò PR người khác · CODEOWNERS · "hỏi người, đừng tự quyết") chỉ có nghĩa khi
+  // có người thứ hai. Hỏi muộn thì người trả lời đã đọc xong một loạt câu hỏi giả định có đội.
+  {
+    id: 'teamSize',
+    ask: 'BAO NHIÊU NGƯỜI làm project này (kể cả bạn)? `1` = solo ⇒ tắt lớp phối hợp liên-người '
+      + '(đặt chỗ, dò PR của người khác) và nói rõ ở chỗ nó bị tắt. `2+` = giữ nguyên. '
+      + 'Bỏ trống = CHƯA KHAI ⇒ giữ nguyên như có đội (khác `1`)',
+    def: () => {
+      const cur = cfg.project?.teamSize;
+      if (Number.isInteger(cur) && cur > 0) return String(cur);
+      // Cận trên đo được, KHÔNG phải câu trả lời. Không đề xuất `1` từ một repo mới toanh:
+      // "chưa ai khác commit" và "sẽ không có ai khác" là hai chuyện khác nhau.
+      return d.authors?.length ? String(d.authors.length) : '';
+    },
+  },
   { id: 'dri', ask: 'DRI — handle GitHub của người CHỊU TRÁCH NHIỆM lớp harness (không có DRI thì harness mục trong ~6 tuần)', def: () => cfg.project?.dri?.includes('CHANGEME') ? '' : cfg.project?.dri },
   { id: 'issuePrefix', ask: 'Tiền tố mã issue (ví dụ ABC → ABC-123), cách nhau bằng dấu phẩy', def: () => (cfg.project?.issuePrefixes ?? []).join(',') },
   { id: 'platforms', ask: `Platform trong scope (phát hiện: ${d.platforms.join(',')}) — cách nhau bằng dấu phẩy`, def: () => d.platforms.join(',') },
@@ -270,6 +304,15 @@ if (preset) {
 // ── DỰNG CẤU HÌNH MỚI ────────────────────────────────────────────────────────
 const next = structuredClone(cfg);
 next.project.id = answers.projectId;
+
+// BA GIÁ TRỊ. Bỏ trống ⇒ KHÔNG ghi field ⇒ `teamSize()` trả `null` ⇒ `isSolo()` false ⇒ giữ
+// nguyên lớp phối hợp. Ghi `0` hay ghi `null` vào config đều SAI theo hai kiểu khác nhau:
+// `0` là một con số hợp lệ mà không có nghĩa, `null` là một khoá tồn tại nói "tôi không biết"
+// — và khoá tồn tại thì lần chạy `setup` sau sẽ coi nó là câu trả lời đã có.
+const teamSizeAnswer = Number.parseInt(String(answers.teamSize).trim(), 10);
+if (Number.isInteger(teamSizeAnswer) && teamSizeAnswer > 0) next.project.teamSize = teamSizeAnswer;
+else delete next.project.teamSize;
+
 next.project.dri = answers.dri || next.project.dri;
 next.project.issuePrefixes = answers.issuePrefix.split(',').map(s => s.trim()).filter(Boolean);
 next.project.platforms = answers.platforms.split(',').map(s => s.trim()).filter(Boolean);
@@ -385,6 +428,19 @@ for (const [stage, miss] of gatesAffected) {
 }
 if (!String(next.commands.verify).trim()) {
   warn.push('commands.verify RỖNG — đây là việc số 1. Không có nó thì `/pre-merge` và job `verify` của CI không kiểm gì cả.');
+}
+
+// HỆ QUẢ của câu trả lời `teamSize` phải HIỆN RA ngay ở màn xem trước. Một field ghi vào
+// config mà không nói nó tắt cái gì thì người ta phát hiện ra bằng cách thấy guard biến mất.
+if (next.project.teamSize === 1) {
+  ok.push('SOLO (teamSize = 1) → TẮT 3 thứ: guard đặt chỗ ở pre-commit (`check-reservations`) · '
+    + 'dò reservation của người khác (`overlap-scan` ②) · lời khuyên "hỏi người" khi có chồng lấn. '
+    + 'GIỮ: mọi guard an toàn (secret · migration · lịch sử chung · vùng cấm harness), nghi thức '
+    + '/claim và nhật ký `docs/progress/` (người đọc là phiên sau và máy khác của BẠN), và dò chồng '
+    + 'lấn giữa các NHÁNH của chính bạn — hai phiên song song vẫn giẫm chân nhau được.');
+} else if (!next.project.teamSize) {
+  unknown.push('`project.teamSize` CHƯA KHAI ⇒ harness giữ nguyên toàn bộ lớp phối hợp liên-người. '
+    + 'Đó là mặc định an toàn, không phải "đã đo là có đội". Chạy lại `setup.mjs` để trả lời.');
 }
 
 if (!APPLY) {

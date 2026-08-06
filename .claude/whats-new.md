@@ -1,4 +1,4 @@
-<!-- version: 2026-08-06-c -->
+<!-- version: 2026-08-06-e -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,19 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-06 — Harness hỏi bạn làm một mình hay có đội (v2.23.0)
+
+`node tooling/setup.mjs` có câu hỏi mới, **ngay sau mã project**: bao nhiêu người làm project
+này. Trả lời `1` sẽ TẮT ba thứ chỉ có nghĩa khi có người thứ hai — guard đặt chỗ ở pre-commit,
+dò reservation của người khác, và lời khuyên *"KHÔNG tự quyết, hỏi người"*.
+
+**Việc bạn phải làm khác đi:** chạy lại `setup.mjs` nếu project bạn là solo. **Không khai thì
+không đổi gì** — `chưa khai` giữ nguyên lớp phối hợp, nó KHÔNG được đọc thành `solo`.
+
+Một trong ba thứ bị tắt là lỗi chặn nhầm thật: reservation so theo `DEV_ID || USER ||
+USERNAME`, nên cùng một người trên hai máy có thể bị **chính reservation của mình** chặn
+commit. `node tooling/harness-doctor.mjs` → mục **LỚP PHỐI HỢP** nói rõ cơ chế nào đang tắt.
 
 ## 2026-08-06 — Skill chỉ-người-gõ giờ có người nhắc (v2.15.0)
 
