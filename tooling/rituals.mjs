@@ -39,9 +39,9 @@
  * trạng thái git là của HỌ (xem knowledge/lessons/0003).
  */
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey } from './lib/harness.mjs';
+import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, readJson } from './lib/harness.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHẦN THUẦN — không đọc đĩa, không gọi git. Test khẳng định trực tiếp vào đây.
@@ -86,7 +86,21 @@ export const RITUALS = [
     check: (s) => {
       if (s.ahead === null) return { state: '?', why: 'không resolve được nhánh tích hợp — không đo được. Kiểm `project.integrationBranch`' };
       if (s.ahead === 0) return { state: 'ok', why: 'không có commit nào đi trước nhánh tích hợp' };
-      return { state: 'due', why: `${s.ahead} commit đi trước ${s.integrationBranch} và chưa thấy dấu gate preMerge chạy ở phiên này` };
+      // Bản trước in "chưa thấy dấu gate preMerge chạy" mà KHÔNG đi tìm dấu nào — `gates.mjs`
+      // chỉ ghi telemetry khi HỎNG, nên dấu đó chưa từng tồn tại. Nghi thức đỏ theo `ahead > 0`
+      // và ở đỏ mãi, chạy gate bao nhiêu lần cũng vậy. Một lý do mô tả phép đo chưa từng xảy ra
+      // dạy người đọc rằng mục này không đáng phản ứng — và sau đó nó không được phản ứng thật.
+      if (s.preMergeRanAt == null) {
+        return { state: 'due', why: `${s.ahead} commit đi trước ${s.integrationBranch}, và CHƯA có lần chạy gate preMerge nào được ghi (\`gate-runs.log\`)` };
+      }
+      if (s.lastCommitAt == null) {
+        return { state: '?', why: `${s.ahead} commit đi trước ${s.integrationBranch} và gate preMerge CÓ chạy, nhưng không đọc được thời điểm commit cuối — không so được hai mốc` };
+      }
+      if (s.preMergeRanAt < s.lastCommitAt) {
+        const mins = Math.round((s.lastCommitAt - s.preMergeRanAt) / 60000);
+        return { state: 'due', why: `gate preMerge chạy lần cuối ${mins} phút TRƯỚC commit mới nhất — lần chạy đó không nói gì về cây hiện tại. Chạy lại: \`node tooling/gates.mjs --stage preMerge\`` };
+      }
+      return { state: 'ok', why: `gate preMerge đã chạy sau commit cuối (${new Date(s.preMergeRanAt).toISOString().slice(0, 16).replace('T', ' ')})` };
     },
   },
   {
@@ -99,7 +113,10 @@ export const RITUALS = [
         return { state: 'due', why: `${s.fixlogRepeated} nhóm fixlog đã ≥2 lần (ngưỡng promote) trên tổng ${s.fixlogTotal} mục — mỗi nhóm là một ứng viên bài học ĐANG chờ` };
       }
       if (s.fixlogTotal >= 10) return { state: 'due', why: `${s.fixlogTotal} mục fixlog mà chưa nhóm nào ≥2 — đủ nhiều để đáng đọc một lượt` };
-      return { state: 'ok', why: `${s.fixlogTotal} mục fixlog, chưa nhóm nào đạt ngưỡng ≥2` };
+      // Nói rõ phép nhóm là TỪ VỰNG. "Chưa nhóm nào ≥2" đọc như "không có gì lặp lại", nhưng nó
+      // chỉ có nghĩa "không có hai dòng nào mở đầu giống nhau" — đo 2026-08-06: 3 mục cùng một
+      // gác nằm ở 3 nhóm rời. Một dòng xanh nói quá thì tệ hơn một dòng đỏ nói thiếu.
+      return { state: 'ok', why: `${s.fixlogTotal} mục fixlog, chưa nhóm nào đạt ngưỡng ≥2 — nhóm mặc định theo TỪ VỰNG, hai dòng cùng gốc rễ mà khác cách diễn đạt thì khai bằng \`fixlog.mjs --group\`` };
     },
   },
   {
@@ -109,9 +126,40 @@ export const RITUALS = [
     check: (s) => {
       if (s.learningsNewerThanLessons === null) return { state: '?', why: 'không đọc được .claude/learnings/ hoặc knowledge/lessons/ — không đo được' };
       if (s.learningsNewerThanLessons > 0) {
-        return { state: 'due', why: `${s.learningsNewerThanLessons} file trong .claude/learnings/ mới hơn bài học mới nhất ở knowledge/lessons/ — bài học đang ở dạng chỉ-máy-này-thấy` };
+        // "chỉ REPO này thấy", KHÔNG phải "chỉ máy này thấy" — `.claude/learnings/` được COMMIT
+        // (`git ls-files` xác nhận 2026-08-06). Bản cũ nói sai về cái mất: nó doạ mất bài học
+        // khi đổi máy, trong khi cái thật sự mất là tính MANG ĐI ĐƯỢC sang repo khác. Một lý do
+        // sai hướng vẫn khiến người ta hành động, nhưng vì lý do không có thật — và khi họ phát
+        // hiện ra bài học vẫn còn sau khi đổi máy, họ học được rằng bảng này nói quá.
+        return { state: 'due', why: `${s.learningsNewerThanLessons} file trong .claude/learnings/ mới hơn bài học mới nhất ở knowledge/lessons/ — bài học đang ở dạng chỉ-repo-này-thấy, chưa mang được sang project khác` };
       }
       return { state: 'ok', why: 'không có learnings nào mới hơn lessons' };
+    },
+  },
+  {
+    // `/verify-ui` là 1 trong 2 skill chỉ-người-gõ mà 2.15.0 đã ghi thẳng là KHÔNG có bất kỳ
+    // cơ chế nào nhắc tới (`/harness-propose` là cái còn lại, đã có nghi thức ở 2.15.0).
+    //
+    // Lý do khi ấy: *"nó cần khai `paths.ui` trong `harness.config.json` (vùng cấm)"*. Câu đó
+    // SAI, và cái sai đáng ghi lại: `paths.ui` không cần thiết. Tín hiệu đúng nằm ở
+    // `features/<id>.json → platforms.web` — chính artefact mà skill này đọc và ghi ở bước 5.
+    // Giả định "cần vùng cấm" đến từ chỗ TRIỆU CHỨNG (skill nói về UI, config nói về path),
+    // không từ chỗ dữ liệu thật sự nằm.
+    //
+    // Không trùng `check-feature-integrity.mjs`: gate đó bắt chiều "khai `passes: true` mà
+    // KHÔNG có bằng chứng". Nó im lặng ở chiều ngược lại — "còn nợ một tấm ảnh" — và chiều đó
+    // mới là chiều cần NHẮC, vì nó không có triệu chứng nào khi bị bỏ qua (SKILL.md §mở đầu).
+    id: 'verify-ui',
+    cmd: '/verify-ui',
+    what: 'chụp UI thật ở 2 viewport làm bằng chứng, rồi giao design-evaluator chấm',
+    check: (s) => {
+      if (s.ui === null) return { state: '?', why: 'không đọc được features/ — không đo được' };
+      if (s.issue === null || !s.issue) return { state: 'ok', why: 'không ở trong một issue — không có feature nào để chụp' };
+      if (s.ui === undefined) return { state: 'ok', why: `không có features/*.json nào khai issue ${s.issue}` };
+      if (s.ui.state === 'n/a') return { state: 'ok', why: `${s.ui.id}: web ngoài scope${s.ui.why ? ` (${s.ui.why})` : ''}` };
+      if (s.ui.state === 'no-web') return { state: 'ok', why: `${s.ui.id}: không khai nền web` };
+      if (s.ui.state === 'done') return { state: 'ok', why: `${s.ui.id}: web.passes=true, bằng chứng ${s.ui.evidence || '(rỗng — gate check-feature-integrity sẽ bắt)'}` };
+      return { state: 'due', why: `${s.ui.id}: web trong scope mà passes vẫn false — còn nợ 2 ảnh ở docs/evidence/${s.issue}/, và không gì báo khi bỏ qua` };
     },
   },
   {
@@ -124,6 +172,30 @@ export const RITUALS = [
         return { state: 'due', why: `${s.skillCount} skill (trần ${s.maxSkills}) — tool/skill definition ăn context ở MỌI request` };
       }
       return { state: 'ok', why: `${s.skillCount}/${s.maxSkills} skill` };
+    },
+  },
+  {
+    // `/harness-propose` là skill NGƯỜI GỌI, và tới 2.14.0 nó là **skill duy nhất KHÔNG có bất
+    // kỳ cơ chế nào nhắc tới nó** — 8/9 skill người-gọi có nghi thức, riêng nó thì không. Hệ
+    // quả: con đường HỢP PHÁP DUY NHẤT để đổi vùng cấm (`hooks/`, `settings.json`, `AGENTS.md`,
+    // `harness.config.json`) chỉ chạy khi ai đó tình cờ nhớ ra nó tồn tại.
+    //
+    // TÍN HIỆU LÀ THỨ ĐÃ CÓ SẴN, không phải cờ mới: mỗi lần `protect-harness` chặn một lần
+    // sửa vùng cấm, nó ghi một dòng `protect-harness` vào `gate-fails.log`. Bị chặn nhiều lần
+    // nghĩa là **có thứ trong harness đang cản việc thật** — đúng điều kiện mà chính skill đó
+    // đòi ("agent làm sai cùng một thứ ≥2 lần, hoặc bị hook chặn mà bạn nghĩ hook sai").
+    //
+    // Ngưỡng 2 khớp với ngưỡng của skill: một lần là ngẫu nhiên, hai lần là một hình dạng.
+    id: 'harness-propose',
+    cmd: '/harness-propose',
+    what: 'đổi vùng cấm bằng đường hợp pháp — hook, settings, AGENTS.md, harness.config.json',
+    check: (s) => {
+      if (s.harnessBlocks === null) return { state: '?', why: 'không đọc được gate-fails.log — không đo được' };
+      if (s.harnessBlocks >= 2) {
+        return { state: 'due', why: `${s.harnessBlocks} lần bị \`protect-harness\` chặn khi sửa vùng cấm (gate-fails.log) — `
+          + 'hoặc harness đang cản một việc chính đáng, hoặc ai đó đang thử sửa tay thứ phải đi qua PR. Cả hai đều là lý do chạy skill này' };
+      }
+      return { state: 'ok', why: s.harnessBlocks ? `${s.harnessBlocks} lần bị chặn ở vùng cấm, chưa đạt ngưỡng 2` : 'chưa lần nào bị chặn ở vùng cấm' };
     },
   },
   {
@@ -177,7 +249,11 @@ export const RITUALS = [
     what: 'Claude Code vừa lên bản mới — hỏi MỘT câu: nó có ra sẵn thứ harness đang tự viết không?',
     check: (s) => {
       if (!s.claudeCodeVersion) {
-        return { state: '?', why: 'không đọc được version Claude Code từ CLAUDE_CODE_EXECPATH (cách cài không đặt biến này) — không đo được' };
+        // Lý do đến từ `collect()`, không đọc env ở đây: `check` phải THUẦN (xem đầu file).
+        // Và lý do phải nói ĐÚNG nguồn nào đã thử — bản cũ nói "cách cài không đặt biến này"
+        // kể cả khi biến CÓ được đặt, tức một mục `?` kèm lời giải thích sai. Không ai đi tìm
+        // tiếp sau một lời giải thích nghe đã xong.
+        return { state: '?', why: s.claudeCodeVersionWhy || 'không đo được version Claude Code' };
       }
       if (!s.reviewedClaudeCode) {
         return { state: 'due', why: `đang chạy Claude Code ${s.claudeCodeVersion} và CHƯA có bản rà nào được ghi (.claude/claude-code-baseline.json) — chưa ai hỏi bản này có ra sẵn thứ harness tự viết không` };
@@ -194,6 +270,44 @@ export const RITUALS = [
 export function claudeCodeVersion(execPath = process.env.CLAUDE_CODE_EXECPATH || '') {
   const base = String(execPath).split(/[\\/]/).filter(Boolean).pop() || '';
   return /^\d+\.\d+\.\d+/.test(base) ? base : null;
+}
+
+/**
+ * NGUỒN THỨ HAI: `package.json` của chính gói đang chạy.
+ *
+ * `claudeCodeVersion()` chỉ đọc được CÁCH CÀI có version nằm trong đường dẫn
+ * (`…/versions/2.1.221`). Cách cài bằng npm thì `CLAUDE_CODE_EXECPATH` trỏ thẳng vào
+ * binary — `…/node_modules/@anthropic-ai/claude-code/bin/claude.exe` — và đoạn cuối là
+ * TÊN FILE, không phải version. Đúng là không được đoán, nhưng "không đoán" đã bị hiểu
+ * thành "không đo", và lời giải thích đi kèm còn sai sự thật: nó nói "cách cài không đặt
+ * biến này", trong khi biến CÓ được đặt (đo 2026-08-06, Windows + npm) — nó chỉ trỏ vào
+ * một layout khác. Một mục `?` kèm lý do sai thì không ai đi tìm tiếp.
+ *
+ * Đây KHÔNG phải đoán thêm: nó đọc `version` trong `package.json` của đúng gói
+ * `@anthropic-ai/claude-code` chứa binary đó. Đó là bằng chứng trên đĩa, không phải suy luận
+ * từ hình dạng chuỗi. Không thấy gói ⇒ vẫn `null`, vẫn `?`.
+ *
+ * Đi lên tối đa 5 tầng: `bin/claude.exe` cách gốc gói 1 tầng, trần rộng gấp mấy lần layout
+ * đã biết mà vẫn không thể lang thang lên tận gốc đĩa.
+ */
+export function claudeCodeVersionFromPackage(execPath = process.env.CLAUDE_CODE_EXECPATH || '') {
+  let dir = String(execPath).trim();
+  if (!dir) return null;
+  dir = dirname(dir);
+  for (let i = 0; i < 5 && dir && dir !== dirname(dir); i++, dir = dirname(dir)) {
+    try {
+      const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+      if (pkg?.name === '@anthropic-ai/claude-code' && /^\d+\.\d+\.\d+/.test(String(pkg.version || ''))) {
+        return String(pkg.version);
+      }
+    } catch { /* tầng này không phải gốc gói — đi tiếp */ }
+  }
+  return null;
+}
+
+/** Version đo được, theo thứ tự nguồn. `null` = THẬT SỰ không đo được, không phải chưa thử. */
+export function claudeCodeVersionMeasured(execPath = process.env.CLAUDE_CODE_EXECPATH || '') {
+  return claudeCodeVersion(execPath) ?? claudeCodeVersionFromPackage(execPath);
 }
 
 /** Chạy toàn bộ nghi thức trên một trạng thái. Thuần, tất định. */
@@ -237,6 +351,35 @@ export function collect() {
   return {
     branch, integrationBranch, issue, progressExists,
 
+    // ── UI của ĐÚNG issue đang làm ────────────────────────────────────────────
+    //
+    // `null` = không đọc được thư mục features/ ⇒ `?`. `undefined` = issue này không có file
+    // feature nào (khác hẳn: không có gì để verify). Đọc `platforms.web` vì đó là nền duy
+    // nhất mà `/verify-ui` chụp được — ios/android/desktop cần công cụ của project.
+    //
+    // VÌ SAO KHOÁ VÀO ISSUE HIỆN TẠI, không quét cả repo: quét cả repo thì template (và mọi
+    // project thật) luôn có ít nhất một feature chưa xong ⇒ mục này ĐỎ VĨNH VIỄN. Một mục đỏ
+    // vĩnh viễn dạy người ta bỏ qua màu đỏ — đúng tầng 1 của `knowledge/lessons/0003`, và
+    // đúng lý do `fixlog --close` phải tồn tại. Khoá vào issue thì nó TỰ TẮT khi bạn xong.
+    ui: (() => {
+      if (!issue) return undefined;
+      try {
+        const dir = repoPath('features');
+        if (!exists(dir)) return undefined;
+        for (const f of readdirSync(dir)) {
+          if (!f.endsWith('.json') || f.startsWith('_')) continue;
+          const j = readJson(join(dir, f));
+          if (!j || j.issue !== issue) continue;
+          const web = j.platforms?.web;
+          if (!web) return { id: j.id || f, state: 'no-web' };
+          if (web.passes === 'n/a') return { id: j.id || f, state: 'n/a', why: String(web.evidence || '') };
+          if (web.passes === true) return { id: j.id || f, state: 'done', evidence: String(web.evidence || '') };
+          return { id: j.id || f, state: 'owed' };
+        }
+        return undefined;
+      } catch { return null; }
+    })(),
+
     // Số commit mới hơn lần sửa nhật ký gần nhất. Dùng mtime của file so với ngày commit —
     // thô nhưng đúng hướng, và nó KHÔNG đòi nhật ký phải được commit (thường nó chưa).
     commitsSinceProgress: !progressExists ? 0 : num(() => {
@@ -250,6 +393,35 @@ export function collect() {
       if (r.status !== 0) return null;
       return Number(r.stdout.trim());
     }),
+
+    // Lần chạy gate `preMerge` gần nhất, và commit gần nhất — so HAI MỐC, không so một.
+    // Chạy gate rồi commit thêm thì lần chạy đó không còn nói gì về cây hiện tại, nên
+    // "đã chạy rồi" phải nghĩa là "đã chạy SAU commit cuối". Cả hai đều `null` được, và
+    // `null` ở đây chạy tiếp thành `?` — KHÔNG thành `ok`.
+    // Số lần `protect-harness` CHẶN một lần sửa vùng cấm. Đọc từ cùng log mà hook ghi vào,
+    // nên không có cờ mới nào phải nhớ bật. `null` = không đọc được ⇒ `?`, KHÔNG phải 0:
+    // "chưa có log" và "chưa lần nào bị chặn" là hai chuyện khác nhau.
+    harnessBlocks: num(() => {
+      const f = join(telemetryDir(), 'gate-fails.log');
+      if (!existsSync(f)) return 0;              // log tồn tại được nhưng rỗng là 0 THẬT
+      return readFileSync(f, 'utf8').split('\n').filter(l => l.split('|')[2] === 'protect-harness').length;
+    }, null),
+
+    preMergeRanAt: num(() => {
+      const f = join(telemetryDir(), 'gate-runs.log');
+      if (!existsSync(f)) return null;
+      const times = readFileSync(f, 'utf8').split('\n')
+        .filter(l => l.split('|')[2] === 'gates:preMerge')
+        .map(l => Date.parse(l.split('|')[0]))
+        .filter(Number.isFinite);
+      return times.length ? Math.max(...times) : null;
+    }, null),
+    lastCommitAt: num(() => {
+      const r = git(['log', '-1', '--format=%cI']);
+      if (r.status !== 0 || !r.stdout.trim()) return null;
+      const t = Date.parse(r.stdout.trim());
+      return Number.isFinite(t) ? t : null;
+    }, null),
 
     ...fixlogState(),
 
@@ -295,7 +467,11 @@ export function collect() {
     // hai cái null đó nghĩa khác nhau: không đọc được version ⇒ `?` (không đo được); đọc
     // được version mà chưa có baseline ⇒ `due` (chưa ai rà). Gộp chúng thành một là cách
     // một mục tới hạn thật biến thành một mục im lặng.
-    claudeCodeVersion: claudeCodeVersion(),
+    claudeCodeVersion: claudeCodeVersionMeasured(),
+    claudeCodeVersionWhy: claudeCodeVersionMeasured() ? null
+      : `không đo được version Claude Code — đã thử CẢ HAI nguồn: ${process.env.CLAUDE_CODE_EXECPATH
+        ? `CLAUDE_CODE_EXECPATH = "${process.env.CLAUDE_CODE_EXECPATH}" (không có đoạn nào là version)`
+        : 'CLAUDE_CODE_EXECPATH không được đặt'}, và không thấy package.json của @anthropic-ai/claude-code trong 5 tầng trên binary đó`,
     ...(() => {
       try {
         const b = JSON.parse(readFileSync(repoPath('.claude', 'claude-code-baseline.json'), 'utf8'));
@@ -312,7 +488,11 @@ function fixlogState() {
     if (!existsSync(f)) return { fixlogTotal: 0, fixlogRepeated: 0 };
     const lines = readFileSync(f, 'utf8').split('\n').filter(Boolean);
     // `fixlogKey` ở `lib/harness.mjs` — MỘT nguồn cho cả `--top`, `--close` và chỗ này.
-    const norm = fixlogKey;
+    // Luật gom nhóm thủ công phải đọc Ở ĐÂY NỮA: nếu `--top` thấy một nhóm ≥2 mà bảng nghi thức
+    // không thấy, thì người dùng đọc được "có ứng viên bài học" ở một chỗ và "chưa nhóm nào đạt
+    // ngưỡng" ở chỗ kia — hai câu trả lời khác nhau cho cùng một câu hỏi, và không gì báo.
+    const rules = fixlogGroupRules();
+    const norm = (t) => fixlogKey(t, rules);
     const groups = new Map();
     for (const l of lines) {
       const text = l.split('|').slice(3).join('|').trim() || l;
@@ -350,9 +530,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   const ri = process.argv.indexOf('--reviewed-claude-code');
   if (ri > -1) {
     const found = process.argv.slice(ri + 1).filter(a => !a.startsWith('--')).join(' ').trim();
-    const version = claudeCodeVersion();
+    // CÙNG nguồn với `collect()`. Hai phép đo khác nhau ở chỗ ĐỌC và chỗ GHI nghĩa là:
+    // bảng nói "đang chạy 2.1.222, hãy rà đi", còn lệnh rà thì từ chối vì không biết version.
+    const version = claudeCodeVersionMeasured();
     if (!version) {
-      console.error('Không đọc được version Claude Code từ CLAUDE_CODE_EXECPATH — không ghi baseline cho một version không biết.');
+      console.error('Không đo được version Claude Code (cả CLAUDE_CODE_EXECPATH lẫn package.json của @anthropic-ai/claude-code) — không ghi baseline cho một version không biết.');
       process.exit(1);
     }
     if (!found) {
@@ -390,7 +572,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     // Bản NGẮN cho SessionStart: chỉ việc tới hạn. Không có gì tới hạn thì IM LẶNG —
     // một dòng "không có gì cần làm" mỗi phiên là chính loại nhiễu file này thay thế.
     for (const r of due) console.log(`   ▸ ${r.cmd.padEnd(20)} ${r.why}`);
-    if (unknown.length) console.log(`   ? ${unknown.length} nghi thức KHÔNG đo được — node tooling/rituals.mjs --all`);
+    // NÊU TÊN, không nêu số lượng. Bản cũ in `? 2 nghi thức KHÔNG đo được` rồi bảo chạy
+    // `--all` để biết thêm — và gặp thật 2026-08-06: một mục `?` xuất hiện ở SessionStart rồi
+    // BIẾN MẤT trước khi kịp chạy `--all`. Trạng thái `?` thường do một phép đo chập chờn
+    // (git bận, đường dẫn chưa sẵn), tức đúng loại hay tự khỏi — nên lời khuyên "chạy lại để
+    // xem" là lời khuyên KHÔNG BAO GIỜ trả lời được cho chính ca nó được sinh ra để phục vụ.
+    // Một cái tên tại chỗ thì rẻ hơn, và nó còn nguyên giá trị sau khi triệu chứng đã qua.
+    for (const r of unknown) console.log(`   ? ${r.cmd.padEnd(20)} KHÔNG đo được — ${r.why}`);
     process.exit(0);
   }
 

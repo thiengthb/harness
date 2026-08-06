@@ -13,7 +13,7 @@
 import { readdirSync, statSync, mkdirSync, cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, resolve, relative, sep } from 'node:path';
-import { REPO_ROOT, report, run, REQUIRED_IGNORE, REQUIRED_ATTRIBUTES, REQUIRED_UNIGNORE, missingLines, CI_ESCAPE_HATCH, MECHANISM_PATHS, repoRole } from './lib/harness.mjs';
+import { REPO_ROOT, report, run, REQUIRED_IGNORE, REQUIRED_ATTRIBUTES, REQUIRED_UNIGNORE, missingLines, CI_ESCAPE_HATCH, MECHANISM_PATHS, NOT_FOR_CONSUMER, repoRole } from './lib/harness.mjs';
 
 const args = process.argv.slice(2);
 const target = args.find(a => !a.startsWith('--'));
@@ -193,6 +193,11 @@ if (AUDIT) {
     // Thiếu file này ⇒ nghi thức báo `due`, và đó là câu trả lời ĐÚNG cho một repo mới.
     /^\.claude\/claude-code-baseline\.json$/,
     /^\.claude\/settings\.local\.json$/, /^\.env/,
+    // Lịch sử PHÁT TRIỂN harness. `upgrade.mjs` đọc cả hai từ `TPL`, không bao giờ từ cây ở
+    // repo con — nên trước 2.14.0 chúng là ~210 KB ghi đè lại mỗi lần nâng cấp, phục vụ
+    // không cơ chế nào phía nhận. Lý do đầy đủ ở `NOT_FOR_CONSUMER` trong lib/harness.mjs;
+    // hai đường dẫn này cũng nằm trong `REMOVED_PATHS` để repo đã áp được dọn khi nâng cấp.
+    ...NOT_FOR_CONSUMER.map(p => new RegExp(`^${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(/|$)`)),
   ];
   const all = filesUnder('.').filter(f => !IGNORE.some(re => re.test(f)));
   const missing = all.filter(f => !covered.has(f));

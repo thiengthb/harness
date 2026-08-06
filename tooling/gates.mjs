@@ -154,6 +154,22 @@ for (const name of gates) {
 const budget = STAGE_BUDGET_MS[stage] ?? Infinity;
 if (totalMs > budget) warn.push(`độ trễ ${totalMs}ms vượt ngân sách ${budget}ms cho stage \`${stage}\` — đẩy gate đắt xuống CI`);
 
+// ── GHI LẠI RẰNG STAGE NÀY ĐÃ CHẠY — kể cả khi nó xanh ──────────────────────
+//
+// Trước đây `gates.mjs` chỉ ghi telemetry khi HỎNG. Hệ quả: không tồn tại dấu vết nào của
+// một lần chạy thành công, nên nghi thức `/pre-merge` — vốn in đúng câu *"chưa thấy dấu gate
+// preMerge chạy ở phiên này"* — **không đi tìm dấu nào cả**, vì không có gì để tìm. Nó đỏ
+// theo `ahead > 0` và ở đỏ mãi, chạy gate bao nhiêu lần cũng vậy, kèm một lý do mô tả một
+// phép đo chưa từng xảy ra.
+//
+// Đây đúng ba trạng thái mà `hookRan()` đã tách ra cho hook, chỉ là gate chưa được hưởng:
+// gate chạy suốt và luôn xanh · gate chưa từng chạy · gate chạy hỏng. Không có dòng này thì
+// cả ba đọc giống hệt nhau — và cái ở giữa là cái nguy hiểm.
+//
+// `skipped` đi kèm vì "xanh" và "xanh vì không có gì để chạy" là hai chuyện khác nhau, và
+// người đọc nghi thức cần phân biệt được mà không phải mở log ra.
+telemetry('gate-runs', [`gates:${stage}`, fail.length ? 'fail' : 'pass', `ok=${ok.length} skip=${skipped} ms=${totalMs}`]);
+
 report(`GATES · ${stage}`, { ok, warn, fail });
 
 if (fail.length) {

@@ -11,6 +11,24 @@
 > Ca 2 đáng chú ý hơn ca 1: nó nói rằng **mọi commit message nhắc tới một lệnh nguy hiểm**
 > đều không viết được qua shell. Trong một repo mà changelog và bài học *phải* nêu tên
 > lệnh nguy hiểm để giải thích guard, đó không phải ca hiếm — đó là công việc hằng ngày.
+>
+> **CẬP NHẬT 2026-08-06 — lần 3 và 4, và mục này vẫn "chưa sửa" sau 2 ngày.**
+>
+> 3. Viết script đo **chính `dcg`** bằng heredoc → bị chặn. Đúng ca 3 mà mục này đã
+>    tiên đoán (*"sửa `dcg` bằng shell thì `dcg` chặn"*).
+> 4. Năm phút sau: ghi **bản rà Claude Code 2.1.223** bằng
+>    `node tooling/rituals.mjs --reviewed-claude-code "…"` → bị chặn, vì văn bản có
+>    trích ví dụ lệnh. Không heredoc nào cả — **chỉ là một tham số chuỗi**.
+>
+> Ca 4 mở rộng phạm vi của mục này: vấn đề **không phải heredoc**. Heredoc chỉ là cách
+> hay gặp nhất để nhét văn bản vào một dòng lệnh. Bất kỳ **đối số chuỗi** nào chứa tên
+> lệnh nguy hiểm đều bị chặn — kể cả khi lệnh đang chạy là `node`. Tên file này giờ hẹp
+> hơn triệu chứng thật; xem `2026-W32-dcg-khop-chuoi-khong-khop-lenh.md` cho gốc rễ.
+>
+> **Và lựa chọn B phải được đọc lại.** Bảng dưới bác B vì *"nó biến một lần bất tiện
+> thành một lỗ thật"*. Đo 2026-08-06 cho thấy **lỗ đó đã mở sẵn, và rộng hơn nhiều**:
+> chỉ cần cú pháp nháy của shell là né được, không cần heredoc. Lập luận "B mở một lỗ"
+> mất phần lớn sức nặng khi lỗ ấy đã có và dễ đi hơn.
 
 ## Chuyện gì xảy ra
 

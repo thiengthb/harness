@@ -317,11 +317,47 @@ export function hookInput() {
 export const EXIT_OK = 0;
 export const EXIT_BLOCK = 2;
 
-/** Chặn tool call và giải thích CÁCH SỬA (không chỉ nói sai). */
+/**
+ * Chặn tool call và giải thích CÁCH SỬA (không chỉ nói sai).
+ *
+ * ── GHI SỔ LÀ VIỆC CỦA `block()`, KHÔNG PHẢI CỦA CHỖ GỌI
+ *
+ * Trước 2.17.0, mỗi hook tự nhớ gọi `telemetry('gate-fails', …)` ngay trước `block()`.
+ * Quét 2026-08-06: **8/9 nhớ, 1 quên** — `protect-feature-files.mjs` nhánh
+ * `features/_index.json`, tức gác single-writer của DRI. Nhánh còn lại của CHÍNH file đó thì
+ * nhớ. Nên đây không phải quy ước chưa tồn tại; nó tồn tại và trượt đúng một chỗ.
+ *
+ * Hậu quả KHÔNG phải "thiếu một dòng log". Một gác chặn mà im thì:
+ *   · `harness-doctor` đọc là `? chưa đo`,
+ *   · `/harness-retro` bước 4 — chỗ BẮT BUỘC đề xuất cắt bỏ — đọc là gác chưa bắt được gì.
+ * Tức **gác càng đúng mà càng im thì càng dễ bị cắt**: chọn lọc ngược, và nạn nhân là những
+ * cái gác đang lặng lẽ làm việc.
+ *
+ * Sửa ở ĐÂY thay vì sửa từng hook, vì đây là chỗ duy nhất khiến việc đó KHÔNG THỂ quên nữa.
+ * Một ratchet đếm số chỗ trượt của một quy ước chỉ là giải pháp tạm cho việc quy ước ấy chưa
+ * được cưỡng chế tại nguồn.
+ *
+ * KHÔNG đếm hai lần: chỗ gọi nào đã tự ghi `gate-fails` (8/9 hook hiện tại, kèm chi tiết mà
+ * chỉ nó biết — issue nào, nhánh nào) thì `block()` im. Bộ đếm phải giữ nguyên nghĩa, nếu
+ * không thì bản vá này lại làm hỏng chính con số nó sinh ra để cứu.
+ */
 export function block(message, howToFix) {
+  if (!gateFailLogged) telemetry('gate-fails', [hookSelfName(), String(message).slice(0, 160)]);
   console.error(`⛔ BỊ CHẶN: ${message}`);
   if (howToFix) console.error(`   → ${howToFix}`);
   process.exit(EXIT_BLOCK);
+}
+
+/**
+ * Tên hook đang chạy, suy từ đường dẫn script. Hook luôn được spawn dưới dạng script nên
+ * `argv[1]` là nguồn tin cậy; không có thì trả `'(hook)'` chứ KHÔNG đoán — một cái tên bịa
+ * trong sổ còn tệ hơn không có tên, vì nó gộp nhầm hai gác khi đếm.
+ */
+function hookSelfName() {
+  try {
+    const b = String(process.argv[1] || '').split(/[\\/]/).pop() || '';
+    return b.replace(/\.mjs$/, '') || '(hook)';
+  } catch { return '(hook)'; }
 }
 
 export function pass() {
@@ -532,7 +568,7 @@ export const CI_ESCAPE_HATCH = /\n {4}env:\n(?: {6}#[^\n]*\n)* {6}HARNESS_ALLOW_
 /**
  * VAI của repo đang chạy. BA giá trị, không hai.
  *
- *   'template'  — nguồn: có HARNESS-CHANGELOG + apply-to, KHÔNG có manifest
+ *   'template'  — nguồn: có `tooling/cli.mjs`, KHÔNG có manifest
  *   'consumer'  — đã áp: có `.claude/harness-manifest.json` (chỉ apply-to/upgrade ghi ra)
  *   'unknown'   — không đủ dấu hiệu: cài tay, copy dở, hoặc manifest bị xoá
  *
@@ -546,10 +582,37 @@ export const CI_ESCAPE_HATCH = /\n {4}env:\n(?: {6}#[^\n]*\n)* {6}HARNESS_ALLOW_
  * cấm ở mọi nơi khác — chỉ có điều nó nằm trong phép TỰ NHẬN DIỆN của chính harness.
  *
  * `consumer` thắng khi có manifest: template không bao giờ có file đó.
+ *
+ * ── DẤU HIỆU "TEMPLATE" PHẢI LÀ THỨ KHÔNG BAO GIỜ ĐI XUỐNG REPO CON
+ *
+ * Tới 2.13.0 dấu hiệu đó là `HARNESS-CHANGELOG.md` + `tooling/apply-to.mjs` — và **cả hai
+ * đều được ship sang repo con**. Nghĩa là mọi repo tiêu thụ đều mang đủ giấy tờ để bị nhận
+ * nhầm là template; thứ duy nhất ngăn điều đó là manifest được xét TRƯỚC. Một phép nhận dạng
+ * mà bằng chứng dương tính của nó có mặt ở cả hai phía thì không phân biệt được gì — nó chỉ
+ * đang được cứu bởi thứ tự câu lệnh.
+ *
+ * Và trạng thái "có harness mà không có manifest" KHÔNG phải giả thuyết: `harness-migrations/010`
+ * có hẳn một nhánh cho nó ("repo áp bằng đường khác ⇒ không có manifest ⇒ không xoá gì").
+ * Rơi vào đó thì repo con bị gọi là template, và mọi thứ hạ cấp theo vai template — kể cả
+ * dòng CHẶN "commands rỗng ⇒ GATE KHÔNG TỒN TẠI" — sẽ im, ở đúng nơi nó cần kêu nhất.
+ *
+ * `tooling/cli.mjs` là điểm vào `npx github:…` của TEMPLATE. Nó nằm trong `IGNORE` của
+ * `apply-to.mjs` với lý do viết sẵn ("ở project đích nó không có việc gì làm"), nên nó
+ * **không thể** xuất hiện ở repo con qua đường chính thức. Đó là điều kiện cần của một dấu
+ * hiệu nhận vai: chỉ tồn tại ở đúng một phía.
+ *
+ * Hỏng thì hỏng về phía an toàn: xoá `cli.mjs` khỏi template ⇒ `unknown` ⇒ `harness-doctor`
+ * CHẶN kèm thông báo, chứ không âm thầm nhận nhầm vai.
+ *
+ * MỘT dấu hiệu, không phải hai. Bản đầu của bản vá này để `cli.mjs && apply-to.mjs` cho
+ * "chắc ăn" — nhưng `apply-to.mjs` ĐƯỢC ship, nên vế đó đúng ở CẢ HAI phía và không phân
+ * biệt được gì; nó chỉ làm bất biến khó đọc và mời gọi người sau tưởng nó đang bảo vệ điều
+ * gì đó. Test `repoRole(): dấu hiệu không nằm trong MECHANISM_PATHS` bắt đúng chỗ này, ngay
+ * trong lần chạy đầu tiên sau khi viết nó.
  */
 export function repoRole() {
   if (exists(repoPath('.claude', 'harness-manifest.json'))) return 'consumer';
-  if (exists(repoPath('HARNESS-CHANGELOG.md')) && exists(repoPath('tooling', 'apply-to.mjs'))) return 'template';
+  if (exists(repoPath('tooling', 'cli.mjs'))) return 'template';
   return 'unknown';
 }
 
@@ -581,11 +644,60 @@ export function repoRole() {
  *
  * Bản sao thứ hai đã tồn tại từ 2.10.0 kèm một comment tiên đoán đúng chuyện này. Comment
  * không ngăn được bản sao thứ ba; gộp lại thì ngăn được.
+ *
+ * ── GIỚI HẠN CỦA PHÉP NHÓM TỪ VỰNG, và vì sao có `rules`
+ *
+ * "6 từ đầu" là phép nhóm LEXICAL áp lên văn bản người viết TỰ DO. Nó chỉ gom được khi người
+ * viết tình cờ mở đầu giống nhau — và đo 2026-08-06 trên chính repo này: 5 mục fixlog ⇒ 5 nhóm
+ * đơn lẻ, 0 nhóm đạt ngưỡng, TRONG KHI 3/5 mục là cùng một gác (`dcg` chặn nhầm) và
+ * `.claude/learnings/2026-W32-dcg-quet-than-heredoc.md` đã ghi chúng là lần 3, 4, 5.
+ *
+ * Hỏng theo chiều NGUY HIỂM: `/harness-retro` đọc "chưa nhóm nào đạt ngưỡng ≥2" — tức câu trả
+ * lời DỄ CHỊU — trong khi sự thật là ngưỡng đã bị vượt từ lâu. Cùng lớp lỗi với `hookRan()`:
+ * "không đo được" tự thu về "ổn".
+ *
+ * KHÔNG sửa bằng heuristic thông minh hơn (stemming, trùng token, khoảng cách chuỗi). Gom nhầm
+ * hai lỗi KHÁC nhau thì BỊA ra một nhóm ≥2 chưa từng có — nó chế tạo bằng chứng, hỏng theo
+ * chiều tệ hơn hẳn chiều đang có. Phép gom là một PHÁN ĐOÁN, và bắt regex đoán hộ chính là
+ * "inferential control" mà AGENTS.md dặn đổi sang "computational control" bất cứ khi nào được.
+ *
+ * Nên: người khai nhóm (`fixlog.mjs --group`), máy chỉ áp dụng. `rules` là danh sách
+ * `{ key, needle }` theo thứ tự file; luật ĐẦU TIÊN khớp thì thắng ⇒ tất định. Không có luật
+ * nào khớp thì rơi về phép từ vựng cũ — nên `fixlogKey(text)` không đổi hành vi.
+ *
+ * Hàm vẫn THUẦN: `rules` truyền vào, không đọc đĩa ở đây (xem `fixlogGroupRules()`).
  */
-export function fixlogKey(text) {
-  return String(text).toLowerCase()
+export function fixlogKey(text, rules = []) {
+  const t = String(text).toLowerCase();
+  for (const r of rules) {
+    const needle = String(r?.needle || '').toLowerCase().trim();
+    if (needle && t.includes(needle)) return String(r.key);
+  }
+  return t
     .replace(/[^a-z0-9à-ỹ\s]/gi, ' ')
     .split(/\s+/).filter(w => w.length > 3).slice(0, 6).join(' ');
+}
+
+/** Đường dẫn file luật gom nhóm. Cùng thư mục telemetry với fixlog: đều là dữ liệu MÁY NÀY. */
+export const FIXLOG_GROUPS_FILE = () => join(telemetryDir(), 'fixlog-groups.log');
+
+/**
+ * Đọc luật gom nhóm do người khai. TSV `ts \t key \t needle`, giữ NGUYÊN thứ tự file
+ * (luật đầu tiên khớp thì thắng — xem `fixlogKey`).
+ *
+ * Đọc được rỗng và đọc lỗi trả về CÙNG một thứ (`[]`) là chấp nhận được ở đây, và chỉ ở đây:
+ * không có luật nào thì phép từ vựng cũ vẫn chạy, tức mất phép gom thủ công chứ không mất mục
+ * fixlog nào. Đây là suy giảm, không phải mù.
+ */
+export function fixlogGroupRules() {
+  try {
+    const f = FIXLOG_GROUPS_FILE();
+    if (!existsSync(f)) return [];
+    return readFileSync(f, 'utf8').split('\n').filter(Boolean).map(l => {
+      const [ts, key, ...needle] = l.split('\t');
+      return { ts, key, needle: needle.join('\t').trim() };
+    }).filter(r => r.key && r.needle);
+  } catch { return []; }
 }
 
 export const REMOVED_PATHS = [
@@ -595,7 +707,72 @@ export const REMOVED_PATHS = [
     why: 'Thông báo harness đã do `session-start.mjs` in tự động mỗi phiên (đọc `.claude/whats-new.md`). '
       + 'Một skill phải GỌI mới chạy thì không bao giờ được gọi đúng lúc cần — và nó tiêu một suất trong trần skill.',
   },
+  {
+    path: 'HARNESS-CHANGELOG.md',
+    since: '2.14.0',
+    why: 'Repo con không đọc nó: `upgrade.mjs` lấy changelog từ `TPL`, không từ cây đang chạy. '
+      + '120 KB lịch sử phát triển harness, ghi đè lại mỗi lần nâng cấp, phục vụ không cơ chế nào — '
+      + 'và tới 2.13.0 nó còn là một nửa dấu hiệu nhận vai `repoRole()`, tức một file chỉ nên có ở '
+      + 'template lại được dùng để trả lời "đây có phải template không" ở nơi nó không nên tồn tại. '
+      + 'Thay thế: `.claude/whats-new.md` (SEED, session-start in một lần mỗi version).',
+  },
+  {
+    path: 'harness-migrations',
+    since: '2.14.0',
+    why: 'Cùng lý do: `upgrade.mjs` đọc `join(TPL, "harness-migrations")`, không bao giờ đọc bản ở repo con. '
+      + '92 KB script chỉ chạy từ phía template. `tooling/test-migrations.mjs` vẫn ở lại và tự khai '
+      + '`n/a` khi không có migration, nên không có dấu xanh rỗng nào sinh ra từ việc bỏ thư mục này.',
+  },
 ];
+
+/**
+ * File có NHIỆM VỤ ghi lại một việc XOÁ — bia mộ ở trên, và migration thi hành nó.
+ *
+ * `harness-doctor` báo "tham chiếu chết" khi một file nhắc tên skill không tồn tại. Check đó
+ * đã loại trừ changelog · whats-new · ADR · learnings vì chúng là **hồ sơ lịch sử**: nhắc tên
+ * thứ đã xoá chính là việc của chúng. Cơ chế bia mộ (2.11.0) thêm hai hồ sơ lịch sử nữa,
+ * chỉ khác là chúng viết bằng CODE thay vì văn xuôi — nên check không nhận ra, và từ 2.11.0
+ * nó báo đỏ VĨNH VIỄN về hai file đang làm đúng việc của mình (đo 2026-08-06: 2/2 tham chiếu
+ * còn lại đều thuộc nhóm này, tức mục advice đó 100% dương tính giả).
+ *
+ * LOẠI TRỪ THEO BẢN CHẤT, KHÔNG THEO TIỆN LỢI — nên nó cần CẢ HAI điều kiện:
+ *   · tên phải nằm trong bia mộ (xoá CÓ CHỦ Ý, có version, tra lại được), VÀ
+ *   · file phải là nơi ghi việc xoá.
+ * Bỏ điều kiện thứ hai thì `docs/TEAM.md` nhắc một skill đã xoá cũng lọt — mà đó đúng là
+ * ca check này được viết ra để bắt. Bỏ điều kiện thứ nhất thì migration nhắc bất kỳ tên
+ * bịa nào cũng lọt.
+ */
+/**
+ * LỆNH THẬT SỰ ĐÃ KHAI trong `commands` — key `$comment_*` KHÔNG phải lệnh.
+ *
+ * Ở ĐÂY vì `init.mjs` và `harness-doctor.mjs` cùng hỏi câu này, và cùng trả lời SAI theo
+ * đúng một kiểu: `Object.entries(cfg.commands).filter(([, v]) => v.trim())` đếm cả
+ * `$comment_a11y_perf` — key duy nhất trong `commands` có giá trị khác rỗng ở template.
+ *
+ * Hệ quả đo được 2026-08-06: với cấu hình mặc định KHÔNG AI ĐIỀN GÌ, cả hai công cụ báo
+ * *"1 lệnh đã khai"*, nên nhánh `!length` không bao giờ chạy — tức dòng cảnh báo to nhất
+ * của cả hệ (`commands rỗng — GATE KHÔNG TỒN TẠI ... BẠN là verification loop`) bị một
+ * dòng chú thích làm câm, ở MỌI repo áp template, ngay từ phút đầu. Cửa thoát nguy hiểm
+ * nhất không phải cửa ai đó mở — mà cửa không ai biết là mình đã đi qua.
+ *
+ * Quy ước `$comment_*` đã dùng khắp `harness.config.json` (`$comment_migrations`,
+ * `$comment_secrets`, `$comment_hot`, …); chỗ này chỉ là nơi duy nhất quên tôn trọng nó.
+ */
+export function declaredCommands(cfg) {
+  return Object.entries(cfg?.commands || {}).filter(([k, v]) => !k.startsWith('$') && v && String(v).trim());
+}
+
+export const TOMBSTONE_FILE = /^(tooling\/lib\/harness\.mjs$|harness-migrations\/)/;
+
+/** `.claude/skills/whats-new` → `whats-new`. Chỉ lấy bia mộ LÀ skill; bia mộ khác không liên quan. */
+export function removedSkillNames() {
+  return new Set(REMOVED_PATHS.map(r => /^\.claude\/skills\/([^/]+)/.exec(r.path)?.[1]).filter(Boolean));
+}
+
+/** Tên skill này, ở file này, có phải một việc xoá ĐÃ GHI SỔ không? HÀM THUẦN. */
+export function isRecordedRemoval(name, file) {
+  return removedSkillNames().has(name) && TOMBSTONE_FILE.test(String(file).split('\\').join('/'));
+}
 
 /**
  * LỆCH giữa điều CẤM viết ra và điều guard CƯỠNG CHẾ. HÀM THUẦN, không đọc đĩa.
@@ -667,12 +844,41 @@ export const MECHANISM_PATHS = [
   'tooling/fixlog.mjs', 'tooling/coactivity.mjs', 'tooling/harness-size.mjs',
   'tooling/capo-report.mjs', 'tooling/harness-doctor.mjs', 'tooling/doctor.mjs',
   'tooling/entropy-scan.mjs', 'tooling/rituals.mjs',
-  'tooling/check-reservations.mjs', 'tooling/check-feature-integrity.mjs',
+  'tooling/check-reservations.mjs', 'tooling/check-feature-integrity.mjs', 'tooling/overlap-scan.mjs',
   'tooling/wt-clean.mjs', 'tooling/statusline.mjs', 'tooling/precommit-scan.mjs',
   '.githooks', 'evals/run.mjs', 'evals/fixtures',
   'tooling/test-evals.mjs',
-  'harness.version', 'HARNESS-CHANGELOG.md', 'harness-migrations',
+  // `harness.version` Ở LẠI: repo con ĐỌC nó (`harness-doctor` in version; `upgrade` so
+  // khoảng version để biết chạy migration nào). Hai thứ từng đứng cạnh nó thì KHÔNG — xem
+  // `NOT_FOR_CONSUMER` ngay dưới.
+  'harness.version',
 ];
+
+/**
+ * TRÔNG như cơ chế, nhưng repo con KHÔNG ĐỌC — nên không đi xuống.
+ *
+ * `HARNESS-CHANGELOG.md` (120 KB) và `harness-migrations/` (92 KB — đo ở một repo con thật,
+ * 2026-08-06). `upgrade.mjs` đọc CẢ HAI từ `TPL`, tức bản template mà người dùng trỏ tới
+ * bằng `--from`, chứ không từ cây đang chạy:
+ *
+ *     const changelogPath = join(TPL, 'HARNESS-CHANGELOG.md');
+ *     const migDir        = join(TPL, 'harness-migrations');
+ *
+ * Hướng dẫn cuối `upgrade.mjs` cũng viết "đọc HARNESS-CHANGELOG.md CỦA TEMPLATE". Nên tới
+ * 2.13.0 đây là ~210 KB lịch sử phát triển harness, **ghi đè lại ở MỖI lần nâng cấp**, phục
+ * vụ không cơ chế nào ở phía nhận.
+ *
+ * Changelog còn tệ hơn "thừa": tới 2.13.0 nó là một nửa dấu hiệu nhận vai trong `repoRole()`.
+ * Một file chỉ nên có ở template lại có mặt ở mọi repo con, và nó được dùng để trả lời câu
+ * "đây có phải template không". Xem lý do đầy đủ ở `repoRole`.
+ *
+ * Repo con muốn biết harness đổi gì thì đọc `.claude/whats-new.md` — SEED sinh ra đúng cho
+ * việc đó, và `session-start` in nó một lần mỗi version.
+ *
+ * `tooling/test-migrations.mjs` VẪN ship: nó đã tự khai `n/a — không có migration nào để
+ * test` khi thư mục vắng, nên nó không biến thành một dấu xanh rỗng.
+ */
+export const NOT_FOR_CONSUMER = ['HARNESS-CHANGELOG.md', 'harness-migrations'];
 
 /**
  * Dòng nào trong `required` chưa có trong `text`. So khớp sau khi trim, theo DÒNG
@@ -721,6 +927,54 @@ export function telemetryDir() {
 }
 
 /**
+ * ĐÍCH mà `test-hooks.mjs` chuyển telemetry/state sang. Ở ĐÂY vì có HAI nơi dùng nó,
+ * và hai nơi đó phải trỏ cùng một chỗ hoặc cả cơ chế im lặng mất tác dụng:
+ *
+ *   · `test-hooks.mjs` GHI vào đây (qua `HARNESS_TELEMETRY_DIR`).
+ *   · `harness-doctor` ĐỌC ở đây, như nguồn BẰNG CHỨNG THỨ HAI cho câu hỏi
+ *     "hook này có thật sự chạy không, hay nó crash im lặng?".
+ *
+ * Hằng số này viết tay ở hai file thì lệch nhau là chuyện của thời gian, và khi lệch
+ * thì doctor đọc một thư mục rỗng rồi kết luận "chưa có bằng chứng" về 9 cái gác
+ * vừa chạy xong ngay trong cùng một lần chạy của chính nó. Sai lặng lẽ, không đỏ.
+ */
+export const TEST_TELEMETRY_DIR = join(tmpdir(), 'harness-test-telemetry');
+export const TEST_STATE_DIR = join(tmpdir(), 'harness-test-state');
+
+/**
+ * Đếm dòng telemetry theo khoá — HÀM THUẦN trên TEXT, không đọc đĩa.
+ *
+ * `sinceMs` là thứ khiến hàm này đáng tách ra. `harness-doctor` dùng telemetry của suite làm
+ * bằng chứng "hook chạy được, không crash im lặng" — nhưng thư mục đó nằm ở `tmpdir()` và
+ * SỐNG DAI hơn một lần chạy. Không lọc theo thời gian thì một lần chạy suite hôm qua vẫn đọc
+ * là "suite ✓" hôm nay, kể cả khi hôm nay suite KHÔNG chạy, chạy hỏng, hay bị ai đó gỡ khỏi
+ * danh sách check. Tức là đúng lúc bằng chứng cần nói "tôi không biết" thì nó nói "ổn".
+ *
+ * Lọc theo mốc bắt đầu của tiến trình đang hỏi ⇒ "suite ✓" chỉ có nghĩa **hook này đã được
+ * spawn thành công TRONG chính lần chạy này**. Và nó hỏng về phía an toàn: đảo thứ tự các
+ * bước trong doctor thì bằng chứng biến mất thành `?`, không biến thành một lời khẳng định sai.
+ *
+ * Dấu thời gian không đọc được ⇒ KHÔNG đếm khi có `sinceMs`. "Không biết dòng này từ bao giờ"
+ * là `?`, và một `?` không được cộng vào một con số.
+ */
+export function tallyLines(text, { field = 2, sinceMs = 0 } = {}) {
+  const m = new Map();
+  for (const line of String(text).split('\n')) {
+    const p = line.split('|');
+    if (p.length < field + 2) continue;
+    if (sinceMs) {
+      const t = Date.parse(p[0]);
+      if (!Number.isFinite(t) || t < sinceMs) continue;
+    }
+    const key = p[field], sub = p[field + 1];
+    const e = m.get(key) ?? {};
+    e[sub] = (e[sub] ?? 0) + 1;
+    m.set(key, e);
+  }
+  return m;
+}
+
+/**
  * Ghi một dòng vào log telemetry. `kind` = tên file không đuôi.
  *
  * BẤT BIẾN: việc ghi chép KHÔNG BAO GIỜ được đổi kết quả của hook. Log không ghi
@@ -728,11 +982,20 @@ export function telemetryDir() {
  * là toàn bộ hợp đồng giữa hook và harness. Đó là lý do có `try {} catch {}` rỗng.
  */
 export function telemetry(kind, fields) {
+  // Cờ này cho `block()` biết chỗ gọi đã tự ghi sổ rồi — xem `block()` cho lý do đầy đủ.
+  // Đặt TRƯỚC `try`: kể cả khi việc ghi thất bại (đĩa đầy), ý ĐỊNH ghi vẫn đã được nêu, và
+  // `block()` ghi thêm một dòng nữa cũng sẽ thất bại y hệt. Không có gì cứu được bằng cách
+  // ghi hai lần vào một cái đĩa đầy.
+  if (kind === 'gate-fails') gateFailLogged = true;
   try {
     const line = [new Date().toISOString(), config().project?.id ?? '-', ...fields.map(f => String(f).replace(/[|\n\r]/g, ' '))].join('|');
     appendFileSync(join(telemetryDir(), `${kind}.log`), line + '\n', 'utf8');
   } catch {}
 }
+
+/** Chỗ gọi đã tự ghi `gate-fails` trong tiến trình này chưa. Một tiến trình = một hook = một
+ *  lần chặn (hook exit ngay ở `block()`), nên một cờ boolean là đủ và không mất thông tin. */
+let gateFailLogged = false;
 
 /**
  * Ghi "hook này ĐÃ CHẠY" — kể cả khi nó cho qua.

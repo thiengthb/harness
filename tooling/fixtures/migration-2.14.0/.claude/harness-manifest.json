@@ -1,0 +1,10 @@
+{
+  "$comment": "FIXTURE của bia mộ 2.14.0 (HARNESS-CHANGELOG.md + harness-migrations/). NEO: mọi `sha` phải ĐÚNG với nội dung file — sai sha thì migration 010 coi là \"người dùng đã sửa\" và KHÔNG xoá, fixture xanh mà không kiểm gì. Sinh lại: node tooling/fixtures/make-fixture-2.14.0.mjs <đích>. `docs/cua-project.md` CỐ Ý không có trong manifest: nó là file của project, và nó phải sống sót.",
+  "templateVersion": "2.13.0",
+  "appliedAt": "2026-08-06T00:00:00.000Z",
+  "files": {
+    "HARNESS-CHANGELOG.md": "72f415820c768d7c",
+    "harness-migrations/001-vi-du.mjs": "3f65f2737814ec20",
+    "harness-migrations/002-vi-du.mjs": "cabebac50fc7bf3b"
+  }
+}

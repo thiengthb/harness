@@ -1,4 +1,4 @@
-<!-- version: 2026-08-05-k -->
+<!-- version: 2026-08-06-d -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -9,17 +9,67 @@
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
 
-## 2026-08-05 — Đang dở: nhánh `chore/vong-hoc-2026-W32` · đọc nhật ký trước khi sửa gì
+## 2026-08-06 — Vòng học W32 đã lên `main`; việc còn lại nằm ở issue, không nằm ở nhánh
 
-**Nếu bạn vừa vào ở một máy khác:** `docs/progress/vong-hoc-2026-W32.md` — nhật ký đầy đủ,
-gồm 5 mục cần `/harness-propose` và một bảng "harness nói X, thực tế Y". SessionStart **không**
-tự in nó vì nhánh `chore/` không suy ra được issue (`session-start.mjs:47`), nên nó ở đây.
+Nhánh `chore/vong-hoc-2026-W32` dừng ngay trước `gh pr create` khi phiên hết quota
+2026-08-05, rồi nằm ngoài `main` một ngày. Giờ nó ở đây: **L0004** + gate `evals/tasks/0005`
++ retro W32 + nhật ký phiên.
 
-**Việc số 1 khi quay lại:** `budget.monthlyUsdCap = 0` trong khi `budget-alarm.log` ghi 3 lần
-`rate_limit` sáng 2026-08-05. Rồi `/pre-merge` + PR cho 2 commit đang chờ.
+**Việc bạn phải làm khác đi:** đọc `docs/progress/vong-hoc-2026-W32.md` §"BÀI HỌC ĐẮT NHẤT"
+trước khi sửa thứ mà harness tố. Ba lần trong một phiên, thứ bị tố hoá ra là placeholder đúng
+hoặc cơ chế load-bearing. **Cảnh báo của harness là giả thuyết, không phải việc.**
 
-**Không đi theo bạn sang máy khác** (gitignore, cố ý): `.claude/telemetry/` (16 mục fixlog) ·
-`knowledge/incoming/` (3 pack) · `.harness-pack/` (dựng lại bằng `knowledge/export.mjs`).
+5 mục `/harness-propose` trong nhật ký đó **chưa** thành issue hết — mới có `#43` (dcg khớp
+văn bản thô) và `#56` (`session-start:203` gọi placeholder đúng là "việc số 1"). Còn thiếu:
+`budget.monthlyUsdCap = 0`, kênh đi LÊN không có bên nhận, cắt `AGENTS.md` §Nghi thức.
+
+## 2026-08-06 — Skill chỉ-người-gõ giờ có người nhắc (v2.15.0)
+
+9 skill trong repo này **chỉ bạn gõ được** — agent gọi thì Claude Code từ chối. Đo hôm nay:
+**chưa cái nào từng chạy**, và 2 trong số đó (`/harness-propose`, `/verify-ui`) **không có bất
+kỳ cơ chế nào** nhắc tới. `/harness-propose` là cánh cửa hợp pháp duy nhất vào vùng cấm.
+
+Giờ `/harness-propose` **tự hiện đỏ ở SessionStart** khi `protect-harness` đã chặn ≥2 lần —
+tín hiệu lấy từ log có sẵn, không thêm cờ nào. Còn `/verify-ui` vẫn chưa có, vì nó cần khai
+`paths.ui` trong `harness.config.json` (vùng cấm) — nói ra thay vì lặng lẽ bỏ.
+
+Và phần **máy làm được** của `/claim` bước 3 tách thành `node tooling/overlap-scan.mjs`: dò PR
+đang mở + vùng nóng + reservation, **agent chạy được**, đưa bạn kết quả. Phần quyết định vẫn
+là `/claim` của bạn — nó **không chặn gì bao giờ**. Chạy trước khi bắt tay vào một việc mới.
+
+## 2026-08-06 — Repo con thôi mang lịch sử của harness (v2.14.0)
+
+**Nâng lên 2.14.0 sẽ XOÁ `HARNESS-CHANGELOG.md` và `harness-migrations/` khỏi repo bạn** —
+chỉ khi chúng còn nguyên như harness đặt. Không mất gì: `upgrade.mjs` xưa nay vẫn đọc cả hai
+từ **bản template**, không bao giờ từ cây của bạn. Đó là 210 KB lịch sử phát triển harness
+được ghi đè lại ở mỗi lần nâng cấp mà không cơ chế nào ở phía bạn đọc tới. Muốn biết harness
+đổi gì thì đọc chính file này.
+
+Nghiêm trọng hơn: `HARNESS-CHANGELOG.md` là **một nửa dấu hiệu để harness tự nhận biết mình
+là template hay repo con** — và nó được ship xuống repo con. Repo nào mất
+`.claude/harness-manifest.json` sẽ tự nhận là template, và **mọi dòng CHẶN sẽ im**, kể cả
+*"commands rỗng ⇒ GATE KHÔNG TỒN TẠI"*. Dấu hiệu giờ là `tooling/cli.mjs` — thứ duy nhất
+không bao giờ đi xuống repo con — và có test khoá lại: dấu hiệu nhận vai **không được** nằm
+trong danh sách ship.
+
+## 2026-08-06 — Công cụ đo vừa bị đo (v2.13.0)
+
+**Nếu repo bạn chưa khai lệnh nào thật trong `harness.config.json → commands`, `harness-doctor`
+giờ sẽ CHẶN ở chỗ trước đây nó cho ✓.** Không phải hồi quy: `$comment_a11y_perf` — một dòng
+chú thích — đang được đếm là "1 lệnh đã khai", nên nhánh cảnh báo *"GATE KHÔNG TỒN TẠI"* chưa
+từng chạy ở bất kỳ repo nào. Điền `commands.verify` / `test` / `typecheck`, hoặc đọc lý do
+trong `HARNESS-CHANGELOG.md` §2.13.0 ①.
+
+Bốn thứ nữa thôi nói dối: lời khuyên *"chạy `test-hooks.mjs` để lấy bằng chứng"* (suite ghi
+telemetry sang thư mục khác — chạy bao nhiêu lần cũng không đổi gì); **`/pre-merge` in "chưa
+thấy dấu gate preMerge chạy" trong khi nó chưa từng đi tìm dấu nào — `gates.mjs` chỉ ghi log
+khi HỎNG, nên nghi thức đó đỏ mãi dù bạn chạy gate bao nhiêu lần** (giờ gate ghi cả lần xanh,
+và nghi thức so lần chạy với commit mới nhất); nghi thức `claude-code-drift` đứng `?` trên mọi
+máy cài bằng npm; và `init.mjs` gọi placeholder của template là FAIL trong khi `harness-doctor`
+gọi đúng cái đó là ĐÚNG.
+
+`harness-doctor` → "Nên làm": **19 → 4**, và 15 dòng biến mất là 15 dòng **không ai được phép
+làm**. Không hook nào bị sửa.
 
 ## 2026-08-05 — Promote một bài học? Nhớ ĐĂNG KÝ nó, nếu không nó không đi đâu cả
 

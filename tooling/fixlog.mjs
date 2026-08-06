@@ -15,11 +15,27 @@
  */
 import { readFileSync, existsSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { telemetry, telemetryDir, currentBranch, fixlogKey } from './lib/harness.mjs';
+import { telemetry, telemetryDir, currentBranch, fixlogKey, fixlogGroupRules, FIXLOG_GROUPS_FILE } from './lib/harness.mjs';
 
 const args = process.argv.slice(2);
 const file = join(telemetryDir(), 'manual-fixes.log');
 const closedFile = join(telemetryDir(), 'fixlog-closed.log');
+
+// Luật gom nhóm do NGƯỜI khai. Đọc MỘT lần rồi truyền xuống mọi chỗ gọi `fixlogKey` trong file
+// này — `--top` và `--close` phải nhìn thấy đúng một tập nhóm, nếu không thì `--close` đóng một
+// khoá mà `--top` không sinh ra (đúng lỗi mà comment ở `lib/harness.mjs` đã cảnh báo).
+const RULES = fixlogGroupRules();
+
+/** Gom log thành nhóm theo khoá — dùng chung bởi `--top`, `--close`, `--group`. */
+function groupLog() {
+  const groups = new Map();
+  for (const r of readLog()) {
+    const k = fixlogKey(r.text, RULES);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  }
+  return groups;
+}
 
 /** Nhóm đã đóng → { ts, why }. Cùng thư mục telemetry với fixlog: cả hai là dữ liệu MÁY NÀY. */
 function readClosed() {
@@ -52,25 +68,67 @@ if (args[0] === '--list') {
 }
 
 if (args[0] === '--top') {
-  const groups = new Map();
-  for (const r of readLog()) {
-    const k = fixlogKey(r.text);
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(r);
-  }
+  const groups = groupLog();
   const closed = readClosed();
+  const manual = new Set(RULES.map(r => r.key));
   const sorted = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
   console.log('\n=== NHÓM THEO TẦN SUẤT ===');
   for (const [k, rows] of sorted.slice(0, 15)) {
     const done = closed.get(k);
     const flag = done ? '✔' : rows.length >= 2 ? '★' : ' ';
-    console.log(`${flag} ${String(rows.length).padStart(3)}×  ${rows[0].text}`);
+    const by = manual.has(k) ? ' ⊕' : '';
+    console.log(`${flag} ${String(rows.length).padStart(3)}×${by}  ${rows[0].text}`);
+    // Nhóm THỦ CÔNG in HẾT các văn bản khác nhau nó đã gom. Nếu chỉ in dòng đầu như nhóm từ
+    // vựng, một luật `--group` quá rộng sẽ nuốt một lỗi KHÁC vào cùng nhóm mà không ai thấy —
+    // tức bịa ra một nhóm ≥2. Gom thì được phép, gom LÉN thì không.
+    if (manual.has(k)) {
+      for (const t of [...new Set(rows.slice(1).map(r => r.text))]) console.log(`         · ${t.slice(0, 110)}`);
+    }
     if (done) console.log(`         ĐÃ ĐÓNG ${String(done.ts).slice(0, 10)}: ${done.why}`);
   }
   console.log('\n  ★ = xuất hiện ≥2 lần → ĐỦ ĐIỀU KIỆN promote thành bài học (một lần là ngẫu nhiên).');
   console.log('  ✔ = đã xử lý xong, không tính là việc tới hạn nữa.');
-  console.log('    Chạy /harness-propose cho mục ★, rồi đóng nó:');
-  console.log('    node tooling/fixlog.mjs --close "<vài chữ trong mục>" "<đã làm gì>"\n');
+  console.log('  ⊕ = nhóm do BẠN khai (--group), không phải máy đoán. Mọi văn bản trong nhóm in ngay dưới.');
+  console.log('\n  Nhóm mặc định là phép LEXICAL "6 từ đầu" — nó chỉ gom được khi bạn tình cờ mở đầu');
+  console.log('  giống nhau, nên "0 nhóm ★" KHÔNG có nghĩa là "không có gì lặp lại". Thấy hai dòng');
+  console.log('  cùng một gốc rễ mà nằm rời nhau thì khai nhóm:');
+  console.log('    node tooling/fixlog.mjs --group "<tên-nhóm>" "<vài chữ chung của các dòng đó>"');
+  console.log('    node tooling/fixlog.mjs --close "<vài chữ trong mục>" "<đã làm gì>"   # sau khi xử xong\n');
+  process.exit(0);
+}
+
+// ── --group : NGƯỜI khai hai dòng là cùng một gốc rễ ────────────────────────
+//
+// Xem `fixlogKey` ở `lib/harness.mjs` cho lý do đầy đủ. Tóm tắt: phép nhóm từ vựng bỏ sót theo
+// chiều dễ chịu, và phép nhóm thông minh hơn sẽ bịa theo chiều nguy hiểm. Nên máy không đoán —
+// người khai, máy áp dụng tất định.
+//
+// Luật áp cho CẢ dòng cũ lẫn dòng mới, nên không cần gắn nhãn lúc ghi: đường ghi fixlog vẫn là
+// một câu tiếng Việt trong 3 giây, đúng thứ làm nó được dùng thật.
+if (args[0] === '--group') {
+  const key = (args[1] || '').trim();
+  const needle = (args[2] || '').trim();
+  if (!key || !needle) {
+    console.error('Cách dùng: node tooling/fixlog.mjs --group "<tên-nhóm>" "<vài chữ chung của các dòng>"');
+    console.error('  Ví dụ:   node tooling/fixlog.mjs --group "dcg-chan-nham" "dcg"');
+    console.error('  Luật khớp theo CHUỖI CON, không phân biệt hoa thường, và áp cho cả dòng ghi sau này.');
+    process.exit(1);
+  }
+  const hits = readLog().filter(r => r.text.toLowerCase().includes(needle.toLowerCase()));
+  if (!hits.length) {
+    // Từ khoá không khớp dòng nào gần như luôn là gõ nhầm. Ghi im lặng thì luật nằm đó vô hiệu
+    // và người ta tưởng đã gom xong.
+    console.error(`Không dòng fixlog nào chứa "${needle}". Không ghi luật nào.`);
+    console.error('  Các dòng đang có:');
+    for (const r of readLog().slice(-10)) console.error(`  · ${r.text.slice(0, 110)}`);
+    process.exit(1);
+  }
+  appendFileSync(FIXLOG_GROUPS_FILE(), [new Date().toISOString(), key, needle].join('\t') + '\n', 'utf8');
+  console.log(`\n⊕ nhóm "${key}" giờ gom ${hits.length} dòng:`);
+  for (const r of hits) console.log(`  · ${r.ts.slice(0, 10)}  ${r.text.slice(0, 100)}`);
+  console.log(hits.length >= 2
+    ? `\n  ${hits.length} ≥ 2 ⇒ nhóm này ĐỦ ĐIỀU KIỆN promote. Chạy /harness-propose.\n`
+    : '\n  Mới 1 dòng — luật đã ghi, dòng sau khớp "' + needle + '" sẽ tự vào nhóm này.\n');
   process.exit(0);
 }
 
@@ -93,12 +151,7 @@ if (args[0] === '--close') {
     console.error('  Lý do là BẮT BUỘC: một nhóm bị đóng mà không ghi vì sao thì lần sau không ai dựng lại được quyết định.');
     process.exit(1);
   }
-  const groups = new Map();
-  for (const r of readLog()) {
-    const k = fixlogKey(r.text);
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(r);
-  }
+  const groups = groupLog();
   const hits = [...groups.entries()].filter(([, rows]) => rows[0].text.toLowerCase().includes(needle));
   if (hits.length !== 1) {
     console.error(hits.length ? `Khớp ${hits.length} nhóm — hãy nói cụ thể hơn:` : 'Không nhóm nào khớp. Các nhóm đang có:');
@@ -121,6 +174,7 @@ if (!text) {
   node tooling/fixlog.mjs "mô tả việc bạn vừa phải sửa tay"
   node tooling/fixlog.mjs --list     # 7 ngày qua
   node tooling/fixlog.mjs --top      # nhóm theo tần suất, đánh dấu cái đủ điều kiện promote
+  node tooling/fixlog.mjs --group "<tên-nhóm>" "<vài chữ chung>"     # khai hai dòng là cùng gốc rễ
   node tooling/fixlog.mjs --close "<vài chữ>" "<đã xử lý thế nào>"   # đóng một nhóm đã xử xong`);
   process.exit(1);
 }

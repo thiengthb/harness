@@ -1,0 +1,32 @@
+{
+  "$comment": "FIXTURE cho tooling/test-hooks.mjs — KHÔNG phải config của project nào. Giống config-guard-paths.json, khác ĐÚNG MỘT ĐIỀU: `commands.lintFix` trỏ tới một script thất bại tất định. Nó tồn tại để khẳng định nhánh CHẶN của post-edit-lint.mjs — nhánh mà bốn ca cũ đều không chạm tới, vì cả bốn đều đi vào đường pass(). Tách thành file riêng thay vì thêm lintFix vào config-guard-paths.json: fixture kia được ba hook dùng chung, và một lệnh lint thất bại ở đó sẽ đổi kết quả của những ca không liên quan.",
+  "version": 1,
+  "project": {
+    "id": "fixture-lint-fails",
+    "dri": "@fixture",
+    "integrationBranch": "origin/main",
+    "issuePrefixes": ["FIX"],
+    "platforms": ["core"]
+  },
+  "commands": {
+    "gen": "",
+    "typecheck": "",
+    "test": "",
+    "lintFix": "node tooling/fixtures/lint-always-fails.mjs {file}"
+  },
+  "paths": {
+    "generated": ["**/*.gen.*", "**/generated/**", "**/dist/**"],
+    "migrations": ["**/migrations/**"],
+    "secrets": ["**/.env", "**/.env.*", "!**/.env.example"],
+    "harness": [".claude/settings.json", ".claude/hooks/**", "harness.config.json"],
+    "hot": [],
+    "lintable": ["**/*.ts", "**/*.tsx"],
+    "publicSurface": []
+  },
+  "limits": {
+    "maxSessionsPerPerson": 2,
+    "reservationTtlHours": 8,
+    "prWarnLines": 400,
+    "docStaleDays": 90
+  }
+}
