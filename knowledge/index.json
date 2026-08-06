@@ -1,8 +1,8 @@
 {
   "generatedBy": "tooling/knowledge/lint.mjs",
-  "count": 3,
+  "count": 4,
   "byScope": {
-    "universal": 3
+    "universal": 4
   },
   "lessons": [
     {
@@ -55,6 +55,27 @@
         "tooling/apply-to.mjs — IGNORE dùng `/^\\\\.git(\\\\/|$)/`, dấu `$` là bản sửa",
         "harness.config.json — `$comment_prLines` ghi phép đo 6 release, không phải con số suông",
         "tooling/apply-to.mjs — --audit tự bỏ qua khi thấy .claude/harness-manifest.json"
+      ]
+    },
+    {
+      "id": "L0004",
+      "file": "knowledge/lessons/0004-gac-hong-thi-phai-chan.md",
+      "title": "Một cái gác ném lỗi thì CHO QUA — và không tầng đếm nào phân biệt được nó với gác đang làm việc",
+      "scope": "universal",
+      "class": "verification",
+      "representation": "computational-control",
+      "status": "active",
+      "added": "2026-08-05",
+      "occurrences": 5,
+      "artifacts": [
+        "tooling/lib/harness.mjs — declareFailMode(code, why): mỗi hook KHAI chính sách hỏng của mình, lib không áp đặt",
+        "tooling/test-hooks.mjs — khối FAILMODE: tiêm lỗi vào từng hook, assert exit code theo chính sách đã khai; cửa thoát HARNESS_FAIL_OPEN=1 có test riêng",
+        ".claude/hooks/dcg.mjs — declareFailMode(2) fail-CLOSED",
+        ".claude/hooks/block-secrets.mjs — declareFailMode(2) fail-CLOSED",
+        ".claude/hooks/protect-harness.mjs — declareFailMode(2) fail-CLOSED",
+        ".claude/hooks/protect-migrations.mjs — declareFailMode(2) fail-CLOSED",
+        ".claude/hooks/protect-tests.mjs — declareFailMode(2) fail-CLOSED",
+        ".claude/hooks/post-edit-lint.mjs — declareFailMode(1) fail-open nhưng HIỆN RA, không phải 0"
       ]
     }
   ]

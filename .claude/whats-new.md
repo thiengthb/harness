@@ -1,4 +1,4 @@
-<!-- version: 2026-08-06-c -->
+<!-- version: 2026-08-06-d -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,20 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-06 — Vòng học W32 đã lên `main`; việc còn lại nằm ở issue, không nằm ở nhánh
+
+Nhánh `chore/vong-hoc-2026-W32` dừng ngay trước `gh pr create` khi phiên hết quota
+2026-08-05, rồi nằm ngoài `main` một ngày. Giờ nó ở đây: **L0004** + gate `evals/tasks/0005`
++ retro W32 + nhật ký phiên.
+
+**Việc bạn phải làm khác đi:** đọc `docs/progress/vong-hoc-2026-W32.md` §"BÀI HỌC ĐẮT NHẤT"
+trước khi sửa thứ mà harness tố. Ba lần trong một phiên, thứ bị tố hoá ra là placeholder đúng
+hoặc cơ chế load-bearing. **Cảnh báo của harness là giả thuyết, không phải việc.**
+
+5 mục `/harness-propose` trong nhật ký đó **chưa** thành issue hết — mới có `#43` (dcg khớp
+văn bản thô) và `#56` (`session-start:203` gọi placeholder đúng là "việc số 1"). Còn thiếu:
+`budget.monthlyUsdCap = 0`, kênh đi LÊN không có bên nhận, cắt `AGENTS.md` §Nghi thức.
 
 ## 2026-08-06 — Skill chỉ-người-gõ giờ có người nhắc (v2.15.0)
 
@@ -56,6 +70,16 @@ gọi đúng cái đó là ĐÚNG.
 
 `harness-doctor` → "Nên làm": **19 → 4**, và 15 dòng biến mất là 15 dòng **không ai được phép
 làm**. Không hook nào bị sửa.
+
+## 2026-08-05 — Promote một bài học? Nhớ ĐĂNG KÝ nó, nếu không nó không đi đâu cả
+
+`L0004` (gác hỏng thì chặn) đã lên `knowledge/lessons/`, kèm gate `evals/tasks/0005`.
+
+**Việc bạn phải làm khác đi:** thêm file vào `knowledge/lessons/` hoặc `evals/tasks/` thì
+phải thêm tên nó vào `SEED` trong `tooling/apply-to.mjs` — nếu không, `--audit` đỏ và bài
+học **không sang được project đích**. `/knowledge-promote` chưa nói bước này; `--audit` bắt.
+
+Bị chặn sai chỗ này → nhắn DRI, đừng tự nới `--audit`.
 
 ## 2026-08-05 — Gác ném lỗi giờ CHẶN, không im lặng cho qua (v2.12.0)
 
