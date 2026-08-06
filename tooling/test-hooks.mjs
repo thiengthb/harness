@@ -1349,6 +1349,41 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   } else ok.push(`/claim solo${L} vẫn \`due\` ở cả hai vai, nhưng nêu đúng người đọc (solo: phiên sau + máy khác của BẠN)`);
 }
 
+// ─── apply-to --audit: lưới IGNORE của nhật ký không được mã hoá quy ước ĐẶT TÊN ──
+//
+// Bản trước: `/^docs\/progress\/[A-Z]/`. Nó không lọc "nhật ký thật", nó lọc "nhật ký có
+// tên bắt đầu bằng chữ HOA" — tức nó mã hoá giả định *mọi nhật ký đều tên theo mã issue*.
+//
+// Một phiên NGHI THỨC không có issue (nhánh `chore/…`), nên nhật ký của nó tên theo nhánh,
+// chữ thường. Kết quả đo 2026-08-06: `--audit` đỏ với `docs/progress/vong-hoc-2026-W32.md`
+// — đúng file mà `/claim` bước 6 bảo tạo. Một gate chặn chính artefact do nghi thức của nó
+// sinh ra thì người ta sẽ học cách đi vòng qua gate, không học cách bỏ artefact.
+//
+// Vì sao `--audit` KHÔNG tự khoá được chỗ này: nó chỉ đỏ khi trong cây ĐANG CÓ một nhật ký
+// tên chữ thường. Xoá file đó thì audit xanh lại trong khi bug còn nguyên — cùng chế độ
+// "phép kiểm mất phạm vi thì im lặng" mà ca GLOBAL_OK ngay dưới cũng phòng.
+//
+// Đọc pattern TỪ NGUỒN, không chép lại: chép lại là bản sao thứ hai sẽ trôi.
+{
+  const atSrc = readFileSync(repoPath('tooling', 'apply-to.mjs'), 'utf8');
+  const lit = atSrc.match(/^\s*(\/\^docs\\\/progress\\\/.*?\/),/m)?.[1];
+  const L = ' '.repeat(16);
+  if (!lit) {
+    fail.push(`apply-to.mjs${L} không rút được pattern IGNORE của docs/progress — neo của check này đã trôi, sửa neo thay vì xoá check`);
+  } else {
+    const re = new RegExp(lit.slice(1, -1));
+    // Phải BỎ QUA (không mang sang project mới): nhật ký thật, cả hai kiểu tên.
+    const ignored = ['docs/progress/vong-hoc-2026-W32.md', 'docs/progress/ABC-1.md'];
+    // Phải GIỮ (nằm trong SEED): khuôn mẫu.
+    const seeded = ['docs/progress/_TEMPLATE.md', 'docs/progress/_TEAM.md'];
+    const missed = ignored.filter(f => !re.test(f));
+    const eaten = seeded.filter(f => re.test(f));
+    if (missed.length) fail.push(`apply-to.mjs${L} IGNORE bỏ sót nhật ký thật: ${missed.join(' · ')} — --audit sẽ đỏ với chính file nghi thức vừa tạo`);
+    else if (eaten.length) fail.push(`apply-to.mjs${L} IGNORE nuốt luôn khuôn mẫu: ${eaten.join(' · ')} — chúng ở SEED, project mới sẽ không có khuôn nhật ký`);
+    else ok.push(`apply-to.mjs${L} IGNORE nhật ký lọc theo "không phải khuôn mẫu", không theo quy ước đặt tên (2 kiểu tên bỏ qua, 2 khuôn giữ)`);
+  }
+}
+
 // ─── PARITY: allowlist của entropy-scan phải khớp trên MỌI OS ────────────────
 //
 // `walk()` dựng đường dẫn bằng `join()` ⇒ dấu phân cách của hệ điều hành. Bản trước lấy tên
@@ -1681,7 +1716,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 139;
+const RATCHET = 140;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

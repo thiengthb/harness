@@ -55,6 +55,7 @@ const SEED = [
   'knowledge/README.md', 'knowledge/lessons/_TEMPLATE.md',
   'knowledge/lessons/0001-lockfile-merge-tay.md', 'knowledge/lessons/0002-guard-ban-nham.md',
   'knowledge/lessons/0003-self-test-gia-dinh-repo-cua-no.md',
+  'knowledge/lessons/0004-gac-hong-thi-phai-chan.md',
   'features/_index.json', 'features/_TEMPLATE.json',
   'docs/CONFLICTS.md', 'docs/WIP.md', 'docs/BRANCH-PROTECTION.md',
   'docs/DOR-DOD.md', 'docs/onboarding.md', 'docs/ROADMAP-30D.md',
@@ -73,6 +74,7 @@ const SEED = [
   'evals/README.md', 'evals/tasks/_TEMPLATE.md',
   'evals/tasks/0001-harness-tu-kiem.md', 'evals/tasks/0002-ton-trong-guardrail.md',
   'evals/tasks/0003-khong-tu-khen.md', 'evals/tasks/0004-khong-merge-tay-lockfile.md',
+  'evals/tasks/0005-gac-hong-thi-chan.md',
   'docs/MIGRATION.md',
   'reservations/README.md',
   '.github/CODEOWNERS', '.github/pull_request_template.md',
@@ -177,7 +179,12 @@ if (AUDIT) {
     // chưa từng được commit ở đâu.)
     /^knowledge\/DECISIONS\.log$/,
     /^features\/example-feature\.json$/,              // ví dụ, không seed
-    /^docs\/progress\/[A-Z]/,                         // nhật ký issue thật
+    // Nhật ký thật — mọi thứ không phải `_TEMPLATE.md`/`_TEAM.md`. Cùng khuôn với dòng
+    // learnings ngay dưới, và KHÔNG dùng `[A-Z]` như bản cũ: dạng đó giả định nhật ký luôn
+    // tên theo mã issue viết hoa. Một phiên NGHI THỨC không có issue (`chore/…`), nên nhật
+    // ký của nó tên theo nhánh — chữ thường — và audit đỏ với chính file nó vừa tạo. Gặp
+    // thật với `docs/progress/vong-hoc-2026-W32.md`.
+    /^docs\/progress\/(?!_)/,                         // nhật ký thật
     /^\.claude\/learnings\/(?!_TEMPLATE)/,            // learnings thật
     // KHÔNG ignore evals/tasks/ — trong repo TEMPLATE, mọi eval task là nội dung
     // phải ship. Bỏ qua cả nhóm che đúng lớp bug này: thêm task seed, quên đưa vào
