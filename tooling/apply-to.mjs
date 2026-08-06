@@ -179,7 +179,12 @@ if (AUDIT) {
     // chưa từng được commit ở đâu.)
     /^knowledge\/DECISIONS\.log$/,
     /^features\/example-feature\.json$/,              // ví dụ, không seed
-    /^docs\/progress\/[A-Z]/,                         // nhật ký issue thật
+    // Nhật ký thật — mọi thứ không phải `_TEMPLATE.md`/`_TEAM.md`. Cùng khuôn với dòng
+    // learnings ngay dưới, và KHÔNG dùng `[A-Z]` như bản cũ: dạng đó giả định nhật ký luôn
+    // tên theo mã issue viết hoa. Một phiên NGHI THỨC không có issue (`chore/…`), nên nhật
+    // ký của nó tên theo nhánh — chữ thường — và audit đỏ với chính file nó vừa tạo. Gặp
+    // thật với `docs/progress/vong-hoc-2026-W32.md`.
+    /^docs\/progress\/(?!_)/,                         // nhật ký thật
     /^\.claude\/learnings\/(?!_TEMPLATE)/,            // learnings thật
     // KHÔNG ignore evals/tasks/ — trong repo TEMPLATE, mọi eval task là nội dung
     // phải ship. Bỏ qua cả nhóm che đúng lớp bug này: thêm task seed, quên đưa vào

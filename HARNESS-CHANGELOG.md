@@ -11,6 +11,46 @@
 
 ---
 
+## 2.22.0 — 2026-08-06
+
+**minor.** Bài học **L0004** và gate **`evals/tasks/0005`** đi được sang project đích. Và
+lưới lọc nhật ký thôi mã hoá một quy ước ĐẶT TÊN.
+
+### ① L0004 + eval 0005 vào `SEED`
+
+`knowledge/lessons/0004-gac-hong-thi-phai-chan.md` (gác hỏng thì CHẶN, promote từ v2.12.0)
+và `evals/tasks/0005-gac-hong-thi-chan.md` giờ có tên trong `SEED` của `apply-to.mjs`.
+
+Không đăng ký thì bài học nằm trong repo template và **không đi đâu cả** — `--audit` đỏ, và
+project đích nhận một `index.json` trỏ vào file không tồn tại. Đây là bước 8 mà
+`/knowledge-promote` không nói ra; `--audit` là thứ bắt được.
+
+`knowledge/lint.mjs`: **4 bài học hợp lệ · 4 mang đi được**.
+
+### ② `--audit` đỏ với chính artefact mà `/claim` bảo tạo
+
+`IGNORE` cũ: `/^docs\/progress\/[A-Z]/`. Nó không lọc *"nhật ký thật"*, nó lọc *"nhật ký có
+tên bắt đầu bằng chữ HOA"* — tức mã hoá giả định **mọi nhật ký đều tên theo mã issue**.
+
+Một phiên NGHI THỨC không có issue (nhánh `chore/…`), nên nhật ký của nó tên theo nhánh,
+chữ thường, và `--audit` đỏ với đúng file mà `/claim` bước 6 bảo tạo. Đo 2026-08-06 với
+`docs/progress/vong-hoc-2026-W32.md`. Một gate chặn artefact do nghi thức của chính nó sinh
+ra thì người ta học cách đi vòng qua gate, không học cách bỏ artefact.
+
+Giờ là `/^docs\/progress\/(?!_)/` — cùng khuôn với dòng `learnings` ngay dưới nó: lọc theo
+*"không phải khuôn mẫu"*, không theo quy ước đặt tên.
+
+**`--audit` một mình KHÔNG khoá được chỗ này**: nó chỉ đỏ khi trong cây đang có một nhật ký
+tên chữ thường; xoá file đó thì audit xanh lại trong khi bug còn nguyên. Nên có test đọc
+pattern **từ nguồn** và khẳng định bằng hành vi (2 kiểu tên phải bỏ qua, 2 khuôn phải giữ).
+Đã kiểm nó ĐỎ với pattern cũ trước khi tin. Sàn test: **136 → 137**.
+
+### Không có gì phải làm khi nâng cấp
+
+Cả hai thay đổi nằm trong lớp harness. Project đích nhận thêm một bài học và một eval task.
+
+---
+
 ## 2.21.0 — 2026-08-06
 
 **minor.** Ratchet `hooks-without-mutant`: **3 → 1**. Và một hợp đồng output KHÔNG bị nới.
