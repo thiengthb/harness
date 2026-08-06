@@ -608,11 +608,60 @@ export function repoRole() {
  *
  * Bản sao thứ hai đã tồn tại từ 2.10.0 kèm một comment tiên đoán đúng chuyện này. Comment
  * không ngăn được bản sao thứ ba; gộp lại thì ngăn được.
+ *
+ * ── GIỚI HẠN CỦA PHÉP NHÓM TỪ VỰNG, và vì sao có `rules`
+ *
+ * "6 từ đầu" là phép nhóm LEXICAL áp lên văn bản người viết TỰ DO. Nó chỉ gom được khi người
+ * viết tình cờ mở đầu giống nhau — và đo 2026-08-06 trên chính repo này: 5 mục fixlog ⇒ 5 nhóm
+ * đơn lẻ, 0 nhóm đạt ngưỡng, TRONG KHI 3/5 mục là cùng một gác (`dcg` chặn nhầm) và
+ * `.claude/learnings/2026-W32-dcg-quet-than-heredoc.md` đã ghi chúng là lần 3, 4, 5.
+ *
+ * Hỏng theo chiều NGUY HIỂM: `/harness-retro` đọc "chưa nhóm nào đạt ngưỡng ≥2" — tức câu trả
+ * lời DỄ CHỊU — trong khi sự thật là ngưỡng đã bị vượt từ lâu. Cùng lớp lỗi với `hookRan()`:
+ * "không đo được" tự thu về "ổn".
+ *
+ * KHÔNG sửa bằng heuristic thông minh hơn (stemming, trùng token, khoảng cách chuỗi). Gom nhầm
+ * hai lỗi KHÁC nhau thì BỊA ra một nhóm ≥2 chưa từng có — nó chế tạo bằng chứng, hỏng theo
+ * chiều tệ hơn hẳn chiều đang có. Phép gom là một PHÁN ĐOÁN, và bắt regex đoán hộ chính là
+ * "inferential control" mà AGENTS.md dặn đổi sang "computational control" bất cứ khi nào được.
+ *
+ * Nên: người khai nhóm (`fixlog.mjs --group`), máy chỉ áp dụng. `rules` là danh sách
+ * `{ key, needle }` theo thứ tự file; luật ĐẦU TIÊN khớp thì thắng ⇒ tất định. Không có luật
+ * nào khớp thì rơi về phép từ vựng cũ — nên `fixlogKey(text)` không đổi hành vi.
+ *
+ * Hàm vẫn THUẦN: `rules` truyền vào, không đọc đĩa ở đây (xem `fixlogGroupRules()`).
  */
-export function fixlogKey(text) {
-  return String(text).toLowerCase()
+export function fixlogKey(text, rules = []) {
+  const t = String(text).toLowerCase();
+  for (const r of rules) {
+    const needle = String(r?.needle || '').toLowerCase().trim();
+    if (needle && t.includes(needle)) return String(r.key);
+  }
+  return t
     .replace(/[^a-z0-9à-ỹ\s]/gi, ' ')
     .split(/\s+/).filter(w => w.length > 3).slice(0, 6).join(' ');
+}
+
+/** Đường dẫn file luật gom nhóm. Cùng thư mục telemetry với fixlog: đều là dữ liệu MÁY NÀY. */
+export const FIXLOG_GROUPS_FILE = () => join(telemetryDir(), 'fixlog-groups.log');
+
+/**
+ * Đọc luật gom nhóm do người khai. TSV `ts \t key \t needle`, giữ NGUYÊN thứ tự file
+ * (luật đầu tiên khớp thì thắng — xem `fixlogKey`).
+ *
+ * Đọc được rỗng và đọc lỗi trả về CÙNG một thứ (`[]`) là chấp nhận được ở đây, và chỉ ở đây:
+ * không có luật nào thì phép từ vựng cũ vẫn chạy, tức mất phép gom thủ công chứ không mất mục
+ * fixlog nào. Đây là suy giảm, không phải mù.
+ */
+export function fixlogGroupRules() {
+  try {
+    const f = FIXLOG_GROUPS_FILE();
+    if (!existsSync(f)) return [];
+    return readFileSync(f, 'utf8').split('\n').filter(Boolean).map(l => {
+      const [ts, key, ...needle] = l.split('\t');
+      return { ts, key, needle: needle.join('\t').trim() };
+    }).filter(r => r.key && r.needle);
+  } catch { return []; }
 }
 
 export const REMOVED_PATHS = [
