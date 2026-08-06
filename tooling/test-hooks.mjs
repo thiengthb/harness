@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, rmSync, readdirSync, cpSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey } from './lib/harness.mjs';
 
 const BLOCK = 2, OK = 0;
 
@@ -1071,6 +1071,55 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   if (iRun < 0 || iSuite < 0) fail.push(`harness-doctor.mjs${' '.repeat(10)} không tìm thấy \`RUN_STARTED\` hoặc vòng chạy suite — neo của check này đã trôi, sửa neo thay vì xoá check`);
   else if (iRun > iSuite) fail.push(`harness-doctor.mjs${' '.repeat(10)} \`RUN_STARTED\` bị chụp SAU khi chạy suite ⇒ mọi dòng của lần chạy này đều bị coi là cũ, cột bằng chứng im vĩnh viễn`);
   else ok.push(`harness-doctor.mjs${' '.repeat(10)} \`RUN_STARTED\` chụp trước khi chạy suite`);
+
+  // ⑥ `fixlogKey` + luật gom nhóm do NGƯỜI khai.
+  //
+  //    VÌ SAO CÓ: phép nhóm mặc định là 6 từ đầu của văn bản TỰ DO. Đo 2026-08-06 trên repo này:
+  //    5 mục ⇒ 5 nhóm đơn lẻ, 0 nhóm ≥2, trong khi 3/5 mục là cùng một gác (`dcg` chặn nhầm).
+  //    `/harness-retro` vì thế đọc "chưa nhóm nào đạt ngưỡng" — CÂU TRẢ LỜI DỄ CHỊU — và cả
+  //    vòng học đứng im. Luật thủ công sửa chiều đó mà không cho máy đoán.
+  const KEY = [
+    // `dcg` `lan` `nam` đều ≤3 ký tự nên bị phép từ vựng LOẠI — chỉ còn `chan nham`. Chính chỗ
+    // này cho thấy phép từ vựng mỏng đến mức nào trên tiếng Việt không dấu: nó vứt gần hết câu.
+    [['dcg chan nham lan nam', []], 'chan nham', 'không luật ⇒ phép TỪ VỰNG cũ, y nguyên'],
+    [['dcg chan nham lan nam', [{ key: 'g', needle: 'dcg' }]], 'g', 'luật khớp ⇒ thắng phép từ vựng'],
+    [['DCG viet HOA', [{ key: 'g', needle: 'dcg' }]], 'g', 'khớp KHÔNG phân biệt hoa thường'],
+    [['chuyen khac han', [{ key: 'g', needle: 'dcg' }]], 'chuyen khac', 'không luật nào khớp ⇒ rơi về từ vựng'],
+    [['dcg gi do', [{ key: 'A', needle: 'dcg' }, { key: 'B', needle: 'dcg' }]], 'A', 'hai luật cùng khớp ⇒ luật ĐẦU thắng (tất định)'],
+    // `''.includes('')` là TRUE. Một needle rỗng lọt qua sẽ nuốt MỌI dòng vào một nhóm và bịa ra
+    // một nhóm ≥2 khổng lồ — đúng chiều nguy hiểm mà cả cơ chế này tránh.
+    [['dcg gi do', [{ key: 'X', needle: '' }]], '', 'needle RỖNG bị bỏ qua, không nuốt mọi dòng'],
+    [['dcg gi do', [{ key: 'X', needle: '   ' }]], '', 'needle toàn khoảng trắng cũng vậy'],
+  ];
+  const badK = KEY.filter(([[t, r], want]) => fixlogKey(t, r) !== want);
+  if (badK.length) fail.push(`lib/harness.mjs${' '.repeat(13)} fixlogKey() sai ở ${badK.length}/${KEY.length} ca: ${badK.map(([, , l]) => l).join(' · ')}`);
+  else ok.push(`lib/harness.mjs${' '.repeat(13)} fixlogKey(): luật người-khai thắng phép từ vựng, luật đầu thắng, needle rỗng bị bỏ — ${KEY.length} ca`);
+
+  // ⑦ CHỐNG LỆCH HAI BẢNG. `fixlog.mjs --top` và `rituals.mjs` trả lời CÙNG một câu hỏi
+  //    ("nhóm nào đã ≥2 lần"). Nếu chỉ một bên đọc luật gom nhóm, người dùng thấy "★ đủ điều
+  //    kiện promote" ở một chỗ và "chưa nhóm nào đạt ngưỡng" ở chỗ kia — hai sự thật, không
+  //    gì báo. Đây đúng là lỗi mà comment ở `lib/harness.mjs` đã tiên đoán cho bản sao thứ ba.
+  const ritSrc = readFileSync(repoPath('tooling', 'rituals.mjs'), 'utf8');
+  const fixSrc = readFileSync(repoPath('tooling', 'fixlog.mjs'), 'utf8');
+  const drift = [];
+  if (!/fixlogGroupRules/.test(ritSrc)) drift.push('rituals.mjs không đọc luật gom nhóm');
+  if (!/fixlogGroupRules/.test(fixSrc)) drift.push('fixlog.mjs không đọc luật gom nhóm');
+  // Gọi `fixlogKey(x)` một tham số = bỏ qua luật. Bắt tại nguồn, vì hậu quả của nó là im lặng.
+  for (const [name, src] of [['rituals.mjs', ritSrc], ['fixlog.mjs', fixSrc]]) {
+    const bare = src.match(/fixlogKey\([^),]*\)/g)?.filter(s => !/^fixlogKey\(\s*\)$/.test(s)) || [];
+    if (bare.length) drift.push(`${name} còn ${bare.length} chỗ gọi fixlogKey() KHÔNG truyền luật: ${bare.join(' · ')}`);
+  }
+  if (drift.length) fail.push(`fixlog ↔ rituals${' '.repeat(12)} ${drift.join(' · ')}`);
+  else ok.push(`fixlog ↔ rituals${' '.repeat(12)} cả hai bảng đọc CÙNG luật gom nhóm — không có đường cho hai câu trả lời khác nhau`);
+
+  // ⑧ `--group` với từ khoá không khớp dòng nào phải TỪ CHỐI, không ghi luật. Gõ nhầm mà ghi
+  //    im lặng thì luật nằm đó vô hiệu và người ta tưởng đã gom xong — một nút bấm không có
+  //    tác dụng và không báo, cùng lớp với lỗi `--close` đã phòng từ 2.11.0.
+  const g = spawnSync(process.execPath, [repoPath('tooling', 'fixlog.mjs'), '--group', 'x', 'khong-the-nao-co-chuoi-nay-trong-fixlog'],
+    { encoding: 'utf8', cwd: repoPath() });
+  if (g.status === 0) fail.push(`fixlog.mjs${' '.repeat(18)} --group với từ khoá khớp 0 dòng vẫn exit 0 — luật vô hiệu được ghi im lặng`);
+  else if (!/Không dòng fixlog nào/.test(g.stderr || '')) fail.push(`fixlog.mjs${' '.repeat(18)} --group từ chối nhưng không nói vì sao`);
+  else ok.push(`fixlog.mjs${' '.repeat(18)} --group từ chối từ khoá khớp 0 dòng và nói rõ — không ghi luật chết`);
 }
 
 // ─── ③④ MUTANT ───────────────────────────────────────────────────────────────
@@ -1302,7 +1351,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 122;
+const RATCHET = 125;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

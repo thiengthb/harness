@@ -11,6 +11,65 @@
 
 ---
 
+## 2.16.0 — 2026-08-06
+
+**minor.** Bước 1 của vòng học đếm SAI, và nó sai về phía dễ chịu.
+
+`fixlog` gom các dòng bằng **6 từ đầu dài hơn 3 ký tự** — một phép nhóm *từ vựng* áp lên văn bản
+người viết *tự do*. Nó chỉ gom được khi người viết tình cờ mở đầu giống nhau. Đo trên chính repo
+này 2026-08-06:
+
+```
+5 mục fixlog  ⇒  5 nhóm đơn lẻ  ⇒  0 nhóm ★  ⇒  /harness-retro XANH
+```
+
+Trong khi **4/5 mục là cùng một gác** (`dcg` — hai triệu chứng ngược nhau, một gốc rễ), và
+`.claude/learnings/2026-W32-dcg-khop-chuoi-khong-khop-lenh.md` **đã ghi rõ** chúng là một.
+Ngưỡng promote ≥2 đã bị vượt từ lâu; bảng nghi thức báo "chưa nhóm nào đạt ngưỡng".
+
+Hỏng theo **chiều nguy hiểm**: câu trả lời sai lại đúng là câu trả lời khiến không ai phải làm
+gì. Cùng lớp với `hookRan()` ở 2.12.0 — *"không đo được"* tự thu về *"ổn"*.
+
+### ① `--group`: người khai, máy áp dụng
+
+```
+node tooling/fixlog.mjs --group "<tên-nhóm>" "<vài chữ chung>"
+```
+
+Luật ghi vào `.claude/telemetry/fixlog-groups.log` (TSV, máy-này, không commit), áp cho **cả
+dòng cũ lẫn dòng mới** — nên đường ghi fixlog vẫn là một câu tiếng Việt trong 3 giây, đúng thứ
+làm nó được dùng thật. Luật **đầu tiên** khớp thì thắng ⇒ tất định.
+
+**KHÔNG sửa bằng heuristic thông minh hơn** (stemming, trùng token, khoảng cách chuỗi). Gom nhầm
+hai lỗi khác nhau thì **bịa ra** một nhóm ≥2 chưa từng có — nó *chế tạo bằng chứng*, hỏng theo
+chiều tệ hơn hẳn chiều đang có. Phép gom là một **phán đoán**; bắt regex đoán hộ đúng là thứ
+`AGENTS.md` dặn đổi từ *inferential* sang *computational control*.
+
+### ② Gom thì được, gom LÉN thì không
+
+`--top` đánh dấu nhóm thủ công bằng `⊕` và in **hết** các văn bản khác nhau nó đã gom. Một luật
+quá rộng nuốt nhầm một lỗi khác sẽ **nhìn thấy được**, không im lặng. `--group` với từ khoá khớp
+0 dòng thì **từ chối** — gõ nhầm mà ghi im lặng là một nút bấm không có tác dụng và không báo.
+
+### ③ Hai bảng, một sự thật
+
+`fixlog --top` và `rituals.mjs` trả lời cùng một câu hỏi *"nhóm nào đã ≥2 lần"*. Cả hai giờ đọc
+cùng một tập luật, và `test-hooks.mjs` **chặn tại nguồn** mọi lời gọi `fixlogKey()` không truyền
+luật — đúng lỗi mà comment ở `lib/harness.mjs` đã tiên đoán cho "bản sao thứ ba".
+
+### ④ Một dòng xanh nói quá
+
+`/harness-retro` khi xanh giờ nói rõ phép nhóm là **từ vựng**, thay vì để `"chưa nhóm nào đạt
+ngưỡng ≥2"` đọc như *"không có gì lặp lại"*.
+
+Và `/knowledge-promote` thôi nói `.claude/learnings/` là **"chỉ-máy-này-thấy"** — nó được
+**commit** (`git ls-files` xác nhận). Cái thật sự mất là tính **mang đi được** sang repo khác.
+Một lý do sai hướng vẫn khiến người ta hành động, nhưng vì một nguy cơ không có thật.
+
+**Sàn test:** 122 → **125**.
+
+---
+
 ## 2.15.0 — 2026-08-06
 
 **minor.** Một quy trình chỉ chạy khi có người nhớ ra nó tồn tại thì nó **không tồn tại**.

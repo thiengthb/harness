@@ -41,7 +41,7 @@
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey } from './lib/harness.mjs';
+import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules } from './lib/harness.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHẦN THUẦN — không đọc đĩa, không gọi git. Test khẳng định trực tiếp vào đây.
@@ -113,7 +113,10 @@ export const RITUALS = [
         return { state: 'due', why: `${s.fixlogRepeated} nhóm fixlog đã ≥2 lần (ngưỡng promote) trên tổng ${s.fixlogTotal} mục — mỗi nhóm là một ứng viên bài học ĐANG chờ` };
       }
       if (s.fixlogTotal >= 10) return { state: 'due', why: `${s.fixlogTotal} mục fixlog mà chưa nhóm nào ≥2 — đủ nhiều để đáng đọc một lượt` };
-      return { state: 'ok', why: `${s.fixlogTotal} mục fixlog, chưa nhóm nào đạt ngưỡng ≥2` };
+      // Nói rõ phép nhóm là TỪ VỰNG. "Chưa nhóm nào ≥2" đọc như "không có gì lặp lại", nhưng nó
+      // chỉ có nghĩa "không có hai dòng nào mở đầu giống nhau" — đo 2026-08-06: 3 mục cùng một
+      // gác nằm ở 3 nhóm rời. Một dòng xanh nói quá thì tệ hơn một dòng đỏ nói thiếu.
+      return { state: 'ok', why: `${s.fixlogTotal} mục fixlog, chưa nhóm nào đạt ngưỡng ≥2 — nhóm mặc định theo TỪ VỰNG, hai dòng cùng gốc rễ mà khác cách diễn đạt thì khai bằng \`fixlog.mjs --group\`` };
     },
   },
   {
@@ -123,7 +126,12 @@ export const RITUALS = [
     check: (s) => {
       if (s.learningsNewerThanLessons === null) return { state: '?', why: 'không đọc được .claude/learnings/ hoặc knowledge/lessons/ — không đo được' };
       if (s.learningsNewerThanLessons > 0) {
-        return { state: 'due', why: `${s.learningsNewerThanLessons} file trong .claude/learnings/ mới hơn bài học mới nhất ở knowledge/lessons/ — bài học đang ở dạng chỉ-máy-này-thấy` };
+        // "chỉ REPO này thấy", KHÔNG phải "chỉ máy này thấy" — `.claude/learnings/` được COMMIT
+        // (`git ls-files` xác nhận 2026-08-06). Bản cũ nói sai về cái mất: nó doạ mất bài học
+        // khi đổi máy, trong khi cái thật sự mất là tính MANG ĐI ĐƯỢC sang repo khác. Một lý do
+        // sai hướng vẫn khiến người ta hành động, nhưng vì lý do không có thật — và khi họ phát
+        // hiện ra bài học vẫn còn sau khi đổi máy, họ học được rằng bảng này nói quá.
+        return { state: 'due', why: `${s.learningsNewerThanLessons} file trong .claude/learnings/ mới hơn bài học mới nhất ở knowledge/lessons/ — bài học đang ở dạng chỉ-repo-này-thấy, chưa mang được sang project khác` };
       }
       return { state: 'ok', why: 'không có learnings nào mới hơn lessons' };
     },
@@ -425,7 +433,11 @@ function fixlogState() {
     if (!existsSync(f)) return { fixlogTotal: 0, fixlogRepeated: 0 };
     const lines = readFileSync(f, 'utf8').split('\n').filter(Boolean);
     // `fixlogKey` ở `lib/harness.mjs` — MỘT nguồn cho cả `--top`, `--close` và chỗ này.
-    const norm = fixlogKey;
+    // Luật gom nhóm thủ công phải đọc Ở ĐÂY NỮA: nếu `--top` thấy một nhóm ≥2 mà bảng nghi thức
+    // không thấy, thì người dùng đọc được "có ứng viên bài học" ở một chỗ và "chưa nhóm nào đạt
+    // ngưỡng" ở chỗ kia — hai câu trả lời khác nhau cho cùng một câu hỏi, và không gì báo.
+    const rules = fixlogGroupRules();
+    const norm = (t) => fixlogKey(t, rules);
     const groups = new Map();
     for (const l of lines) {
       const text = l.split('|').slice(3).join('|').trim() || l;
