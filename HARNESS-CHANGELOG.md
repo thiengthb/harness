@@ -11,6 +11,46 @@
 
 ---
 
+## 2.19.0 — 2026-08-06
+
+**minor.** Ratchet `hooks-without-mutant`: **6 → 3**. Và một trong ba bậc đó là sửa phép đếm.
+
+Một mutant bị giết trả lời câu hỏi *"phép kiểm của cái gác này có THẬT không, hay nó chỉ đang
+chạy?"*. Không có mutant thì một cái gác có thể đã thành trang trí từ lâu mà `harness-doctor`
+vẫn hiện `✓` và `hookRan()` vẫn ghi `pass` đều đặn.
+
+### ① `protect-tests.mjs` — bảng đếm rỗng
+
+Phạm vi thật của hook này **không** phải bộ lọc `IS_TEST` mà là **hai bảng regex đếm**. Nếu
+chúng không khớp gì, mọi phép đếm ra 0, `0 < 0` là false, và hook chạy bình thường mà **không
+bao giờ chặn nữa** — cùng hình dạng với `DENY` rỗng ở `dcg`. Mutant chứng minh: xoá sạch test
+trong `tooling/fixtures/example.test.js` thì **lọt**.
+
+### ② `protect-migrations.mjs` — `paths.migrations` bị vô hiệu
+
+Mutant cần commit fixture *"đã merge"* dựng ở bước setup, nên `mutate()` giờ nhận `env` với
+giá trị **lười tính** (hàm), giống bảng `cases` đã làm từ trước.
+
+### ③ Phép đếm bỏ sót dạng mutant thứ hai — `observe.mjs` bị tính oan
+
+Bộ đếm chỉ nhìn trong khối `const MUTANTS = [...]`. Nhưng có **hai** dạng mutant:
+
+- **dạng bảng** — khai trong mảng, chạy qua `mutate()`;
+- **dạng rời** — viết tay khi mutant cần bối cảnh riêng. `observe.mjs` phải xoá mẩu bánh mì rồi
+  bắn một sự kiện `StopFailure` trước khi kiểm, thứ bảng không diễn đạt được.
+
+`observe.mjs` **có** một mutant thật đang bị giết mỗi lần chạy suite, nhưng bị đếm là *"chưa
+có"* — **vĩnh viễn**. Sai theo chiều an toàn (bi quan), nhưng hậu quả nặng hơn nó nghe: mốc này
+**không bao giờ về 0 được**, trong khi chính file khai `ĐIỀU KIỆN THOÁT: một mốc về 0 → xoá dòng
+đó`. **Một ratchet không thể về 0 thì không phải ratchet — nó là một dòng trang trí vĩnh viễn.**
+
+Đo lại: `6 → 3`. Ba hook còn lại (`block-generated-edit`, `post-edit-lint`, `session-start`)
+là hook **cố vấn**, không phải gác chặn — mutant cho chúng có hình dạng khác, chưa làm.
+
+**Sàn test:** 131 → **133**.
+
+---
+
 ## 2.18.0 — 2026-08-06
 
 **minor.** `/verify-ui` thôi vô hình, và mục `?` thôi giấu tên.

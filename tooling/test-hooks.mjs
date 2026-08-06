@@ -83,7 +83,7 @@ const TEST_ENV = {
  * Mutant chạy trên một BẢN SAO cạnh file gốc (cần cùng thư mục để import tương đối
  * `../../tooling/lib/harness.mjs` còn resolve được). File gốc KHÔNG BAO GIỜ bị ghi.
  */
-function mutate(hookFile, apply, input, { mayCrash = false } = {}) {
+function mutate(hookFile, apply, input, { mayCrash = false, env = null } = {}) {
   const src = repoPath('.claude', 'hooks', hookFile);
   if (!exists(src)) return { killed: false, ran: false, note: 'hook không tồn tại' };
   const original = readFileSync(src, 'utf8');
@@ -94,9 +94,15 @@ function mutate(hookFile, apply, input, { mayCrash = false } = {}) {
   const tmp = repoPath('.claude', 'hooks', `.mutant.tmp.mjs`);
   try {
     writeFileSync(tmp, mutated, 'utf8');
+    // Giá trị env có thể là hàm — lười tính, GIỐNG bảng `cases`. Hook nào cần fixture dựng
+    // trong lúc setup (protect-migrations cần một commit "đã merge") thì không thể khai giá
+    // trị đó ở thời điểm mảng MUTANTS được viết ra.
+    const extra = Object.fromEntries(
+      Object.entries(env || {}).map(([k, v]) => [k, String(typeof v === 'function' ? v() : v)]),
+    );
     const r = spawnSync(process.execPath, [tmp], {
       input: JSON.stringify(input), encoding: 'utf8', cwd: repoPath(''),
-      env: { ...process.env, ...TEST_ENV },
+      env: { ...process.env, ...TEST_ENV, ...extra },
     });
     const status = r.status ?? -1;
     const ran = status === OK || status === BLOCK;     // chạy được, dù chặn hay không
@@ -1243,9 +1249,29 @@ const MUTANTS = [
     s => s.replace(/rel\.endsWith\('_index\.json'\)/, 'false'),
     { tool_input: { file_path: 'features/_index.json' } },
     '_index.json không còn do DRI giữ ⇒ LỌT — guard chống single-writer là thật'],
+
+  // Phạm vi của `protect-tests` KHÔNG phải `IS_TEST` — đó chỉ là bộ lọc file. Phạm vi thật
+  // là hai bảng regex đếm: nếu chúng không khớp gì, mọi phép đếm đều ra 0, `0 < 0` là false,
+  // và hook CHẠY BÌNH THƯỜNG mà không bao giờ chặn nữa. Đó là chế độ hỏng nguy hiểm nhất của
+  // nó — cùng hình dạng với `DENY` rỗng ở dcg — vì `hookRan()` vẫn ghi "pass" đều đặn và
+  // `harness-doctor` vẫn hiện `✓`. Một cái gác đếm bằng bảng rỗng trông y hệt một cái gác
+  // không có gì để bắt.
+  ['protect-tests.mjs',
+    s => s.replace(/^const ASSERT = .*$/m, 'const ASSERT = /(?!)/g;')
+      .replace(/^const BLOCK = .*$/m, 'const BLOCK = /(?!)/g;'),
+    { tool_name: 'Write', tool_input: { file_path: 'tooling/fixtures/example.test.js', content: '// khong con test nao\n' } },
+    'hai bảng regex đếm rỗng ⇒ xoá sạch test vẫn LỌT — phép đếm không phải trang trí'],
+
+  // Phạm vi: `paths.migrations`. Vô hiệu nó thì hook cho qua MỌI file — kể cả migration đã
+  // merge. Cần `MERGED_REF` (commit fixture dựng ở bước setup) nên env phải lười tính.
+  ['protect-migrations.mjs',
+    s => s.replace(/matchAny\(rel, patterns\)/, 'false'),
+    { tool_input: { file_path: 'db/migrations/0001_init.sql' } },
+    'paths.migrations bị vô hiệu ⇒ migration ĐÃ MERGE lọt — danh sách đó được tra thật',
+    { ...GUARD_CFG, HARNESS_INTEGRATION_BRANCH: () => MERGED_REF }],
 ];
-for (const [hook, apply, input, label] of MUTANTS) {
-  const m = mutate(hook, apply, input);
+for (const [hook, apply, input, label, env] of MUTANTS) {
+  const m = mutate(hook, apply, input, { env });
   if (m.note) fail.push(`MUTANT ${hook.padEnd(21)} ${label}\n         ${m.note}`);
   else if (!m.killed) fail.push(`MUTANT ${hook.padEnd(21)} ${label}\n         MUTANT SỐNG SÓT (exit=${m.status}) — nhìn PHẠM VI của check trước khi nhìn logic.`);
   else ok.push(`MUTANT ${hook.padEnd(21)} ${label}`);
@@ -1476,7 +1502,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 131;
+const RATCHET = 133;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {
