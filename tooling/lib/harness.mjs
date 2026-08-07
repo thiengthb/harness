@@ -995,8 +995,41 @@ export function stateDir() {
  * đó là đầu vào của `/harness-retro` bước 4, chỗ bắt buộc đề xuất CẮT BỎ.
  * Một bộ đếm bị chính test của nó làm nhiễu là bộ đếm nói dối về hướng nguy hiểm.
  */
+/**
+ * PHỄU DUY NHẤT của mọi đường ghi telemetry. Vì vậy mệnh đề `fixture-` nằm ở ĐÂY.
+ *
+ * Đo 2026-08-07 (`/harness-retro` §3): 2 trong 6 mục của `gate-fails.log` mang project id
+ * của FIXTURE (`fixture-guard-paths`, `fixture-lint-fails`) — tức không phải công việc thật
+ * bị chặn. Tổng 6 lần chặn từ trước tới nay thật ra là: **1 cứu thật · 3 dương tính giả ·
+ * 2 rác**. Mà cột `N qua · M chặn` chính là thứ `/harness-retro` bước 1 dặn đọc TRƯỚC, và
+ * bước 4 dùng để quyết định CẮT cái gì.
+ *
+ * SUITE THÌ SẠCH — đã đo: chạy `test-hooks` + `test-evals`, log thật giữ nguyên 6 → 6 dòng.
+ * `TEST_ENV` có `HARNESS_TELEMETRY_DIR` và `mutate()` truyền nó xuống. Nguồn rò là **probe
+ * hook BẰNG TAY lúc phát triển**: chạy hook với `HARNESS_CONFIG` trỏ fixture rồi quên chuyển
+ * đích. Suite có kỷ luật; probe tay thì không — và probe tay đúng là thứ người ta làm khi
+ * đang viết một hook.
+ *
+ * CHUYỂN HƯỚNG, KHÔNG VỨT. Dữ liệu vẫn được ghi, chỉ là vào đích của test. Vứt im lặng
+ * biến một cơ chế thành vô hình, và đó là lớp lỗi `block()` đã đóng ở v2.17.0.
+ *
+ * Đây là một mệnh đề, không phải một lời nhắc — cùng lý do với `block()` tự ghi sổ:
+ * `danger-zones.md` đã viết sẵn câu trả lời cho dạng "nhớ set biến môi trường":
+ * *"mọi thứ chỉ tồn tại dưới dạng lời nhắc sẽ bị bỏ qua bởi người đang gấp,
+ * và người đang gấp luôn tồn tại."*
+ *
+ * ĐÁNH ĐỔI, nói rõ: một project THẬT tên `fixture-…` sẽ bị chuyển hướng nhầm. `setup.mjs`
+ * suy `project.id` từ tên thư mục, nên điều đó có thể xảy ra. Chấp nhận: hỏng theo chiều
+ * "telemetry của bạn nằm ở tmpdir" thì thấy ngay khi `harness-doctor` báo 0 bằng chứng;
+ * hỏng theo chiều ngược lại thì bộ đếm nói dối âm thầm và không ai biết.
+ */
 export function telemetryDir() {
-  const d = process.env.HARNESS_TELEMETRY_DIR || repoPath('.claude', 'telemetry');
+  let d = process.env.HARNESS_TELEMETRY_DIR;
+  if (!d) {
+    let id = '';
+    try { id = String(config().project?.id || ''); } catch {}
+    d = id.startsWith('fixture-') ? TEST_TELEMETRY_DIR : repoPath('.claude', 'telemetry');
+  }
   try { mkdirSync(d, { recursive: true }); } catch {}
   return d;
 }
