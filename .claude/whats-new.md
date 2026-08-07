@@ -1,4 +1,4 @@
-<!-- version: 2026-08-08-a -->
+<!-- version: 2026-08-08-b -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,18 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-08 — `wt-clean` thôi mù với squash-merge (v2.40.0)
+
+`git branch --merged` không phân biệt được nhánh **đã squash-merge** với nhánh **chưa từng có
+PR**. Repo này squash 100% số PR, nên bộ dò đó **chưa từng đúng một lần nào** — worktree tích
+lại im lặng và `/wt` không bao giờ đỏ.
+
+Giờ nó có **ba** trạng thái: `merged` · `open` · `unknown`. *"Không hỏi được GitHub"* thôi bị
+viết thành *"chưa merge"*.
+
+**Việc bạn phải làm khác đi:** cài `gh` và `gh auth login`. Không có nó, `wt-clean --apply` sẽ
+**giữ lại nhiều hơn** (an toàn, nhưng dọn ít hơn) và nói rõ vì sao.
 
 ## 2026-08-08 — Ngân sách biết VAI của repo (v2.39.0)
 

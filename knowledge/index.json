@@ -1,8 +1,8 @@
 {
   "generatedBy": "tooling/knowledge/lint.mjs",
-  "count": 5,
+  "count": 6,
   "byScope": {
-    "universal": 5
+    "universal": 6
   },
   "lessons": [
     {
@@ -94,6 +94,24 @@
         "tooling/gates.mjs — `n/a KHÔNG có lệnh → gate này không tồn tại, dù nó nằm trong config`; `subagent: KHÔNG đo được độ trễ — 0ms ở đây là 'không có gì chạy', không phải 'nhanh'`",
         "evals/run.mjs — cờ `measured`: task `n/a` ra khỏi MẪU SỐ thay vì tính 0 điểm; in `naCount` riêng",
         "tooling/test-hooks.mjs — bảng ca cho từng hàm phán đoán, mỗi bảng bắt buộc có ít nhất một ca 'không đo được' và một ca miễn trừ theo vai"
+      ]
+    },
+    {
+      "id": "L0006",
+      "file": "knowledge/lessons/0006-do-khong-duoc-khong-phai-la-khong.md",
+      "title": "Một phép đo KHÔNG TRẢ LỜI ĐƯỢC bị ghi thành câu trả lời phủ định, và câu phủ định đó nghe như một kết luận",
+      "scope": "universal",
+      "class": "state",
+      "representation": "test",
+      "status": "active",
+      "added": "2026-08-08",
+      "occurrences": 3,
+      "artifacts": [
+        "tooling/lib/harness.mjs",
+        "tooling/wt-clean.mjs",
+        "tooling/harness-doctor.mjs",
+        "tooling/rituals.mjs",
+        "tooling/test-hooks.mjs"
       ]
     }
   ]

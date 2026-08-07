@@ -11,6 +11,62 @@
 
 ---
 
+## 2.40.0 — 2026-08-08
+
+**minor.** `wt-clean` thôi mù với squash-merge, và **"không hỏi được" thôi bị viết thành
+"chưa merge"**. Đóng #97. Promote `L0006`.
+
+### Bộ dò chưa từng đúng một lần nào
+
+`git branch --merged` hỏi *"commit này có phải tổ tiên của main không"*. Squash-merge tạo một
+commit **mới**, nên commit gốc không bao giờ thành tổ tiên — và với phép hỏi đó, một nhánh
+**đã squash-merge** đọc **giống hệt** một nhánh **chưa từng có PR**.
+
+Đo 2026-08-07: PR #89 merge lúc 13:10:45Z → squash `cd450bf`, worktree sạch hoàn toàn,
+`wt-clean --apply` in *"giữ (chưa merge)"* và không xoá gì. Repo này squash **100%** số PR.
+
+Nó lệch về phía "giữ" nên không mất dữ liệu — và đó là lý do nó sống lâu mà không ai thấy.
+Hệ quả thật: worktree tích lại **im lặng**, `/wt` không bao giờ đỏ.
+
+### Ba trạng thái, không phải hai
+
+`mergeState()` (thuần, trong `lib/harness.mjs`) trả `merged` · `open` · `unknown`, mỗi cái kèm
+`why` bắt buộc:
+
+| | nghĩa |
+|---|---|
+| `merged` | bằng chứng **dương**: git nói tổ tiên, HOẶC `gh` nói có PR đã merge |
+| `open` | hỏi được GitHub và nó trả về không có PR merged nào |
+| `unknown` | **không hỏi được** — không `gh`, chưa đăng nhập, không mạng, không phải repo GitHub |
+
+Gộp `unknown` vào `open` là quay lại đúng bug cũ với câu chữ dễ chịu hơn.
+
+### Ba chuyện phụ, cùng gốc rễ
+
+- `git branch -d` **từ chối** nhánh squash-merged, nên nó luôn thất bại ở repo squash và để
+  lại nhánh mồ côi. Giờ `-D` được dùng **chỉ khi** có bằng chứng merged.
+- `git log @{u}..HEAD` khi upstream đã bị xoá thì git **lỗi**, `stdout` rỗng, và code cũ đọc
+  thành *"không có commit chưa push"*. Giờ nó là `unknown` và **chặn** việc xoá.
+- Nhánh **remote** sống sót khi `gh pr merge --delete-branch` bỏ dở vì worktree đang giữ nhánh
+  local. `wt-clean` nói ra thay vì tự xoá — một nhánh remote không PR nào mở đọc y hệt việc
+  bỏ quên.
+
+### `codeOnly()` — neo vào CODE, không vào comment
+
+Assertion đầu tiên của hợp đồng hai đầu **không giết được mutant của chính nó**: gỡ sạch lời
+gọi `mergeState` khỏi `wt-clean.mjs` mà test vẫn xanh, vì chữ `mergeState` còn nằm trong
+comment giải thích. Lần thứ **tư** repo này vấp đúng chỗ đó (v2.10.2 · `governanceDrift` ·
+lần này), nên nó thôi là giai thoại và thành một hàm.
+
+**Một assertion không giết được mutant của chính nó là một assertion chưa tồn tại — nó chỉ
+trông như đã tồn tại.**
+
+**Ảnh hưởng tới project đã áp:** `wt-clean` giờ gọi `gh`. Không có `gh` thì mọi nhánh chưa
+phải tổ tiên đọc là `unknown` và **được giữ lại** — an toàn hơn hành vi cũ, nhưng `--apply`
+sẽ dọn ít hơn cho tới khi cài `gh`.
+
+---
+
 ## 2.39.3 — 2026-08-08
 
 **patch.** Allowlist frontmatter thôi so CHUỖI THÔ, và biết tự nói khi nó đang mục. Đóng #94.
@@ -67,6 +123,7 @@ phục đúng bản đó ⇒ suite `exit 1`.
 Bản đầu in *"binary Claude Code 24.18.0"*. Đó là version **Node**, lấy từ đoạn `nvm/v24.18.0/`
 trong chính `CLAUDE_CODE_EXECPATH`, bằng một regex `\d+\.\d+\.\d+` tự chế. Repo đã có
 `claudeCodeVersionMeasured()` cho đúng việc này — giờ dùng nó.
+
 ## 2.39.2 — 2026-08-08
 
 **patch.** Agent KHÔNG CHẠY được thôi bị chấm là agent LÀM SAI. Đóng #93 ①.
@@ -147,6 +204,7 @@ kiểm bằng `git stash`). Ba ca đó quanh `lớp kinh tế` (mẩu bánh mì 
 
 Chưa sửa ở đây — nhưng một lớp xác minh **chập chờn** thì mọi con số nó in ra đều mất một phần
 thẩm quyền, và nó đáng một issue riêng.
+
 
 ---
 
