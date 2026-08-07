@@ -11,6 +11,49 @@
 
 ---
 
+## 2.31.0 — 2026-08-07
+
+**minor.** Sàn của chính runner gate là thứ **đo được**, không phải `?`.
+
+### Ra từ một nghi thức, không từ một bug report
+
+`node tooling/rituals.mjs --reviewed-claude-code` đòi đọc changelog Claude Code mới với đúng
+một câu hỏi: *"nó vừa ra sẵn thứ nào harness đang tự làm tay?"*. Rà 2.1.224 cho ra bốn mục
+chạm, không mục nào thay thế được gì — nhưng một mục làm một ràng buộc sẵn có **nặng hơn**:
+
+> Removed 200-subagent-per-session spawn cap
+
+`AGENTS.md` đặt trần **< 5 giây** cho gate ở `SubagentStop`, với lý do *"mỗi gate nhân với tối
+đa 16 agent song song"*. Trần 200 của vendor từng che cho ta. Nó không còn.
+
+### Đo được: "0 gate có lệnh" ≠ "không có gì chạy"
+
+`gates.mjs --list --timing` báo `subagent: KHÔNG đo được độ trễ — 0/1 gate có lệnh`.
+
+Đúng về phần **việc** của gate. Sai về **chi phí**: chính runner chạy. Một tiến trình Node,
+một lần nạp config, một vòng lặp, một lần ghi telemetry — **trung vị 104 ms**, trả đủ mỗi lần
+hook kích hoạt, nhân với số agent song song.
+
+Đây là **L0005 lần thứ tám**, và lần này nó nằm trong chính công cụ đo độ trễ.
+
+### Đổi gì
+
+- Stage không gate nào có lệnh giờ báo `sàn runner <N>ms mỗi lần gọi`, **và** vẫn nói rõ phần
+  việc thật là `CHƯA đo được`. Hai con số, hai câu — bỏ vế nào cũng là một nửa sự thật.
+- Sàn được **đo**, không viết cứng: một hằng số sẽ sai ở máy chậm hơn đúng lúc nó quan trọng nhất.
+- Phép đo gọi **đúng lệnh thật** (`--stage <stage>`), không một probe rút gọn. Bản đầu dùng
+  `--floor-probe` thoát ngay sau khi nạp module: **64 ms so với 104 ms thật — thấp hơn 40%**,
+  đúng cái sai mà chính bản vá này ra đời để sửa.
+- Telemetry của phép đo chuyển hướng sang thư mục test (#66): 5 lần chạy = 5 dòng giả trong
+  `gate-runs.log`, và đó là công cụ đo tự làm nhiễu số của chính nó.
+
+### Repo đã áp harness cần làm gì
+
+Nếu `gates.subagent` của bạn có lệnh thật, con số cũ vẫn đúng. Nếu không, bạn sẽ thấy sàn hiện
+ra lần đầu — **đó là chi phí vẫn luôn trả**, chỉ chưa được nói ra.
+
+---
+
 ## 2.30.2 — 2026-08-07
 
 **patch.** §9b giải đường dẫn **tương đối với file đang nhắc nó**, không chỉ với gốc repo.
