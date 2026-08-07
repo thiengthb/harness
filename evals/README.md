@@ -98,7 +98,8 @@ Rỗng là **đúng**: gọi agent tốn tiền, nên nó phải là hành độ
 đích, không phải mặc định thừa hưởng. Hệ quả cần nói ra: **template này chưa từng chạy
 một eval có model tham gia**, nên theo luật 3 nó là `unknown`, không phải 0.
 
-Bộ khung hai nhánh (`evals/lib/arms.mjs`) **chưa được viết**, và đó là quyết định có mốc
+Bộ khung hai nhánh — khi viết thì đặt trong `evals/`, thư mục con `lib`, file `arms.mjs`
+— **chưa được viết**, và đó là quyết định có mốc
 kích hoạt chứ không phải việc bị bỏ quên: **viết nó khi repo tiêu thụ đầu tiên điền
 `evals.command`**. Lý do: phần đắt của cơ chế này không phải `direction()` — nó là **tầng
 spawn** ở ba cái bẫy trên. Viết tầng đó cho một `command` rỗng là viết một cơ chế báo

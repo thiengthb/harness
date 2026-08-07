@@ -1712,6 +1712,62 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   } else ok.push(`entropy-scan.mjs${' '.repeat(12)} allowlist GLOBAL_OK khớp thật trên OS này (${present.length} file được miễn, 0 rò)`);
 }
 
+// ─── §9b đường dẫn chết: KHÔNG có, và phép kiểm CÒN PHẠM VI ──────────────────
+//
+// Nhận từ pack `sakubun` @0655730. Ca nguy hiểm không phải "có đường dẫn chết" — mà là phép
+// kiểm mất phạm vi rồi xanh mãi. Hai loại trừ cấu trúc của nó (`harness-manifest.json`,
+// `evals/tasks/**`) đều đúng, nhưng mỗi loại trừ là một chỗ để phạm vi rò ra ngoài.
+{
+  const L = ' '.repeat(12);
+  const esSrc = readFileSync(repoPath('tooling', 'entropy-scan.mjs'), 'utf8');
+  const r = spawnSync(process.execPath, [repoPath('tooling', 'entropy-scan.mjs')], {
+    encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, ...TEST_ENV },
+  });
+  const out = `${r.stdout || ''}${r.stderr || ''}`;
+  const bad = [];
+
+  if (!/9b\. Đường dẫn trỏ vào hư không/.test(esSrc)) bad.push('phép kiểm §9b đã biến mất khỏi entropy-scan');
+  // PHẠM VI: nó phải quét qua `git ls-files`, không phải một danh sách thư mục cứng. Bản của
+  // `sakubun` dùng `['app','components','lib','e2e','tooling']` — đúng ở đó, mục ở đây.
+  if (!/git\(\['ls-files'\]\)/.test(esSrc)) bad.push('§9b không còn quét theo `git ls-files` — danh sách thư mục cứng sẽ mục');
+  if (/KHÔNG TỒN TẠI/.test(out)) bad.push(`repo có đường dẫn chết: ${out.split('\n').find(l => l.includes('KHÔNG TỒN TẠI'))?.trim().slice(0, 90)}`);
+
+  // Mỗi loại trừ phải CÒN LÝ DO tồn tại. Loại trừ không còn ca nào là loại trừ đã thành
+  // cửa thoát trống — nó không miễn gì cả, nhưng nó vẫn nới phạm vi cho ca tương lai.
+  const tracked = git(['ls-files']).stdout.split('\n').filter(Boolean);
+  const manifestRef = tracked.some(f => f.endsWith('.md') && (() => {
+    try { return readFileSync(repoPath(f), 'utf8').includes('`.claude/harness-manifest.json`'); } catch { return false; }
+  })());
+  if (!manifestRef) bad.push('không tài liệu nào còn nhắc `.claude/harness-manifest.json` ⇒ loại trừ đó thành cửa thoát trống, bỏ nó đi');
+  if (!tracked.some(f => f.startsWith('evals/tasks/'))) bad.push('không còn `evals/tasks/**` ⇒ loại trừ đó thành cửa thoát trống');
+
+  if (bad.length) fail.push(`entropy-scan §9b${L} ${bad.join(' · ')}`);
+  else ok.push(`entropy-scan §9b${L} 0 đường dẫn chết, quét theo git ls-files, 2 loại trừ đều còn lý do`);
+}
+
+// ─── _index.json: cổng KHÔNG được im khi danh sách feature nói dối ────────────
+//
+// Nhận từ pack `sakubun` @0655730 — ca thứ BẢY của L0005, từ một repo ĐỘC LẬP.
+// Đo ở đó: `features/` chỉ có `_index.json` + `_TEMPLATE.json`, phần dưới của gate cố ý bỏ
+// qua file `_`-prefix ⇒ in "(không có gì để báo cáo)" rồi exit 0 — đọc như một cổng đang
+// canh, thực ra là cổng không canh gì, trong khi `_index.json` liệt một entry trỏ vào hư không.
+{
+  const L = ' '.repeat(6);
+  const r = spawnSync(process.execPath, [repoPath('tooling', 'check-feature-integrity.mjs')], {
+    encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, ...TEST_ENV },
+  });
+  const out = `${r.stdout || ''}${r.stderr || ''}`;
+  const bad = [];
+  if (!exists(repoPath('features', '_index.json'))) {
+    bad.push('không có features/_index.json ⇒ ca này MẤT PHẠM VI, nó sẽ xanh mãi mà không kiểm gì');
+  } else {
+    if (!/_index\.json/.test(out)) bad.push('gate KHÔNG nói gì về `_index.json` dù file đó tồn tại — đúng ca im lặng mà `sakubun` bắt được');
+    if (/không có gì để báo cáo/.test(out)) bad.push('gate in "(không có gì để báo cáo)" trong khi `_index.json` có mặt — mẫu số 0 lại thành 100%');
+  }
+  if (bad.length) fail.push(`check-feature-integrity${L} ${bad.join(' · ')}`);
+  else ok.push(`check-feature-integrity${L} danh sách feature được đối chiếu với ĐĨA, gate không im khi index nói dối`);
+}
+
 // ─── ③④ MUTANT ───────────────────────────────────────────────────────────────
 // Mỗi mutant tiêu vào PHẠM VI của check trước, không phải logic của nó.
 const MUTANTS = [
@@ -2008,7 +2064,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 154;
+const RATCHET = 156;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

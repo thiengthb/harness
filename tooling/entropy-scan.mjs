@@ -237,6 +237,84 @@ if (touched.length) {
   if (!wnTouched) warn.push(`${new Set(touched).size} file harness đổi trong 14 ngày nhưng .claude/whats-new.md KHÔNG đổi — nửa team đang hành xử theo rule cũ`);
 }
 
+// ── 9b. Đường dẫn trỏ vào hư không ───────────────────────────────────────────
+//
+// NHẬN TỪ `sakubun` (pack upstream @0655730, 2026-08-07). Phép kiểm này ra đời ở repo con,
+// không ở đây — và nó là ca đầu tiên chiều ĐI LÊN thật sự chuyển được một cơ chế, sau khi
+// v2.27.0 làm bên nhận đọc được pack không-có-bài-học nào.
+//
+// Loại hết hạn ĐẮT NHẤT với agent, và không có triệu chứng nào: với agent, mọi text trong
+// repo có thẩm quyền như nhau, nên một đường dẫn chết không báo lỗi — nó gửi người đọc tới
+// chỗ trống, và người đọc TỰ NGHĨ RA nội dung đáng lẽ ở đó.
+//
+// Đo ở `sakubun` 2026-08-06: 16 chỗ trong SOURCE trỏ vào `docs/plans/*` (5 file kế hoạch
+// được viện dẫn như thẩm quyền thiết kế) — `git log --all` cho thư mục đó TRỐNG: nó chưa
+// bao giờ được commit. §4 ở trên chỉ kiểm skill trỏ vào `tooling/*.mjs` nên cả nhóm lọt lưới.
+//
+// HAI LOẠI TRỪ CỐ Ý — không có chúng thì tín hiệu chìm trong dương tính giả (bản đầu ở
+// `sakubun` báo 120 hit, phần lớn là văn xuôi như `origin/main` và `"n/a"`):
+//   · HỒ SƠ LỊCH SỬ (changelog · learnings · progress · whats-new) — chúng append-only và
+//     PHẢI nhắc file đã đổi tên hoặc đã xoá. Bắt lỗi chúng là bắt chúng làm sai việc của
+//     chúng. Cùng danh sách, cùng lý do với `HISTORICAL` ở `harness-doctor.mjs`.
+//   · chuỗi có glob/placeholder, và đường dẫn có segment đầu không phải thư mục thật ở gốc
+//     repo — đó là văn xuôi, không phải đường dẫn.
+//
+// KHÁC BẢN CỦA `sakubun` MỘT CHỖ: nó quét source bằng danh sách thư mục cứng
+// `['app','components','lib','e2e','tooling']` — hình dạng của một app Next.js. Ở template
+// thì `git ls-files` là nguồn đúng: repo-agnostic, tự bỏ file gitignore/generated, và không
+// có danh sách nào để mục.
+{
+  const TOP_LEVEL = new Set(readdirSync(repoPath('')));
+  const PROSE = p => /[*{}<>$]|\.\.|^https?:|^~|^@/.test(p);
+  // Thư mục SINH RA LÚC CHẠY và gitignored: vắng mặt trên một cây sạch là ĐÚNG, không phải hỏng.
+  const IGNORED_REF = p => p.startsWith('.git/') || p.startsWith('knowledge/incoming')
+    || p.startsWith('.claude/telemetry') || p.startsWith('.claude/state') || p.startsWith('.claude/worktrees')
+    // Dấu của repo TIÊU THỤ: nó KHÔNG BAO GIỜ tồn tại ở template (`repoRole()` dựa vào chính
+    // sự vắng mặt đó). Tài liệu ở đây phải giải thích được nó, nếu không repo con không biết
+    // mình đang cầm cái gì. Vắng mặt ở đây là ĐÚNG, không phải đường dẫn chết.
+    || p === '.claude/harness-manifest.json';
+
+  const dangling = new Map();
+  const noteRef = (p, where) => {
+    if (!p || PROSE(p) || IGNORED_REF(p)) return;
+    const clean = p.split('#')[0].split(':')[0].replace(/\/$/, '');
+    if (!clean.includes('/') || !TOP_LEVEL.has(clean.split('/')[0])) return;
+    if (existsSync(repoPath(clean))) return;
+    if (!dangling.has(clean)) dangling.set(clean, new Set());
+    dangling.get(clean).add(where);
+  };
+
+  const HISTORY = (r) => r.includes('HARNESS-CHANGELOG') || r.startsWith('.claude/learnings/')
+    || r.startsWith('docs/progress/') || r === '.claude/whats-new.md'
+    // `evals/tasks/**` MÔ TẢ thứ agent phải TẠO RA khi chạy task — cùng lý do bỏ qua fixture.
+    // Một task nói "assert `features/eval-probe.json` tồn tại" đang làm đúng việc của nó;
+    // file đó không tồn tại LÚC NÀY chính là điều kiện ban đầu của phép đo.
+    || r.startsWith('evals/tasks/');
+
+  const tracked = git(['ls-files']).stdout.split('\n').filter(Boolean);
+  for (const r of tracked.filter(r => r.endsWith('.md') && !HISTORY(r))) {
+    let txt = ''; try { txt = readFileSync(repoPath(r), 'utf8'); } catch { continue; }
+    for (const m of txt.matchAll(/`([^`\s]+)`/g)) noteRef(m[1], r);
+  }
+  // Comment trong SOURCE trỏ vào `docs/` — chỗ duy nhất tìm ra nhóm plan doc không tồn tại.
+  // Bỏ qua test và fixture: chúng CỐ Ý dựng đường dẫn không tồn tại để kiểm hook, và một
+  // fixture trỏ vào chỗ trống là fixture đang làm đúng việc. (Không viết ví dụ ra đây —
+  // chính comment này sẽ thành con trỏ chết. Bản của `sakubun` đã bị bắt đúng như vậy.)
+  for (const r of tracked.filter(r => /\.(ts|tsx|mjs|js)$/.test(r)
+      && !r.startsWith('tooling/test-') && !r.includes('/fixtures/') && !r.includes('generated'))) {
+    let txt = ''; try { txt = readFileSync(repoPath(r), 'utf8'); } catch { continue; }
+    for (const m of txt.matchAll(/docs\/[A-Za-z0-9_./-]+\.md/g)) noteRef(m[0], r);
+  }
+
+  if (dangling.size) {
+    const rows = [...dangling.entries()].sort((a, b) => b[1].size - a[1].size);
+    const shown = rows.slice(0, 6).map(([p, w]) => `${p} (${[...w].slice(0, 2).join(', ')}${w.size > 2 ? `, +${w.size - 2}` : ''})`);
+    fail.push(`${dangling.size} đường dẫn được tài liệu/comment trỏ tới nhưng KHÔNG TỒN TẠI: ${shown.join(' · ')}`
+      + (rows.length > 6 ? ` … +${rows.length - 6} nữa` : '')
+      + ' — sửa đường dẫn, tạo file, hoặc xoá lời nhắc. Đừng để nguyên.');
+  }
+}
+
 // ── 10. PHÒNG CHỜ NGHỈ HƯU — có bằng chứng, và KHÔNG có lệnh xoá ─────────────
 //
 //   node tooling/entropy-scan.mjs --stage <file> --why "lý do ≥20 ký tự"

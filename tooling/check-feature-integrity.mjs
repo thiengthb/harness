@@ -20,6 +20,42 @@ if (!existsSync(dir)) { console.log('Không có features/ — bỏ qua.'); proce
 const MUTABLE = new Set(['passes', 'evidence', 'verifiedAt']);
 const ok = [], warn = [], fail = [];
 
+// ── _index.json phải trỏ tới file CÓ THẬT ────────────────────────────────────
+//
+// NHẬN TỪ `sakubun` (pack upstream @0655730, 2026-08-07) — phép kiểm ra đời ở repo con.
+// Nó là ca thứ BẢY của L0005, tìm được ở một repo ĐỘC LẬP: theo knowledge/README.md, bằng
+// chứng từ hai repo khác nhau mạnh hơn hai lần trong cùng một repo.
+//
+// Chạy TRƯỚC phép kiểm git bên dưới, vì nó không cần ref nào: nó chỉ so danh sách với đĩa.
+//
+// Vì sao thêm (2026-08-07): phần dưới cố ý bỏ qua file `_`-prefix, nên khi `features/` chỉ có
+// `_index.json` + `_TEMPLATE.json` thì báo cáo in "(không có gì để báo cáo)" và exit 0 — đọc như một
+// cổng đang canh, thực ra là một cổng không canh gì. Trong khi chính `_index.json` đang liệt một entry
+// `example-feature` trỏ tới `features/example-feature.json` KHÔNG TỒN TẠI. Danh sách feature là thứ
+// AGENTS.md §Verification dựa vào; một danh sách nói dối được mà không ai kiểm thì luật "Default-FAIL"
+// chỉ còn là câu văn.
+//
+// Đây là WARN chứ không phải FAIL, cố ý: một entry mẫu trong repo vừa áp harness là trạng thái BÌNH
+// THƯỜNG, và một cổng bắt đầu đời mình bằng màu đỏ ở mọi project là cổng dạy người ta bỏ qua nó.
+const INDEX = repoPath('features', '_index.json');
+if (existsSync(INDEX)) {
+  const index = readJson(INDEX);
+  if (!index) fail.push('features/_index.json: JSON không parse được');
+  else {
+    const entries = Array.isArray(index.features) ? index.features : [];
+    if (!entries.length) ok.push('features/_index.json: chưa đăng ký feature nào');
+    for (const e of entries) {
+      const p = String(e?.file ?? '');
+      if (!p) fail.push(`features/_index.json: entry "${e?.id ?? '?'}" thiếu \`file\``);
+      else if (!exists(repoPath(p)))
+        warn.push(`features/_index.json: "${e?.id ?? '?'}" trỏ tới ${p} — KHÔNG TỒN TẠI. `
+          + 'Viết file đó, hoặc bỏ entry khỏi index (DRI sửa — hook chặn agent).');
+      else ok.push(`features/_index.json: ${e.id} → ${p}`);
+    }
+  }
+}
+
+
 if (git(['rev-parse', '--verify', base]).status !== 0) {
   console.log(`Không tìm thấy ref ${base} — bỏ qua (chạy trong CI với fetch-depth: 0).`);
   process.exit(0);

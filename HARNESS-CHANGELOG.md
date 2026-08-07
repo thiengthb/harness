@@ -11,6 +11,61 @@
 
 ---
 
+## 2.30.0 — 2026-08-07
+
+**minor.** Nhận hai phép kiểm **đi lên từ `sakubun`** — lần đầu chiều LÊN thật sự chuyển
+được một cơ chế, ba version sau khi v2.27.0 sửa bên nhận.
+
+### Vòng học khép trên dữ liệu thật
+
+```
+sakubun  --upstream-->  knowledge/incoming/sakubun/  (0 bài học · 3 diff cơ chế)
+                        accept.mjs --list  →  "1 PACK CHỜ QUYẾT ... 3 diff cơ chế"
+                        accept.mjs sakubun --reviewed "..."  →  DECISIONS.log
+```
+
+**Trước v2.27.0 pack này đọc ra là *"Không có gì trong knowledge/incoming/"*** — 0 bài học,
+và bên nhận chỉ nhìn `lessons/`. Ba file cơ chế sẽ nằm đó vô hình.
+
+### Nhận gì
+
+**① §9b `entropy-scan` — đường dẫn trỏ vào hư không.** Loại hết hạn đắt nhất với agent và
+không có triệu chứng: với agent mọi text trong repo có thẩm quyền như nhau, nên một đường
+dẫn chết không báo lỗi — nó gửi người đọc tới chỗ trống và người đọc **tự nghĩ ra** nội dung
+đáng lẽ ở đó. Đo ở `sakubun`: 16 chỗ trong source trỏ vào 5 file kế hoạch chưa từng được commit.
+
+Khác bản gốc một chỗ: nó quét source bằng danh sách thư mục cứng
+`['app','components','lib','e2e','tooling']` — hình dạng một app Next.js. Ở template thì
+`git ls-files` là nguồn đúng: repo-agnostic, tự bỏ file gitignore/generated, không có danh
+sách nào để mục.
+
+Chạy lần đầu ở template, nó tìm được **ba** đường dẫn chết — hai là dương tính giả **có cấu
+trúc**, và cả hai đều đã thành loại trừ có ghi lý do:
+- `.claude/harness-manifest.json` — chỉ tồn tại ở repo TIÊU THỤ (`repoRole()` dựa vào chính
+  sự vắng mặt đó). Tài liệu ở template **phải** giải thích được nó.
+- refs xuất phát từ `evals/tasks/**` — task MÔ TẢ thứ agent phải TẠO RA; file chưa tồn tại
+  chính là điều kiện ban đầu của phép đo. Cùng lý do bỏ qua fixture.
+
+Cái thứ ba là thật, và đã sửa: `evals/README.md` viết `evals/lib/arms.mjs` như một đường dẫn
+trong khi câu ngay sau nói *"chưa được viết"*.
+
+**② `check-feature-integrity` — `_index.json` phải trỏ tới file CÓ THẬT.** Gate cố ý bỏ qua
+file `_`-prefix, nên khi `features/` chỉ có `_index.json` + `_TEMPLATE.json` nó in
+*"(không có gì để báo cáo)"* rồi `exit 0` — đọc như một cổng đang canh, thực ra là cổng
+không canh gì, trong khi `_index.json` đang liệt một entry trỏ vào hư không.
+
+Đây là **ca thứ BẢY của L0005**, và là ca đầu tiên tìm được ở một repo **độc lập** —
+theo `knowledge/README.md`, bằng chứng từ hai repo mạnh hơn hai lần trong cùng một repo.
+WARN chứ không FAIL, cố ý: một entry mẫu trong repo vừa áp harness là trạng thái bình thường,
+và một cổng bắt đầu đời mình bằng màu đỏ ở mọi project là cổng dạy người ta bỏ qua nó.
+
+### Repo đã áp harness cần làm gì
+
+`entropy-scan` có thể báo thêm đường dẫn chết — **đó là dữ liệu vẫn luôn ở đó**. Sửa đường
+dẫn, tạo file, hoặc bỏ lời nhắc; đừng nới loại trừ.
+
+---
+
 ## 2.29.0 — 2026-08-07
 
 **minor.** Promote **L0005** — *"một bộ đếm không phân biệt được hai trạng thái sẽ đổ về phía
