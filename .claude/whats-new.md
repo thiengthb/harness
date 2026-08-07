@@ -1,4 +1,4 @@
-<!-- version: 2026-08-07-i -->
+<!-- version: 2026-08-07-j -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,18 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-07 — SỬA LẠI: hai field `budget` KHÔNG phải field ma (v2.35.0)
+
+v2.28.0 nói ba field còn lại của `budget` đều không ai đọc, và ghi ba dấu ❌ vào
+`docs/ECONOMICS.md`. **Sai hai trong ba** — `maxTurnsPerRun` và `maxWallClockMinutes` được
+`evals/run.mjs` đọc làm mặc định. Lần đo đó quên mất thư mục `evals/`.
+
+Chỉ `maxToolCallsPerRun` là field ma thật, và nó đã bị cắt.
+
+**Việc bạn phải làm khác đi:** nếu bạn từng đọc bảng ở `docs/ECONOMICS.md` và định cắt hai
+field kia — **đừng**. Bảng đã sửa, và giờ có test khoá cả hai chiều: khoá không ai đọc phải
+cắt, khoá đang được đọc không được lặng lẽ biến mất.
 
 ## 2026-08-07 — AGENTS.md ngắn đi, và thôi nói chuyện với đội không tồn tại (v2.34.0)
 

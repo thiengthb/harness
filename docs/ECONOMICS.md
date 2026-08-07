@@ -14,11 +14,18 @@ duy nhất đọc nó là một dòng advice nói *"= 0"*. Năm con số trong c
 
 | # | Guardrail | Config | Ai cưỡng chế | Vì sao |
 |---|---|---|---|---|
-| 1 | **Loop / step limit** | `maxTurnsPerRun` | ❌ **chưa ai** — con số chưa nối vào gì | agent lặp vô hạn cùng một sửa đổi là chế độ hỏng có thật |
-| 2 | **Tool-call cap** | `maxToolCallsPerRun` | ❌ **chưa ai** | và cap riêng cho tool đắt |
+| 1 | **Loop / step limit** | `maxTurnsPerRun` | ✅ `evals/run.mjs` — mặc định cho task không tự khai `maxTurns` | agent lặp vô hạn cùng một sửa đổi là chế độ hỏng có thật |
+| 2 | **Tool-call cap** | — | ❌ **CẮT ở 2.35.0** — không cơ chế nào đọc, và harness không có nguồn để đếm tool-call | cap thật nằm ở tầng gateway/CLI |
 | 3 | **Token budget / run** | (theo tool) | ⚙️ tầng tool, ngoài harness | **cứng**, không phải cảnh báo |
-| 4 | **Wall-clock timeout** | `maxWallClockMinutes` | ❌ **chưa ai** | biến task 8h thành task 8h, không thành task 30h |
+| 4 | **Wall-clock timeout** | `maxWallClockMinutes` | ✅ `evals/run.mjs` — mặc định cho task không tự khai `maxMinutes` | biến task 8h thành task 8h, không thành task 30h |
 | 5 | **Per-project budget + alert** | `monthlyUsdCap`, `alertAtPercent` | ⚠️ **cảnh báo** từ v2.28.0 — `harness-doctor` + `rituals.mjs` đối chiếu với `capo-history.json` | một project lỗi không đốt ngân sách cả portfolio |
+
+> **Bảng này từng nói sai, và sai theo hướng nguy hiểm.** Ở v2.28.0 nó đánh ❌ cho cả ba mục
+> 1 · 2 · 4 — kết luận từ một lần grep quên mất thư mục `evals/`. Hai trong ba mục **đang có
+> bên đọc**. Một tài liệu nói *"chỗ này rỗng"* về một cơ chế đang chạy là lời mời người sau đi
+> cắt nó. Từ 2.35.0 `tooling/test-hooks.mjs` khoá bảng này bằng máy: mọi khoá trong `budget`
+> phải tìm được ít nhất một chỗ đọc trong repo, **và** mọi khoá được mã nguồn đọc phải được
+> config khai.
 
 **#5 là cảnh báo, KHÔNG phải chặn.** Harness không đọc được hoá đơn của bạn: số chi tiêu
 chỉ vào hệ thống khi NGƯỜI chạy `capo-report.mjs --usd <N>` với con số chép từ dashboard
@@ -28,8 +35,8 @@ billing. Nên trần này trả lời *"tôi có đang tiêu quá không?"*, kh�
 Chưa lần nào đo thì `harness-doctor` in **`?`**, không in "ổn" — một trần chưa so với gì
 không bảo vệ ai, và một dòng xanh ở đó là dòng nguy hiểm nhất trong cả file này.
 
-Ba mục ❌ ở trên là những con số **đang trông như guardrail mà không phải**. Chúng cần
-hoặc một bên đọc, hoặc bị cắt — xem issue label `harness`.
+Mục ❌ duy nhất còn lại **đã bị cắt**, không phải để lại — xem `$comment_da_cat_*` trong
+`harness.config.json`. Nguyên lý giữ ở bảng trên; chỗ cưỡng chế thật thì cột 4 nói rõ.
 
 Trong CI headless, `--max-turns` là **guardrail bắt buộc**. Không có nó, một job
 lỗi có thể chạy tới hết quota. Đây là cờ của `claude` CLI, không phải field trong
