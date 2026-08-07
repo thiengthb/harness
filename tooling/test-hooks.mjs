@@ -1741,6 +1741,22 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   if (!manifestRef) bad.push('không tài liệu nào còn nhắc `.claude/harness-manifest.json` ⇒ loại trừ đó thành cửa thoát trống, bỏ nó đi');
   if (!tracked.some(f => f.startsWith('evals/tasks/'))) bad.push('không còn `evals/tasks/**` ⇒ loại trừ đó thành cửa thoát trống');
 
+  // GITIGNORE LÀ NGUỒN, KHÔNG PHẢI DANH SÁCH VIẾT TAY. Bản đầu liệt tay 4 tiền tố và vẫn
+  // thiếu `.claude/settings.local.json` — nó XANH trên máy tôi (file có thật ở đó) và ĐỎ trên
+  // cả ba OS của CI. Một allowlist viết tay chỉ đúng với trạng thái cục bộ của người viết nó.
+  //
+  // Ca này khẳng định vào chính cơ chế thay thế: `git check-ignore --stdin` phải PHÂN BIỆT
+  // được hai loại trên OS đang chạy. Nếu nó không phân biệt (git quá cũ, `--stdin` đổi hành
+  // vi), §9b sẽ im lặng bỏ qua mọi thứ hoặc không bỏ qua gì — cả hai đều hỏng không tiếng động.
+  if (!/check-ignore/.test(esSrc)) {
+    bad.push('§9b không còn hỏi `git check-ignore` — quay lại danh sách viết tay là quay lại lỗi chỉ CI thấy');
+  } else {
+    const probe = git(['check-ignore', '--stdin'], { input: '.claude/telemetry/x.log\nAGENTS.md\n' });
+    const said = probe.stdout.split('\n').map(s => s.trim()).filter(Boolean);
+    if (!said.includes('.claude/telemetry/x.log')) bad.push('`git check-ignore` KHÔNG nhận ra file gitignore trên OS này — §9b sẽ báo nhầm mọi artifact lúc chạy');
+    if (said.includes('AGENTS.md')) bad.push('`git check-ignore` nhận nhầm file ĐƯỢC TRACK là ignore — §9b sẽ im lặng bỏ qua đường dẫn chết thật');
+  }
+
   if (bad.length) fail.push(`entropy-scan §9b${L} ${bad.join(' · ')}`);
   else ok.push(`entropy-scan §9b${L} 0 đường dẫn chết, quét theo git ls-files, 2 loại trừ đều còn lý do`);
 }

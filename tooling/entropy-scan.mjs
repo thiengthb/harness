@@ -267,12 +267,10 @@ if (touched.length) {
   const TOP_LEVEL = new Set(readdirSync(repoPath('')));
   const PROSE = p => /[*{}<>$]|\.\.|^https?:|^~|^@/.test(p);
   // Thư mục SINH RA LÚC CHẠY và gitignored: vắng mặt trên một cây sạch là ĐÚNG, không phải hỏng.
-  const IGNORED_REF = p => p.startsWith('.git/') || p.startsWith('knowledge/incoming')
-    || p.startsWith('.claude/telemetry') || p.startsWith('.claude/state') || p.startsWith('.claude/worktrees')
-    // Dấu của repo TIÊU THỤ: nó KHÔNG BAO GIỜ tồn tại ở template (`repoRole()` dựa vào chính
-    // sự vắng mặt đó). Tài liệu ở đây phải giải thích được nó, nếu không repo con không biết
-    // mình đang cầm cái gì. Vắng mặt ở đây là ĐÚNG, không phải đường dẫn chết.
-    || p === '.claude/harness-manifest.json';
+  // Dấu của repo TIÊU THỤ: KHÔNG BAO GIỜ tồn tại ở template (`repoRole()` dựa vào chính sự
+  // vắng mặt đó). Tài liệu ở đây phải giải thích được nó, nếu không repo con không biết mình
+  // đang cầm cái gì. Vắng mặt ở đây là ĐÚNG, không phải đường dẫn chết.
+  const IGNORED_REF = p => p.startsWith('.git/') || p === '.claude/harness-manifest.json';
 
   const dangling = new Map();
   const noteRef = (p, where) => {
@@ -306,6 +304,20 @@ if (touched.length) {
     for (const m of txt.matchAll(/docs\/[A-Za-z0-9_./-]+\.md/g)) noteRef(m[0], r);
   }
 
+  // HỎI GIT, ĐỪNG GIỮ DANH SÁCH. Bản đầu liệt tay `.claude/telemetry`, `.claude/state`,
+  // `knowledge/incoming`, `.claude/worktrees` — và vẫn thiếu `.claude/settings.local.json`,
+  // thứ mà Parity Contract BẮT BUỘC dùng cho cơ chế đặc thù máy. Nó xanh trên máy tôi (file
+  // có thật ở đó) và ĐỎ trên cả ba OS của CI: một allowlist viết tay chỉ đúng với trạng thái
+  // cục bộ của người viết nó.
+  //
+  // Luật đúng là một câu: **file bị gitignore thì vắng mặt là ĐÚNG** — nó sinh ra lúc chạy,
+  // hoặc nó là của riêng máy này. `git check-ignore --stdin` trả lời đúng câu đó, một lần,
+  // cho cả tập; và nó tự cập nhật khi `.gitignore` đổi.
+  if (dangling.size) {
+    const cand = [...dangling.keys()];
+    const ci = git(['check-ignore', '--stdin'], { input: cand.join('\n') });
+    for (const p of ci.stdout.split('\n').map(s => s.trim()).filter(Boolean)) dangling.delete(p);
+  }
   if (dangling.size) {
     const rows = [...dangling.entries()].sort((a, b) => b[1].size - a[1].size);
     const shown = rows.slice(0, 6).map(([p, w]) => `${p} (${[...w].slice(0, 2).join(', ')}${w.size > 2 ? `, +${w.size - 2}` : ''})`);

@@ -57,8 +57,15 @@ if (existsSync(INDEX)) {
 
 
 if (git(['rev-parse', '--verify', base]).status !== 0) {
-  console.log(`Không tìm thấy ref ${base} — bỏ qua (chạy trong CI với fetch-depth: 0).`);
-  process.exit(0);
+  // Không có ref để so diff → bỏ phần so-với-base, NHƯNG vẫn in phần đã kiểm được ở trên.
+  // Trước đây dòng này `process.exit(0)` thẳng, nên trên một cây không có `origin/main`
+  // (clone nông, worktree mới, CI không fetch đủ sâu) mọi phát hiện về `_index.json` biến
+  // mất KHÔNG DẤU VẾT — gate exit 0 và người đọc thấy một dòng "bỏ qua" vô hại.
+  //
+  // Phần thứ BA của đóng góp từ `sakubun`, và là phần tôi suýt bỏ sót: lần merge đầu chỉ lấy
+  // khối `_index.json` nên `exit(0)` cũ ở lại, và CI ba OS đỏ ngay — đúng chỗ nó phải đỏ.
+  ok.push(`không tìm thấy ref ${base} — bỏ phần so diff (CI cần fetch-depth: 0)`);
+  process.exit(report('FEATURE INTEGRITY', { ok, warn, fail }) ? 0 : 1);
 }
 
 function baseVersion(relPath) {
