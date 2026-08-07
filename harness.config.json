@@ -2,6 +2,7 @@
   "$comment": "NGUỒN SỰ THẬT của lớp harness. Mọi hook và script trong tooling/ đọc file này. Đây là chỗ DUY NHẤT biết về stack cụ thể — sửa file này khi áp template lên project mới, không sửa hook.",
   "version": 1,
 
+  "$comment_teamSize": "SỐ NGƯỜI làm project này, kể cả bạn. `1` = solo ⇒ harness TẮT lớp phối hợp liên-người: guard đặt chỗ ở pre-commit, dò reservation của người khác, và lời khuyên \"hỏi người\" trong overlap-scan. KHÔNG khai ở template — file này là SEED, nên một con số ở đây ship sang MỌI consumer như câu trả lời của họ, và \"chưa khai\" là trạng thái ĐÚNG ở đây. Consumer khai bằng `node tooling/setup.mjs`. Chưa khai ≠ solo: harness giữ ĐỦ lớp phối hợp cho tới khi được bảo khác.",
   "project": {
     "id": "CHANGEME-project-id",
     "dri": "@CHANGEME",

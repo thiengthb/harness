@@ -11,6 +11,55 @@
 
 ---
 
+## 2.34.0 — 2026-08-07
+
+**minor.** `AGENTS.md` **ngắn đi 7 dòng** và thôi nói chuyện với một đội không tồn tại.
+Đóng #63 và #60 — cùng file, một PR, một lần cập nhật `whats-new`.
+
+### #63 — cắt §"Nghi thức: đừng nhớ, hãy đọc"
+
+`AGENTS.md` tự khai *"Giữ dưới ~150 dòng"* và đang ở **149** — **chạm trần chính nó đặt ra**.
+Nó cũng là file đắt nhất repo: nạp vào **mọi** phiên của **mọi** người.
+
+Mục bị cắt mô tả bằng văn xuôi đúng thứ SessionStart đã **in ra mỗi phiên**
+(`session-start.mjs:189` và `:196`). Người đọc học một điều họ vừa đọc ở đầu phiên, và sẽ đọc
+lại ở mọi phiên sau — một mục văn xuôi mô tả output của một lệnh là **bản sao thứ hai của cùng
+một danh sách**, đúng lớp lỗi `gates.mjs` ra đời để diệt.
+
+### #60 — solo không có người để "báo"
+
+Đo trên `sakubun-single-user`, một consumer solo có thật:
+
+| đo | kết quả |
+|---|---|
+| `.github/CODEOWNERS` | **10/10 dòng** cùng một handle — "cần review của CODEOWNERS" = tự review chính mình |
+| `reservations/` | chỉ `README.md`, **chưa dùng lần nào** |
+| GitHub | solo **không approve được** PR của chính mình |
+
+§"Làm việc trong repo dùng chung" đổi tên thành **"Làm việc trong một repo"**, và tách làm
+hai: phần đúng ở mọi vai, rồi **ba** điều chỉ có nghĩa khi `teamSize ≥ 2` (kiểm PR đang mở ở
+vùng nóng · không push nhánh người khác · trần session mỗi người).
+
+Dòng đầu file *"Đổi file này = PR + 1 approve"* giờ nói cả hai vai: solo dùng `HARNESS_DRI=1`,
+và **mọi lần ghi vùng cấm tự vào sổ** `.claude/telemetry/harness-edits.log` — cơ chế tương
+đương, nó ghi lại thay vì hỏi ai.
+
+### CODEOWNERS: giữ file, đổi câu nhắc
+
+`precommit-scan.mjs` khi solo bỏ vế *"cần review của CODEOWNERS"*, giữ vế
+*"cập nhật `.claude/whats-new.md`"* — vế đó đúng ở cả hai vai.
+
+**Giữ** `.github/CODEOWNERS`: nó có giá trị ngày project có người thứ hai, và bỏ nó là mất một
+lớp gác trên GitHub chứ không phải dọn một dòng chữ.
+
+### `teamSize` giờ có mặt trong config mẫu
+
+`$comment_teamSize` mô tả khoá — trước đó nó là một khoá **không xuất hiện ở đâu** trong config
+mẫu, nên người đọc config không biết nó tồn tại. Template vẫn **không khai giá trị**: file này
+là `SEED`, một con số ở đây ship sang mọi consumer như câu trả lời của họ.
+
+---
+
 ## 2.33.0 — 2026-08-07
 
 **minor.** Hợp đồng output của hook **biết sự kiện**, và nhánh chặn của `post-edit-lint` lần

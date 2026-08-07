@@ -1,4 +1,4 @@
-<!-- version: 2026-08-07-h -->
+<!-- version: 2026-08-07-i -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,19 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-07 — AGENTS.md ngắn đi, và thôi nói chuyện với đội không tồn tại (v2.34.0)
+
+**Cắt §"Nghi thức: đừng nhớ, hãy đọc"** — nó mô tả bằng văn xuôi đúng thứ SessionStart đã in
+ra mỗi phiên. File **149 → 142 dòng** (trần nó tự đặt là ~150, và nó đang chạm trần).
+
+**§"Làm việc trong repo dùng chung" → "Làm việc trong một repo"**, tách ba điều chỉ có nghĩa
+khi `teamSize ≥ 2`: kiểm PR đang mở ở vùng nóng · không push nhánh người khác · trần session
+mỗi người.
+
+**Việc bạn phải làm khác đi:** solo thì `precommit-scan` thôi nhắc *"cần review của
+CODEOWNERS"* — bạn không approve được PR của chính mình. File `CODEOWNERS` **vẫn giữ**: nó có
+giá trị ngày project có người thứ hai.
 
 ## 2026-08-07 — Hook `PostToolUse` thôi bị bắt nói câu sai sự thật (v2.33.0)
 

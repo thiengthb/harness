@@ -19,7 +19,7 @@
  * không đọc được lịch sử git. Nó là **tầng rẻ nhất chạy được ở mọi repo không cần cài gì**.
  */
 import { readFileSync, existsSync } from 'node:fs';
-import { git, repoPath, toRepoRel, matchAny, pathsFor, report, SECRET_PATTERNS } from './lib/harness.mjs';
+import { git, repoPath, toRepoRel, matchAny, pathsFor, report, SECRET_PATTERNS, isSolo } from './lib/harness.mjs';
 
 const ALL = process.argv.includes('--all');
 const staged = ALL
@@ -47,7 +47,16 @@ for (const f of staged) {
   // Chỉ có nghĩa khi đang COMMIT. Ở `--all` thì mọi file harness đều khớp, và một
   // cảnh báo nổ trên mọi file là cảnh báo dạy người ta ngừng đọc output.
   if (!ALL && matchAny(rel, pathsFor('harness'))) {
-    warn.push(`${rel}: đang đổi HARNESS của team → cần review của CODEOWNERS + cập nhật .claude/whats-new.md`);
+    // SOLO THÌ CODEOWNERS LÀ NGHI THỨC RỖNG. Đo ở `sakubun-single-user`: 10/10 dòng
+    // `.github/CODEOWNERS` trỏ về cùng một người, và `project.dri` cũng là người đó —
+    // "cần review của CODEOWNERS" đọc ra là "tự review chính mình". Trên GitHub, solo còn
+    // KHÔNG approve được PR của chính mình, nên câu đó mô tả một bước không thực hiện được.
+    //
+    // GIỮ file CODEOWNERS (nó có giá trị ngày project có người thứ hai), chỉ đổi CÂU NHẮC.
+    // Phần còn lại của dòng — cập nhật `whats-new.md` — đúng ở cả hai vai và không đổi.
+    warn.push(`${rel}: đang đổi HARNESS`
+      + (isSolo() ? '' : ' của team → cần review của CODEOWNERS')
+      + ` → cập nhật .claude/whats-new.md`);
   }
 
   const abs = repoPath(rel);
