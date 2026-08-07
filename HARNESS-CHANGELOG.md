@@ -11,6 +11,57 @@
 
 ---
 
+## 2.41.1 — 2026-08-08
+
+**patch.** Cờ **thiếu giá trị** thôi bị đọc thành **có giá trị**. Đóng #107.
+
+### Người dùng gõ, và công cụ tự bịa hộ
+
+```
+$ node tooling/capo-report.mjs --days 7 --usd
+
+  OK   CAPO = $NaN / kết quả được chấp nhận
+```
+
+Nhãn **`OK`**. Và nó **ghi thật** vào `.claude/state/capo-history.json`:
+
+```json
+{ "days": 7, "usd": null, "accepted": 87, "capo": null }
+```
+
+`arg('--usd', null)` trả `undefined` khi cờ đứng cuối; guard là `USD !== null`, mà
+`undefined !== null` là **`true`**. **Ba trạng thái của một cờ chỉ có chỗ cho hai** — *vắng
+mặt* · *có mà thiếu giá trị* · *có giá trị* — nên cái ở giữa rơi vào cái thứ ba. `--days` cùng
+lỗi.
+
+### Vì sao nó tệ hơn một lỗi CLI thường
+
+`capo-history.json` là **sổ đo lường**, và `budgetStatus` neo vào entry **gần nhất**. In `NaN`
+ra màn hình thì người đọc thấy; ghi `NaN` vào sổ thì không ai thấy, và nó ở đó vĩnh viễn.
+
+`budgetStatus` (v2.39.0) may mắn kiểm `Number.isFinite(usd)` nên hạ nguồn không tin mục đó.
+Nhưng đó là **phòng thủ tình cờ ở phía ĐỌC**. Bên GHI phải tự từ chối — dựa vào bên đọc lọc là
+một hợp đồng chỉ đúng cho tới khi có bên đọc thứ hai.
+
+`L0006` lần thứ năm: một phép **không-đo** được viết thành một **câu trả lời**.
+
+### Giờ nó dừng, kèm chỉ dẫn
+
+```
+⛔ `--usd` thiếu giá trị.
+  Đây KHÔNG được đoán thành 0 hay bỏ qua: --usd đi thẳng vào sổ đo lường,
+  và một con số bịa ở đó thì mọi kỳ sau neo vào nó.
+  Lấy con số từ dashboard billing — harness KHÔNG đọc được hoá đơn. Ví dụ: --usd 43
+```
+
+**Không khai `--usd` vẫn hợp lệ** — báo cáo chạy, chỉ không tính CAPO. Đó là trạng thái thứ
+nhất, và nó khác hẳn trạng thái thứ hai.
+
+Test khoá cả **sổ**, không chỉ exit code: sau 4 ca hỏng + 1 ca không khai, sổ phải có **đúng
+một** entry. Mutant "parser nghiêm nhưng bên ghi vẫn ghi rác" bị bắt riêng.
+
+---
+
 ## 2.41.0 — 2026-08-08
 
 **minor.** Sổ telemetry **đóng được**. Đóng #105. `L0006` lên 4 lần xuất hiện.

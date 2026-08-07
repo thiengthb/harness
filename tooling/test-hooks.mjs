@@ -1843,6 +1843,46 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   else ok.push(`mergeState${L} codeOnly biết CHUỖI: \`/*\` trong template literal KHÔNG mở comment`);
 }
 
+// ─── cờ THIẾU GIÁ TRỊ không được đọc thành CÓ GIÁ TRỊ ───────────────────────
+//
+// `node tooling/capo-report.mjs --days 7 --usd` (cờ đứng cuối) in `OK  CAPO = $NaN` và GHI
+// một mục `usd: null` vào `capo-history.json` — sổ mà mọi run-rate về sau neo vào entry gần
+// nhất (#107). Ba trạng thái của một cờ chỉ có chỗ cho hai.
+//
+// Ca phải khoá chặt nhất là **sổ**: in NaN ra màn hình thì người đọc thấy; ghi NaN vào sổ đo
+// lường thì không ai thấy, và nó ở đó vĩnh viễn.
+{
+  const L = ' '.repeat(13);
+  const st = mkdtempSync(join(tmpdir(), 'harness-capo-'));
+  const runCapo = (args) => spawnSync(process.execPath, [repoPath('tooling', 'capo-report.mjs'), ...args],
+    { encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, HARNESS_STATE_DIR: st } });
+  const bad = [];
+  const CASES = [
+    [['--days', '7', '--usd'], 1, 'cờ --usd đứng cuối, thiếu giá trị'],
+    [['--days', '--usd', '43'], 1, 'cờ --days nuốt phải cờ kế tiếp'],
+    [['--days', '7', '--usd', 'abc'], 1, 'giá trị không phải số'],
+    [['--days', '7', '--usd', '-5'], 1, 'giá trị âm'],
+    [['--days', '7'], 0, 'KHÔNG khai --usd là hợp lệ — báo cáo vẫn chạy, chỉ không tính CAPO'],
+    [['--days', '7', '--usd', '43'], 0, 'đủ và hợp lệ'],
+  ];
+  for (const [args, wantExit, label] of CASES) {
+    const r = runCapo(args);
+    if (r.status !== wantExit) bad.push(`${label}: exit ${r.status} ≠ ${wantExit}`);
+  }
+  // BÊN GHI phải tự từ chối. Sau 4 ca hỏng + 1 ca không khai, sổ chỉ được có ĐÚNG entry của
+  // ca hợp lệ duy nhất. Dựa vào bên ĐỌC lọc `Number.isFinite` là hợp đồng chỉ đúng cho tới
+  // khi có bên đọc thứ hai.
+  const hist = readJson(join(st, 'capo-history.json'), { entries: [] });
+  if (hist.entries.length !== 1) bad.push(`sổ có ${hist.entries.length} entry, phải đúng 1 — bên GHI đang ghi rác`);
+  else if (!Number.isFinite(hist.entries[0].usd) || !Number.isFinite(hist.entries[0].capo)) {
+    bad.push(`entry duy nhất vẫn không hữu hạn: usd=${hist.entries[0].usd} capo=${hist.entries[0].capo}`);
+  }
+  rmSync(st, { recursive: true, force: true });
+
+  if (bad.length) fail.push(`cờ thiếu giá trị${L.slice(6)} ${bad.length} ca sai: ${bad.join(' | ')}`);
+  else ok.push(`cờ thiếu giá trị${L.slice(6)} 6 ca — cờ THIẾU GIÁ TRỊ dừng kèm chỉ dẫn, và sổ chỉ nhận entry hữu hạn`);
+}
+
 // ─── sổ ghi được thì phải ĐÓNG được ─────────────────────────────────────────
 //
 // `/harness-propose` đỏ VĨNH VIỄN vì `harnessBlocks` đếm mọi dòng từng có trong
