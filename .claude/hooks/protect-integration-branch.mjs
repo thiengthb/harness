@@ -49,6 +49,25 @@ const file = toolFilePath(hookInput());
 if (!file) pass();
 const rel = toRepoRel(file);
 
+// CHỈ GÁC FILE TRONG REPO. `toRepoRel` trả về đường dẫn NGUYÊN VẸN khi file nằm ngoài gốc
+// repo — nên một path tuyệt đối ở đây nghĩa là "không phải của repo này".
+//
+// Bắt được trong vòng vài phút sau khi ship v2.37.0, bởi chính guard này: nó chặn một lần
+// ghi vào `~/.claude/projects/*/memory/` — auto-memory, nằm ngoài repo, gitignore, và KHÔNG
+// liên quan gì tới "một issue một nhánh". Chặn nó là chặn một việc mà nhánh git không nói
+// được gì về nó.
+//
+// Đây cũng là lý do cửa thoát KHÔNG phải câu trả lời đúng ở đây: dùng `HARNESS_ALLOW_MAIN_EDIT`
+// cho ca này sẽ làm bộ đếm "cửa thoát vs nhánh chặn" nói dối theo hướng *"guard đúng, chỉ hay
+// bị đi vòng"* — trong khi sự thật là guard SAI PHẠM VI.
+// Phép thử là "CÒN TUYỆT ĐỐI SAU KHI QUY VỀ TƯƠNG ĐỐI", không phải "không đổi": một đường
+// dẫn đã tương đối sẵn (`tooling/x.mjs`) cũng đi ra y nguyên, và bản đầu của check này coi
+// nó là ngoài repo — làm hai ca chặn im lặng chuyển xanh. Bắt được ngay ở lần chạy suite.
+if (/^([A-Za-z]:[\\/]|[\\/])/.test(rel)) {
+  hookRan('protect-integration-branch', 'pass', 'ngoài repo');
+  pass();
+}
+
 // Nhánh tích hợp khai ở config dạng `origin/main`; ta đang so với tên nhánh CỤC BỘ.
 // `HARNESS_INTEGRATION_BRANCH` thắng config — cùng cửa mà `protect-migrations.mjs` đã mở, vì
 // cùng nhu cầu: test cần một ref TẤT ĐỊNH, và nhánh hiện tại thì mỗi lần chạy một khác.

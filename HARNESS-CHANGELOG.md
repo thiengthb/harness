@@ -11,6 +11,34 @@
 
 ---
 
+## 2.37.1 — 2026-08-07
+
+**patch.** `protect-integration-branch` chỉ gác file **trong repo**.
+
+### Guard mới chặn nhầm trong vòng vài phút — và chính nó báo cáo điều đó
+
+Ngay sau khi v2.37.0 lên `main`, hook chặn một lần ghi vào
+`~/.claude/projects/*/memory/` — **auto-memory**: ngoài repo, gitignore, và nhánh git không
+nói được gì về nó. Chặn nó là chặn đúng thứ guard **không có thẩm quyền**.
+
+`toRepoRel()` trả về đường dẫn **nguyên vẹn** khi file nằm ngoài gốc repo, nên phép thử đúng
+là *"còn tuyệt đối sau khi quy về tương đối"*.
+
+### Cửa thoát KHÔNG phải câu trả lời ở đây
+
+Dùng `HARNESS_ALLOW_MAIN_EDIT` cho ca này sẽ làm bộ đếm *"cửa thoát vs nhánh chặn"* nói dối
+theo hướng **"guard đúng, chỉ hay bị đi vòng"** — trong khi sự thật là guard **sai phạm vi**.
+Một cửa thoát dùng để che một khuyết tật sẽ làm hỏng chính tín hiệu dùng để phát hiện khuyết
+tật đó.
+
+### Bản đầu của bản vá cũng sai, và suite bắt ngay
+
+Phép thử đầu tiên là `rel === file` — nhưng một đường dẫn **đã tương đối sẵn**
+(`tooling/x.mjs`) cũng đi ra y nguyên, nên hai ca chặn **im lặng chuyển xanh**. Đó là hình
+dạng nguy hiểm nhất của một bản vá guard: nó làm guard thôi gác mà mọi thứ vẫn xanh.
+
+---
+
 ## 2.37.0 — 2026-08-07
 
 **minor.** Hook mới: **sửa file khi đang đứng trên nhánh tích hợp thì bị chặn**. Đóng #44.
