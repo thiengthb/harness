@@ -5,21 +5,35 @@
 > Câu hỏi kiểm tra: *nếu agent chạy sai 4 giờ liên tục lúc 3h sáng, cái gì dừng nó?*
 > Nếu câu trả lời là "tôi thức dậy và thấy" — bạn chưa có lớp này.
 
-## Năm guardrail
+## Năm guardrail — và cái nào ĐANG THẬT SỰ chạy
 
-Cấu hình ở `harness.config.json → budget`. Cưỡng chế ở tầng gateway/CI, **không phải
-ở tầng lời nhắc**.
+Cấu hình ở `harness.config.json → budget`. Cột **"ai cưỡng chế"** là phần quan trọng
+nhất của bảng này, và nó phải nói thật: bảng cũ liệt kê năm guardrail như thể cả năm
+đang chạy. Đo 2026-08-07: **không cái nào** có bên đọc, kể cả `monthlyUsdCap` — nơi
+duy nhất đọc nó là một dòng advice nói *"= 0"*. Năm con số trong config, năm niềm tin.
 
-| # | Guardrail | Config | Vì sao |
-|---|---|---|---|
-| 1 | **Loop / step limit** | `maxTurnsPerRun` | agent lặp vô hạn cùng một sửa đổi là chế độ hỏng có thật |
-| 2 | **Tool-call cap** | `maxToolCallsPerRun` | và cap riêng cho tool đắt |
-| 3 | **Token budget / run** | (theo tool) | **cứng**, không phải cảnh báo |
-| 4 | **Wall-clock timeout** | `maxWallClockMinutes` | biến task 8h thành task 8h, không thành task 30h |
-| 5 | **Per-project budget + alert bất thường** | `monthlyUsdCap`, `alertAtPercent` | một project lỗi không đốt ngân sách cả portfolio |
+| # | Guardrail | Config | Ai cưỡng chế | Vì sao |
+|---|---|---|---|---|
+| 1 | **Loop / step limit** | `maxTurnsPerRun` | ❌ **chưa ai** — con số chưa nối vào gì | agent lặp vô hạn cùng một sửa đổi là chế độ hỏng có thật |
+| 2 | **Tool-call cap** | `maxToolCallsPerRun` | ❌ **chưa ai** | và cap riêng cho tool đắt |
+| 3 | **Token budget / run** | (theo tool) | ⚙️ tầng tool, ngoài harness | **cứng**, không phải cảnh báo |
+| 4 | **Wall-clock timeout** | `maxWallClockMinutes` | ❌ **chưa ai** | biến task 8h thành task 8h, không thành task 30h |
+| 5 | **Per-project budget + alert** | `monthlyUsdCap`, `alertAtPercent` | ⚠️ **cảnh báo** từ v2.28.0 — `harness-doctor` + `rituals.mjs` đối chiếu với `capo-history.json` | một project lỗi không đốt ngân sách cả portfolio |
+
+**#5 là cảnh báo, KHÔNG phải chặn.** Harness không đọc được hoá đơn của bạn: số chi tiêu
+chỉ vào hệ thống khi NGƯỜI chạy `capo-report.mjs --usd <N>` với con số chép từ dashboard
+billing. Nên trần này trả lời *"tôi có đang tiêu quá không?"*, không trả lời
+*"cái gì dừng agent lúc 3h sáng?"*. Trần THẬT nằm ở console Anthropic.
+
+Chưa lần nào đo thì `harness-doctor` in **`?`**, không in "ổn" — một trần chưa so với gì
+không bảo vệ ai, và một dòng xanh ở đó là dòng nguy hiểm nhất trong cả file này.
+
+Ba mục ❌ ở trên là những con số **đang trông như guardrail mà không phải**. Chúng cần
+hoặc một bên đọc, hoặc bị cắt — xem issue label `harness`.
 
 Trong CI headless, `--max-turns` là **guardrail bắt buộc**. Không có nó, một job
-lỗi có thể chạy tới hết quota.
+lỗi có thể chạy tới hết quota. Đây là cờ của `claude` CLI, không phải field trong
+`harness.config.json` — đặt nó ở workflow, đừng trông vào `maxTurnsPerRun`.
 
 ## CAPO — chỉ số quan trọng nhất
 

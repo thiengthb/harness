@@ -11,6 +11,57 @@
 
 ---
 
+## 2.28.0 — 2026-08-07
+
+**minor.** `budget.monthlyUsdCap` thôi là field ma — nó được đối chiếu với số đo thật, và
+`?` khi chưa đo. Từ #62.
+
+### Đo được: cả khối `budget` là niềm tin đóng gói thành cấu hình
+
+`harness.config.json → budget` có năm field. Đo 2026-08-07, **không field nào được cưỡng chế**:
+
+| field | bên đọc trước 2.28.0 |
+|---|---|
+| `monthlyUsdCap` | `harness-doctor:137` — chỉ để nói *"= 0, không có cap"*. Đặt `50` vào: không gì xảy ra |
+| `alertAtPercent` | **không ai** |
+| `maxTurnsPerRun` | **không ai** (chỉ một fixture test + bảng trong `docs/ECONOMICS.md`) |
+| `maxToolCallsPerRun` | **không ai** |
+| `maxWallClockMinutes` | **không ai** |
+
+Và `docs/ECONOMICS.md` liệt kê cả năm dưới tiêu đề *"Năm guardrail — cưỡng chế ở tầng
+gateway/CI, không phải ở tầng lời nhắc"*. Tài liệu nói có năm lớp bảo vệ; có không lớp nào.
+Cùng lớp với `modelTiering` bị cắt ở 2.0.0.
+
+### Đổi gì
+
+- **`budgetStatus()`** (THUẦN) ở `lib/harness.mjs` — SÁU trạng thái, **hai trong số đó là `?`**:
+  `off` (chưa khai trần) · `unmeasured` (khai rồi mà chưa lần nào đo) · `stale` (số đo cũ hơn
+  45 ngày) · `ok` / `alert` / `over`.
+  `unmeasured` là ca được khoá chặt nhất: nếu nó đổ về `ok` thì bản vá này **tệ hơn field ma** —
+  nó biến một con số không làm gì thành một dấu tick xanh, và không ai đi điều tra tick xanh.
+- **`harness-doctor` có mục `── NGÂN SÁCH ──`**, `rituals.mjs --all` có năng lực `capo-report`.
+- **`alertAtPercent` được nối** — nó là ngưỡng của `alert`.
+- **Run-rate, KHÔNG cộng dồn.** Mỗi entry `capo-history` là *"`days` ngày qua tiêu `usd`"* và
+  các cửa sổ chồng lên nhau (chạy hàng tuần với `--days 30` ⇒ cộng vào là gấp bốn). Dùng entry
+  mới nhất, quy ra `usd / days * 30`, và gọi đúng tên nó là **run-rate**.
+- **Mọi thông báo nói ra rằng số là NGƯỜI GÕ.** Harness không đọc được hoá đơn:
+  `capo-history.json` chỉ có dữ liệu khi ai đó chạy `capo-report.mjs --usd <N>` với con số chép
+  từ dashboard billing. Giấu chuyện đó là chế tạo độ chính xác giả.
+- `capo-report.mjs` ghi qua `stateDir()` thay vì `.claude/state/` cứng — `HARNESS_STATE_DIR`
+  chuyển được đích, nên test thôi ghi vào sổ THẬT của bạn (cùng lớp lỗi v2.24.0, v2.25.0).
+- `docs/ECONOMICS.md` có thêm cột **"ai cưỡng chế"**, và ba field chưa có bên đọc bị đánh ❌.
+
+### Repo đã áp harness cần làm gì
+
+`harness-doctor` sẽ in thêm một dòng `?` ở mục NGÂN SÁCH. **Đó là trạng thái thật, không phải
+hồi quy** — nó luôn đúng, chỉ chưa được nói ra. Muốn nó xanh: khai trần bằng
+`node tooling/setup.mjs`, rồi `node tooling/capo-report.mjs --days 7 --usd <số từ dashboard>`.
+
+**Ngoài phạm vi:** `maxTurnsPerRun` · `maxToolCallsPerRun` · `maxWallClockMinutes` vẫn chưa có
+bên đọc. Chúng cần một quyết định riêng (nối hay cắt) — mở issue, không tự quyết.
+
+---
+
 ## 2.27.0 — 2026-08-07
 
 **minor.** Chiều **ĐI LÊN** của vòng học có bên nhận, và ba phép đếm "pack chờ quyết" gộp

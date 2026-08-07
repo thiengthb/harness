@@ -17,7 +17,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, TEST_TELEMETRY_DIR, coordinationLayer, verificationCoverage, readPacks, packPending } from './lib/harness.mjs';
+import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, TEST_TELEMETRY_DIR, coordinationLayer, verificationCoverage, readPacks, packPending, budgetStatus, latestCapoEntry } from './lib/harness.mjs';
 
 const QUICK = process.argv.includes('--quick');
 // PHẢI chụp TRƯỚC khi chạy các suite bên dưới: nó là mốc phân biệt "telemetry suite của lần
@@ -134,7 +134,30 @@ const mcpCount = Object.keys(readJson(repoPath('.mcp.json'), {})?.mcpServers ?? 
 const mcpMax = cfg.mcp?.maxServers ?? 5;
 if (mcpCount > mcpMax) advice.push(`${mcpCount} MCP server (ngưỡng ${mcpMax}) — tool definition ăn context mỗi request`);
 
-if (!cfg.budget?.monthlyUsdCap) advice.push('budget.monthlyUsdCap = 0 — không có cap chi tiêu. Xem docs/ECONOMICS.md');
+// ── NGÂN SÁCH ────────────────────────────────────────────────────────────────
+// Chỉ THU THẬP + IN ở đây; phán đoán ở `budgetStatus` trong lib (hàm THUẦN, cùng lý do tách
+// như `coordinationLayer`). Trước v2.28.0 chỗ này là nơi DUY NHẤT đọc `monthlyUsdCap`, và
+// chỉ để nói "= 0" — nghĩa là đặt số vào cũng không có gì xảy ra.
+{
+  const b = budgetStatus({
+    cap: cfg.budget?.monthlyUsdCap,
+    alertAtPercent: cfg.budget?.alertAtPercent,
+    latest: latestCapoEntry(),
+  });
+  console.log('\n── NGÂN SÁCH ──');
+  const cap = Number(cfg.budget?.monthlyUsdCap) || 0;
+  const LINE = {
+    off: '  ?    chưa khai trần chi tiêu (budget.monthlyUsdCap = 0) — KHÔNG phải "ổn"',
+    unmeasured: `  ?    trần $${cap}/tháng đã khai, CHƯA lần nào đo chi tiêu — cap chưa so với gì cả`,
+    stale: `  ?    trần $${cap}/tháng · số đo gần nhất ${b.ageDays} ngày trước — quá cũ để nói về tháng này`,
+    ok: `  ok   run-rate $${b.runRate?.toFixed(0)}/tháng = ${b.percent}% trần $${cap} (số NHẬP TAY ${b.ageDays} ngày trước)`,
+    alert: `  ⚠️   run-rate $${b.runRate?.toFixed(0)}/tháng = ${b.percent}% trần $${cap} (số NHẬP TAY ${b.ageDays} ngày trước)`,
+    over: `  ⚠️   run-rate $${b.runRate?.toFixed(0)}/tháng VƯỢT trần $${cap} (${b.percent}%, số NHẬP TAY ${b.ageDays} ngày trước)`,
+  };
+  console.log(LINE[b.mode]);
+  if (b.mode !== 'off') console.log('       harness KHÔNG đọc được hoá đơn — con số này do người chép từ dashboard billing.');
+  if (b.advice) advice.push(b.advice);
+}
 
 // Ngưỡng kích cỡ PR của REPO TEMPLATE cao hơn của repo sản phẩm, và có lý do (xem
 // $comment_prLines trong harness.config.json). Nhưng `harness.config.json` là SEED —

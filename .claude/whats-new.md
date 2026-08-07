@@ -1,4 +1,4 @@
-<!-- version: 2026-08-07-b -->
+<!-- version: 2026-08-07-c -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,17 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-07 — Trần chi tiêu thôi là con số không ai đọc (v2.28.0)
+
+`budget.monthlyUsdCap` từng chỉ được đọc ở đúng một chỗ, và chỉ để nói *"= 0"* — đặt `$50`
+vào cũng không có gì xảy ra. Giờ `harness-doctor` có mục **NGÂN SÁCH** và `rituals.mjs` có
+năng lực `capo-report`, đối chiếu với `.claude/state/capo-history.json`.
+
+**Việc bạn phải làm khác đi:** doctor sẽ in một dòng `?` cho tới khi bạn khai trần
+(`node tooling/setup.mjs`) **và** đo ít nhất một lần
+(`node tooling/capo-report.mjs --days 7 --usd <số từ dashboard billing>`). Khai trần mà chưa
+đo vẫn là `?` — harness không đọc được hoá đơn, số là bạn gõ vào.
 
 ## 2026-08-07 — Pack 0 bài học không còn đọc ra là rỗng (v2.27.0)
 

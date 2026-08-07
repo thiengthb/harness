@@ -238,6 +238,74 @@ export function coordinationLayer({ teamSize: ts, role } = {}) {
 }
 
 /**
+ * ═══ CAP CHI TIÊU: NỐI FIELD VÀO SỐ ĐO THẬT ═════════════════════════════════
+ *
+ * `budget.monthlyUsdCap` là field MA cho tới v2.28.0: đo 2026-08-07, nơi DUY NHẤT đọc nó là
+ * `harness-doctor:137`, và chỉ để nói *"= 0, không có cap"*. Đặt `50` vào cũng không có gì
+ * xảy ra — không cơ chế nào so, không cơ chế nào cảnh báo. Cùng lớp với `modelTiering` bị
+ * cắt ở 2.0.0: **một niềm tin được đóng gói thành cấu hình**.
+ *
+ * NGUỒN SỐ ĐO LÀ NGƯỜI GÕ, VÀ MỌI THÔNG BÁO PHẢI NÓI RA ĐIỀU ĐÓ. `capo-history.json` chỉ có
+ * dữ liệu khi ai đó chạy `capo-report.mjs --usd <N>`, với `N` chép từ dashboard billing.
+ * Harness KHÔNG đọc được hoá đơn. Giấu chuyện đó đi là chế tạo độ chính xác giả — người đọc
+ * sẽ tin con số này như tin một cái đồng hồ, trong khi nó là một tấm ảnh chụp tuần trước.
+ *
+ * KHÔNG CỘNG các entry lại. Mỗi entry là *"`days` ngày qua tiêu `usd`"*, và các cửa sổ CHỒNG
+ * LÊN NHAU (chạy hàng tuần với `--days 30` ⇒ cộng vào là gấp bốn). Dùng entry MỚI NHẤT và
+ * quy ra **run-rate** `usd / days * 30`. Nói rõ "run-rate", không nói "đã tiêu tháng này".
+ *
+ * SÁU trạng thái, và hai trong số đó là `?`:
+ *   · `off`        — cap = 0 ⇒ chưa khai trần. Không phải "ổn".
+ *   · `unmeasured` — cap > 0 mà chưa lần nào đo ⇒ `?`. Đây là ca nguy hiểm nhất: một con số
+ *                    trong config làm người ta TIN là có lớp bảo vệ. Nó phải kêu.
+ *   · `stale`      — số đo cũ hơn 45 ngày ⇒ `?`. Một trần THÁNG neo vào phép đo từ hai tháng
+ *                    trước không nói gì về tháng này.
+ *   · `ok` / `alert` / `over`
+ */
+export function budgetStatus({ cap, alertAtPercent = 80, latest = null, now = Date.now() } = {}) {
+  const c = Number(cap);
+  if (!Number.isFinite(c) || c <= 0) {
+    return { mode: 'off', percent: null, runRate: null,
+      advice: 'budget.monthlyUsdCap = 0 — chưa khai trần chi tiêu. Đây là lớp duy nhất gây thiệt hại tài chính TRỰC TIẾP. Khai: node tooling/setup.mjs · xem docs/ECONOMICS.md' };
+  }
+  const usd = Number(latest?.usd), days = Number(latest?.days);
+  const at = Date.parse(latest?.at ?? '');
+  if (!Number.isFinite(usd) || !Number.isFinite(days) || days <= 0 || !Number.isFinite(at)) {
+    return { mode: 'unmeasured', percent: null, runRate: null,
+      advice: `cap $${c} đã khai nhưng CHƯA LẦN NÀO đo chi tiêu — không có gì để so, nên cap này chưa bảo vệ bạn khỏi bất cứ điều gì. Lấy số từ dashboard billing: node tooling/capo-report.mjs --usd <N>` };
+  }
+  // 45 ngày: một trần THÁNG cần số đo trong hoặc sát tháng này. Nới hơn thì "stale" không
+  // bao giờ bật; chặt hơn thì nó kêu ngay sau một kỳ đo bình thường và thành nhiễu.
+  const ageDays = Math.round((now - at) / 86400000);
+  if (ageDays > 45) {
+    return { mode: 'stale', percent: null, runRate: null, ageDays,
+      advice: `số đo chi tiêu gần nhất đã ${ageDays} ngày — trần THÁNG neo vào đó không nói gì về tháng này. Đo lại: node tooling/capo-report.mjs --usd <N>` };
+  }
+  const runRate = (usd / days) * 30;
+  const percent = Math.round((runRate / c) * 100);
+  const alert = Number.isFinite(Number(alertAtPercent)) && Number(alertAtPercent) > 0 ? Number(alertAtPercent) : 80;
+  const how = `$${usd} / ${days} ngày, NHẬP TAY ${ageDays} ngày trước`;
+  if (percent >= 100) {
+    return { mode: 'over', percent, runRate, ageDays,
+      advice: `run-rate $${runRate.toFixed(0)}/tháng VƯỢT trần $${c} (${percent}%) — nguồn: ${how}. Xem docs/ECONOMICS.md` };
+  }
+  if (percent >= alert) {
+    return { mode: 'alert', percent, runRate, ageDays,
+      advice: `run-rate $${runRate.toFixed(0)}/tháng = ${percent}% trần $${c} (ngưỡng cảnh báo ${alert}%) — nguồn: ${how}` };
+  }
+  return { mode: 'ok', percent, runRate, ageDays, advice: null };
+}
+
+/**
+ * Entry đo chi tiêu GẦN NHẤT, hoặc `null` nếu chưa từng đo. Phần IO của `budgetStatus`.
+ */
+export function latestCapoEntry() {
+  const h = readJson(join(stateDir(), 'capo-history.json'), null);
+  const e = Array.isArray(h?.entries) ? h.entries : [];
+  return e.length ? e[e.length - 1] : null;
+}
+
+/**
  * ═══ HAI ĐẦU MỘT KÊNH, MỘT DANH SÁCH ════════════════════════════════════════
  *
  * Mọi field `upstream.mjs` ghi vào `pack.json` phải khai ở đây KÈM BÊN ĐỌC.

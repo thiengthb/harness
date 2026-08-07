@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, rmSync, readdirSync, cpSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus } from './lib/harness.mjs';
 
 const BLOCK = 2, OK = 0;
 
@@ -895,6 +895,9 @@ for (const [env, expect, label, msg] of GATE_CASES) {
     fixlogTotal: 0, fixlogRepeated: 0, learningsNewerThanLessons: 0,
     skillCount: 5, maxSkills: 12, worktrees: 1, maxWorktrees: 4, pendingPacks: 0,
     claudeCodeVersion: '2.1.221', reviewedClaudeCode: '2.1.221', reviewedClaudeCodeAt: '2026-08-05T00:00:00.000Z',
+    // "Trạng thái ĐỦ" cho ngân sách = đã khai trần VÀ đã đo. Chỉ khai trần thôi là `?` —
+    // ca ③ bên dưới khoá đúng điều đó.
+    budget: { mode: 'ok', percent: 14, ageDays: 3, advice: null },
   };
   const get = (state, id) => evaluate({ ...base, ...state }).find(r => r.id === id);
 
@@ -1010,6 +1013,24 @@ for (const [env, expect, label, msg] of GATE_CASES) {
     if (r?.state !== want) fail.push(`rituals.mjs${' '.repeat(17)} harness-propose: ${label} → state=${r?.state}, mong đợi ${want}`);
     else if (!msg.test(r.why)) fail.push(`rituals.mjs${' '.repeat(17)} harness-propose: ${label} → \`why\` không khớp ${msg}`);
     else ok.push(`rituals.mjs${' '.repeat(17)} harness-propose: ${label}`);
+  }
+
+  // ④b-ter `capo-report`: BA cách một trần chi tiêu nói dối, và không cách nào được thành `ok`.
+  //     `off` (chưa khai) ⇒ `?`, không phải "ổn" — đây là ca mặc định của mọi repo mới.
+  //     `unmeasured` (khai rồi, chưa đo) ⇒ `due` — nguy hiểm nhất: con số trong config làm
+  //     người ta TIN là có lớp bảo vệ, trong khi nó chưa so với gì.
+  const CAPO = [
+    [{ mode: 'off' }, '?', /chưa khai trần/, 'chưa khai trần ⇒ `?`, KHÔNG phải ổn'],
+    [{ mode: 'unmeasured', advice: 'cap $50 đã khai nhưng CHƯA LẦN NÀO đo' }, 'due', /CHƯA LẦN NÀO đo/, 'khai rồi chưa đo ⇒ tới hạn'],
+    [{ mode: 'stale', advice: 'số đo chi tiêu gần nhất đã 90 ngày' }, 'due', /90 ngày/, 'số đo quá cũ ⇒ tới hạn'],
+    [{ mode: 'alert', advice: 'run-rate $171/tháng = 86% trần $200' }, 'due', /86%/, 'chạm ngưỡng cảnh báo ⇒ tới hạn'],
+    [{ mode: 'ok', percent: 14, ageDays: 3 }, 'ok', /14%.*3 ngày/, 'dưới ngưỡng ⇒ im, nhưng NÓI RA số và tuổi số đo'],
+  ];
+  for (const [budget, want, msg, label] of CAPO) {
+    const r = get({ budget }, 'capo-report');
+    if (r?.state !== want) fail.push(`rituals.mjs${' '.repeat(17)} capo-report: ${label} → state=${r?.state}, mong đợi ${want}`);
+    else if (!msg.test(r.why)) fail.push(`rituals.mjs${' '.repeat(17)} capo-report: ${label} → \`why\` không khớp ${msg}: "${r.why}"`);
+    else ok.push(`rituals.mjs${' '.repeat(17)} capo-report: ${label}`);
   }
 
   // ④c-bis `/pre-merge` phải ĐO, không được khẳng định suông. Bản trước in "chưa thấy dấu gate
@@ -1390,6 +1411,60 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   }
   if (bad.length) fail.push(`coordinationLayer${L} ${bad.length}/${TABLE.length} ca sai: ${bad.join(' | ')}`);
   else ok.push(`coordinationLayer${L} ${TABLE.length} ca — template KHÔNG bị đòi khai teamSize (bug #56 không tái tạo), vai lạ thì vẫn bị đòi`);
+}
+
+// ─── budgetStatus: trần khai rồi mà chưa đo KHÔNG được đọc là "ổn" ───────────
+//
+// `budget.monthlyUsdCap` là field MA cho tới v2.28.0: nơi DUY NHẤT đọc nó là một dòng advice
+// nói "= 0". Đặt $50 vào cũng không có gì xảy ra — và chính điều đó khiến người ta TIN là
+// có lớp bảo vệ. Cùng lớp với `modelTiering` bị cắt ở 2.0.0.
+//
+// Ca phải khoá chặt nhất là `unmeasured`: cap > 0, `capo-history.json` rỗng. Nếu ca đó đổ
+// về `ok` thì bản vá này TỆ HƠN field ma — nó biến một con số không làm gì thành một dấu
+// tick xanh, và không ai đi điều tra một dấu tick xanh.
+{
+  const L = ' '.repeat(13);
+  const DAY = 86400000;
+  const NOW = Date.parse('2026-08-07T00:00:00.000Z');
+  const at = (d) => new Date(NOW - d * DAY).toISOString();
+  //          cap    alert   latest                              mode          có advice?
+  const TABLE = [
+    [0,    80, null,                                  'off',        true ],  // chưa khai trần
+    [50,   80, null,                                  'unmeasured', true ],  // ← ca nguy hiểm nhất
+    [50,   80, { usd: 10, days: 7, at: at(90) },      'stale',      true ],  // đo 3 tháng trước
+    [50,   80, { usd: 7,  days: 30, at: at(3) },      'ok',         false],  // run-rate $7 = 14%
+    [50,   80, { usd: 10, days: 7, at: at(3) },       'alert',      true ],  // $42.9/tháng = 86%
+    [50,   80, { usd: 15, days: 7, at: at(3) },       'over',       true ],  // $64.3/tháng = 129%
+    [200,  80, { usd: 40, days: 7, at: at(1) },       'alert',      true ],  // $171/tháng = 86%
+    [200,  95, { usd: 40, days: 7, at: at(1) },       'ok',         false],  // ngưỡng 95 ⇒ chưa kêu
+    [50,   80, { usd: 10, days: 0, at: at(1) },       'unmeasured', true ],  // days=0 ⇒ chia 0
+    [50,   80, { usd: 'nhiều', days: 7, at: at(1) },  'unmeasured', true ],  // rác
+    [50,   80, { usd: 10, days: 7, at: 'hôm qua' },   'unmeasured', true ],  // ngày không parse được
+    ['50', 80, { usd: 7,  days: 30, at: at(3) },      'ok',         false],  // cap dạng chuỗi vẫn đọc được
+  ];
+  const bad = [];
+  for (const [cap, alertAtPercent, latest, wantMode, wantAdvice] of TABLE) {
+    const r = budgetStatus({ cap, alertAtPercent, latest, now: NOW });
+    const got = `${r.mode}/${Boolean(r.advice)}`;
+    const want = `${wantMode}/${wantAdvice}`;
+    if (got !== want) bad.push(`cap=${cap} ${JSON.stringify(latest)}: ${got} ≠ ${want}`);
+  }
+  // `ok` cũng phải mang theo BẰNG CHỨNG — một dòng xanh không kiểm được thì bị bỏ qua.
+  const okCase = budgetStatus({ cap: 50, latest: { usd: 7, days: 30, at: at(3) }, now: NOW });
+  if (okCase.percent !== 14 || okCase.ageDays !== 3) bad.push(`ok thiếu số đo: percent=${okCase.percent} ageDays=${okCase.ageDays}`);
+
+  if (bad.length) fail.push(`budgetStatus${L} ${bad.length}/${TABLE.length + 1} ca sai: ${bad.join(' | ')}`);
+  else ok.push(`budgetStatus${L} ${TABLE.length + 1} ca — khai trần mà CHƯA ĐO là \`unmeasured\`, không phải "ổn"`);
+
+  // Doctor in bằng một bảng tra `mode → dòng`. Thiếu một mode ⇒ nó in `undefined` — và đó là
+  // ca KHÔNG bảng thuần nào ở trên bắt được, vì lỗi nằm ở chỗ HIỂN THỊ. Không dựng repo có
+  // `cap > 0` được (`harness.config.json` là vùng cấm), nên đối chiếu bằng mã nguồn.
+  const MODES = ['off', 'unmeasured', 'stale', 'ok', 'alert', 'over'];
+  const doc = readFileSync(repoPath('tooling', 'harness-doctor.mjs'), 'utf8');
+  const budgetBlock = doc.slice(doc.indexOf('── NGÂN SÁCH ──'));
+  const missing = MODES.filter(m => !new RegExp(`^\\s{4}${m}:`, 'm').test(budgetBlock));
+  if (missing.length) fail.push(`budgetStatus${L} harness-doctor thiếu dòng cho mode: ${missing.join(' · ')} — sẽ in \`undefined\``);
+  else ok.push(`budgetStatus${L} harness-doctor có dòng cho cả ${MODES.length} mode (không mode nào in \`undefined\`)`);
 }
 
 // ─── pack.json: MỌI field được ghi phải có bên ĐỌC ───────────────────────────
@@ -1883,7 +1958,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 145;
+const RATCHET = 152;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {
