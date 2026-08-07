@@ -747,6 +747,100 @@ export function toolCommand(input) {
   return String(input?.tool_input?.command ?? '');
 }
 
+/**
+ * ═══ KHỚP LỆNH, KHÔNG KHỚP CHUỖI ════════════════════════════════════════════
+ *
+ * `dcg.mjs` nhận một CHUỖI và xử lý nó như một LỆNH. Hai triệu chứng ngược nhau, một gốc:
+ *
+ *   CHẶN NHẦM VĂN BẢN — 5 lần đo được, gồm cả lần chặn chính lệnh `gh issue create` mở
+ *   issue #43, vì thân issue trích tên lệnh. Guard chặn được cả việc BÁO CÁO về chính nó.
+ *
+ *   CHO QUA LỆNH THẬT — 5/5 biến thể nguỵ trang bằng nháy đi lọt, trong khi shell thực thi
+ *   chúng y hệt dạng bị chặn. (Claude Code 2.1.223 vừa vá đúng lớp lỗi này ở tầng vendor.)
+ *
+ * MÔ HÌNH ĐÚNG: một rule về `git push --force` là rule về **chương trình `git`**. Khi
+ * chương trình là `gh` hay `node`, cùng chuỗi đó là ĐỐI SỐ VĂN BẢN, không phải lệnh.
+ *
+ * BA BƯỚC, và mỗi bước xử đúng một phần:
+ *   1. `stripHeredocs` — thân heredoc là DỮ LIỆU. Ba trong năm ca chặn nhầm là heredoc.
+ *   2. `simpleCommands` — cắt theo `; && || |` và xuống dòng, lấy token đầu làm chương trình.
+ *   3. `unquote` — bỏ nháy TRONG một lệnh đã xác định chương trình, để `git "push" --force`
+ *      và `git push --fo""rce` quy về cùng một dạng.
+ *
+ * ĐÂY LÀ BEST-EFFORT, VÀ PHẢI ĐƯỢC ĐỌC NHƯ VẬY. Nó KHÔNG bắt được:
+ *   · biến shell (`F=--force; git push $F`) — cần thực thi mới biết giá trị;
+ *   · `eval`, command substitution, `base64 -d | sh`;
+ *   · bất cứ gì ngoài ngữ pháp shell đơn giản.
+ * Tầng MỘT là `settings.json → permissions.deny`, do vendor cưỡng chế. `dcg` là tầng HAI:
+ * giải thích + telemetry + phủ những nhóm deny chưa với tới. Xem `.claude/rules/danger-zones.md`.
+ */
+export function stripHeredocs(cmd) {
+  // `<<EOF`, `<<-EOF`, `<<'EOF'`, `<<"EOF"` — thân tới dòng chỉ chứa nhãn thì dừng.
+  const lines = String(cmd).split('\n');
+  const out = [];
+  let end = null;
+  for (const line of lines) {
+    if (end !== null) {
+      if (line.trim() === end) end = null;
+      continue;                                  // thân heredoc: DỮ LIỆU, không quét
+    }
+    const m = line.match(/<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/);
+    out.push(line);
+    if (m) end = m[2];
+  }
+  return out.join('\n');
+}
+
+/** Bỏ nháy để `git "push" --force` và `git push --fo""rce` quy về một dạng. */
+export function unquote(s) {
+  return String(s).replace(/(["'])(.*?)\1/gs, '$2');
+}
+
+/**
+ * Cắt một dòng lệnh thành các LỆNH ĐƠN, mỗi cái có chương trình của nó.
+ *
+ * Bỏ qua tiền tố gán biến (`FOO=1 git push`) và các bọc thường gặp (`sudo`, `env`, `time`,
+ * `xargs`) để token đầu là chương trình THẬT — nếu không, `sudo rm -rf /` có chương trình
+ * là `sudo` và mọi rule về `rm` đều trượt.
+ */
+const CMD_WRAPPERS = new Set(['sudo', 'env', 'time', 'nohup', 'command', 'exec', 'xargs', 'nice', 'doas']);
+export function simpleCommands(cmd) {
+  return stripHeredocs(cmd)
+    .split(/\n|;|&&|\|\||\||&(?!&)/)
+    .map(part => {
+      const bare = unquote(part).trim();
+      if (!bare) return null;
+      const tokens = bare.split(/\s+/);
+      let i = 0;
+      while (i < tokens.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i]) || CMD_WRAPPERS.has(tokens[i].replace(/^.*[/\\]/, '')))) i++;
+      if (i >= tokens.length) return null;
+      const program = tokens[i].replace(/^.*[/\\]/, '');   // `/usr/bin/git` → `git`
+      return { program, text: tokens.slice(i).join(' '), raw: part.trim() };
+    })
+    .filter(Boolean);
+}
+
+/**
+ * PHÁN ĐOÁN của `dcg` — hàm THUẦN, test khẳng định thẳng vào đây.
+ *
+ * Rule có `program` chỉ nổ khi một LỆNH ĐƠN có đúng chương trình đó, và khớp trên dạng đã bỏ
+ * nháy. Rule KHÔNG có `program` quét toàn bộ chuỗi đã bỏ heredoc — dùng cho những nhóm mà
+ * thứ nguy hiểm nằm bên trong một đối số (SQL) hoặc không có chương trình cố định (fork bomb).
+ */
+export function dangerousCommand(cmd, rules) {
+  const cmds = simpleCommands(cmd);
+  const whole = stripHeredocs(cmd);
+  for (const r of rules) {
+    if (r.program) {
+      const hit = cmds.find(c => r.program.test(c.program) && r.re.test(c.text));
+      if (hit) return { ...r, matched: hit.text.slice(0, 200) };
+    } else if (r.re.test(whole)) {
+      return { ...r, matched: whole.slice(0, 200) };
+    }
+  }
+  return null;
+}
+
 export function toolContent(input) {
   const ti = input?.tool_input ?? {};
   return String(ti.content ?? ti.new_string ?? ti.new_source ?? '');

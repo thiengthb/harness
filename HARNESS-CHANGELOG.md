@@ -11,6 +11,62 @@
 
 ---
 
+## 2.36.0 — 2026-08-07
+
+**minor.** `dcg` khớp theo **LỆNH**, không theo chuỗi. Đóng #43.
+
+### Hai triệu chứng ngược nhau, một gốc
+
+`dcg.mjs` nhận một *chuỗi* và xử lý nó như một *lệnh*.
+
+**Chặn nhầm văn bản — 5 lần đo được**, gồm cả lần chặn chính lệnh `gh issue create` mở issue
+#43, vì thân issue trích tên lệnh. **Một cái gác chặn được việc báo cáo về chính nó là một
+cái gác tự bịt đường sửa nó.**
+
+**Cho qua lệnh thật — 5/5 biến thể** nguỵ trang bằng nháy đi lọt, trong khi shell thực thi
+chúng y hệt dạng bị chặn.
+
+### Mô hình đúng
+
+Một rule về `git push --force` là rule về **chương trình `git`**. Khi chương trình là `gh` hay
+`node`, cùng chuỗi đó là **đối số văn bản**.
+
+Ba bước, mỗi bước xử một phần:
+
+| bước | xử ca nào |
+|---|---|
+| `stripHeredocs` — thân heredoc là DỮ LIỆU | 3/5 ca chặn nhầm |
+| `simpleCommands` — cắt theo `; && \|\| \|`, bỏ tiền tố gán biến và bọc (`sudo`, `env`, `xargs`), lấy chương trình | 2/5 ca còn lại + `sudo rm -rf /` |
+| `unquote` — bỏ nháy TRONG một lệnh đã xác định chương trình | 4/5 ca nguỵ trang |
+
+Phán đoán nằm ở `dangerousCommand()` — hàm THUẦN ở `lib/harness.mjs`, test khẳng định thẳng
+vào đó thay vì spawn hook 15 lần.
+
+### Giới hạn — nói ra, không để người đọc tự suy là đã kín
+
+`dcg` là regex trên ngữ pháp shell. Nó **không** bắt được biến shell
+(`F=--force; git push $F`), `eval`, command substitution, hay `base64 -d | sh`. Có một ca test
+khẳng định **đúng điều đó** — nếu một ngày nó bị chặn thật thì hoặc ai đó đã dựng lớp mạnh hơn,
+hoặc regex vừa phình ra theo hướng sẽ đẻ dương tính giả.
+
+### `danger-zones.md` thôi nói quá
+
+Rule đó viết ba nhóm nguy hiểm được *"cưỡng chế bằng máy ở `dcg.mjs`, …, và `permissions.deny`"*
+— gộp hai tầng sức mạnh rất khác nhau vào một câu. Giờ nó nói rõ:
+
+- **tầng MỘT** = `permissions.deny`, vendor cưỡng chế, trước cả khi hook chạy;
+- **tầng HAI** = hook — thêm *giải thích*, *cách đi tiếp*, *telemetry*; **không thay được tầng một**.
+
+Đo 2026-08-06: cả 5 biến thể nguỵ trang đi lọt tầng hai, và **tầng một bắt được chúng**. Đó là
+lý do thứ tự hai tầng quan trọng hơn sức mạnh từng tầng.
+
+### Ngoài phạm vi
+
+Mục 2 của #43 — bổ sung `permissions.deny` cho **8 nhóm `dcg` chưa có tầng một** — chưa làm.
+Ratchet `dcg ↔ permissions.deny` đang ở **8**, và nó **chỉ được giảm**.
+
+---
+
 ## 2.35.0 — 2026-08-07
 
 **minor.** Cắt **một** field ma trong `budget`, và khoá cả bảng bằng máy. Đóng #72 —

@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, rmSync, readdirSync, cpSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, dangerousCommand } from './lib/harness.mjs';
 
 const BLOCK = 2, OK = 0;
 
@@ -1742,6 +1742,68 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   } else ok.push(`entropy-scan.mjs${' '.repeat(12)} allowlist GLOBAL_OK khớp thật trên OS này (${present.length} file được miễn, 0 rò)`);
 }
 
+// ─── dcg: KHỚP LỆNH, KHÔNG KHỚP CHUỖI (#43) ──────────────────────────────────
+//
+// Bảng này là mười ca ĐÃ ĐO trong issue #43 — năm lần chặn nhầm văn bản, năm biến thể nguỵ
+// trang mà shell thực thi y hệt dạng bị chặn. Hai triệu chứng ngược nhau, một gốc: gác nhận
+// một CHUỖI và xử lý nó như một LỆNH.
+//
+// Ca chặn-nhầm số 5 đáng gọi tên riêng: guard chặn chính lệnh `gh issue create` mở issue #43,
+// vì thân issue trích tên lệnh. Một cái gác chặn được việc BÁO CÁO về chính nó là một cái gác
+// tự bịt đường sửa nó.
+//
+// Bảng khẳng định vào `dangerousCommand` — hàm THUẦN — chứ không spawn hook: mười ca × một
+// process mỗi ca là chi phí không cần trả, và phán đoán mới là thứ cần khoá.
+{
+  const L = ' '.repeat(15);
+  const GIT = /^git$/;
+  const RULES = [
+    { program: GIT, re: /^git\s+push\s+[^|;&]*(-f\b|--force(?!-with-lease))/, why: 'force push' },
+    { program: /^rm$/, re: /^rm\s+-[rRf]{1,2}\w*\s+([/~]\S*|\.\s*$|\*\s*$)/, why: 'rm gốc' },
+    { re: /\b(DROP\s+(TABLE|DATABASE|SCHEMA)|TRUNCATE\s+TABLE)\b/i, why: 'SQL' },
+  ];
+  const BLOCKED = true, ALLOWED = false;
+  //                                                                        mong đợi
+  const TABLE = [
+    // ── CHẶN NHẦM VĂN BẢN — năm ca đã đo, tất cả phải ĐI QUA ────────────────
+    [`cat > f.md <<'EOF'\ngit push --force là thứ bị cấm\nEOF`, ALLOWED, 'heredoc chứa tên lệnh (ca 1)'],
+    [`git commit -m "phát hiện: git push --force đi lọt"`, ALLOWED, 'commit message trích tên lệnh (ca 2)'],
+    [`cat > probe.mjs <<'JS'\nconst x = 'git push --force';\nJS`, ALLOWED, 'heredoc viết script đo chính dcg (ca 3)'],
+    [`node tooling/rituals.mjs --reviewed-claude-code "vendor vá git push --force"`, ALLOWED, 'đối số chuỗi, KHÔNG heredoc (ca 4)'],
+    [`gh issue create --body "dcg chặn nhầm git push --force"`, ALLOWED, 'gh issue create — guard từng chặn chính việc báo cáo về nó (ca 5)'],
+    // ── NGUỴ TRANG BẰNG NHÁY — năm ca đã đo, tất cả phải BỊ CHẶN ────────────
+    [`git "push" --force`, BLOCKED, 'bọc một token bằng nháy kép'],
+    [`git push --fo""rce`, BLOCKED, 'cặp nháy rỗng giữa một cờ'],
+    [`git push --f''orce`, BLOCKED, 'cặp nháy đơn rỗng giữa một token'],
+    [`rm -rf "/"`, BLOCKED, 'bọc đường dẫn gốc bằng nháy kép'],
+    [`sudo rm -rf /`, BLOCKED, 'bọc bằng sudo — chương trình thật là rm'],
+    // ── MỐC HAI ĐẦU: phải giữ nguyên hành vi đúng ───────────────────────────
+    [`git push --force-with-lease`, ALLOWED, 'biến thể an toàn vẫn được phép'],
+    [`git status`, ALLOWED, 'lệnh thường'],
+    [`git push --force`, BLOCKED, 'dạng thẳng vẫn chặn'],
+    [`psql -c "DROP TABLE users"`, BLOCKED, 'SQL nằm trong đối số — rule không có `program` quét cả chuỗi'],
+    [`echo hi && git push --force`, BLOCKED, 'lệnh thứ hai trong chuỗi && vẫn bị soi'],
+  ];
+  const bad = [];
+  for (const [cmd, want, label] of TABLE) {
+    const got = Boolean(dangerousCommand(cmd, RULES));
+    if (got !== want) bad.push(`${label}: ${got ? 'CHẶN' : 'qua'}, mong đợi ${want ? 'CHẶN' : 'qua'}`);
+  }
+  if (bad.length) fail.push(`dcg khớp lệnh${L} ${bad.length}/${TABLE.length} ca sai: ${bad.join(' | ')}`);
+  else ok.push(`dcg khớp lệnh${L} ${TABLE.length} ca — 5 lần chặn nhầm ĐÃ ĐO đều đi qua, 5 biến thể nguỵ trang đều bị chặn`);
+
+  // GIỚI HẠN PHẢI ĐƯỢC NÓI RA, không được để người đọc tự suy là đã kín. Biến shell cần
+  // THỰC THI mới biết giá trị — regex không bao giờ với tới. Ca này khẳng định đúng điều đó:
+  // nếu một ngày nó bị chặn thật thì hoặc ai đó đã dựng lớp mạnh hơn (tốt, cập nhật ca này),
+  // hoặc regex vừa phình ra theo hướng sẽ đẻ dương tính giả (xấu, và ca này bắt được).
+  const varIndirect = Boolean(dangerousCommand(`F=--force; git push $F`, RULES));
+  if (varIndirect) {
+    ok.push(`dcg giới hạn${' '.repeat(15)} biến shell GIỜ bị bắt — mạnh hơn tài liệu đang khai, cập nhật danger-zones.md`);
+  } else {
+    ok.push(`dcg giới hạn${' '.repeat(15)} biến shell (\`git push $F\`) KHÔNG bị bắt — đúng như danger-zones.md khai; tầng MỘT là permissions.deny`);
+  }
+}
+
 // ─── Mọi khoá trong `budget` phải có BÊN ĐỌC, hoặc tự khai là đã cắt ─────────
 //
 // Cùng khuôn với `PACK_SCHEMA`: một danh sách, hai đầu. Khác chỗ đầu kia không phải một bảng
@@ -2354,7 +2416,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 162;
+const RATCHET = 164;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

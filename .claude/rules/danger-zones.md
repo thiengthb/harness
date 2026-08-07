@@ -37,8 +37,28 @@ Rule này **không có `paths`** — cố ý. Đây là 3 nhóm duy nhất đán
 
 ---
 
-Ba nhóm này được **cưỡng chế bằng máy** ở `.claude/hooks/dcg.mjs`,
-`block-secrets.mjs`, `protect-migrations.mjs`, và `permissions.deny` trong `settings.json`.
+## Cưỡng chế: HAI TẦNG, và tầng nào mạnh hơn thì nói rõ
+
+**Tầng MỘT — `permissions.deny` trong `.claude/settings.json`.** Vendor cưỡng chế, trước cả
+khi hook chạy. Đây là tầng đáng tin. Bản 2.1.223 của Claude Code vừa vá đúng lớp lỗi nguỵ
+trang lệnh ở tầng này.
+
+**Tầng HAI — hook** (`dcg.mjs`, `block-secrets.mjs`, `protect-migrations.mjs`,
+`protect-harness.mjs`). Chúng thêm ba thứ tầng một không có: **giải thích tại sao**, **cách
+đi tiếp**, và **telemetry**. Chúng KHÔNG thay được tầng một.
+
+`dcg.mjs` là regex trên ngữ pháp shell, và **nó best-effort — đọc như vậy**. Từ 2.36.0 nó
+khớp theo LỆNH (bóc heredoc, cắt theo `; && || |`, bỏ nháy, và mỗi rule khai nó nói về
+CHƯƠNG TRÌNH nào) thay vì so chuỗi thô. Cái nó vẫn **không** bắt được:
+
+- biến shell — `F=--force; git push $F` cần thực thi mới biết giá trị;
+- `eval`, command substitution, `base64 -d | sh`;
+- bất cứ gì ngoài ngữ pháp shell đơn giản.
+
+Đo 2026-08-06 (issue #43): trước 2.36.0, **5/5** biến thể nguỵ trang bằng nháy đi lọt tầng
+hai — và tầng MỘT bắt được chúng. Đó là lý do thứ tự hai tầng quan trọng hơn sức mạnh của
+từng tầng. `tooling/test-hooks.mjs` đối chiếu mỗi điều cấm của `dcg` với `permissions.deny`
+và giữ một ratchet cho phần chưa phủ — con số đó **chỉ được giảm**.
 
 Rule này tồn tại để **giải thích tại sao**, không phải để cưỡng chế —
 mọi thứ chỉ tồn tại dưới dạng lời nhắc sẽ bị bỏ qua bởi người đang gấp,
