@@ -306,6 +306,15 @@ const cases = [
   ] : []),
   ['protect-integration-branch.mjs', { tool_input: { file_path: 'tooling/x.mjs' } }, OK,
     'ở nhánh KHÁC thì im lặng', { HARNESS_INTEGRATION_BRANCH: 'khong-phai-nhanh-nay' }],
+  // File NGOÀI repo: auto-memory (`~/.claude/projects/*/memory/`) là ca thật, và chính guard
+  // này chặn nó vài phút sau khi ship v2.37.0. Nhánh git không nói được gì về một file ngoài
+  // repo, nên chặn nó là chặn đúng thứ guard không có thẩm quyền.
+  ...(CUR_BRANCH ? [
+    ['protect-integration-branch.mjs',
+      { tool_input: { file_path: '/nha-cua-ai-do/.claude/projects/x/memory/ghi-chu.md' } }, OK,
+      'file NGOÀI repo không bị gác, kể cả khi đang ở nhánh tích hợp',
+      { HARNESS_INTEGRATION_BRANCH: () => CUR_BRANCH }],
+  ] : []),
   ['protect-integration-branch.mjs', { tool_input: {} }, OK, 'không có file_path → bỏ qua'],
 
   ['protect-feature-files.mjs', { tool_input: { file_path: '' } }, OK, 'path rỗng không làm crash'],
@@ -321,7 +330,7 @@ const ok = [], fail = [];
 // không có gì để chặn). Nên: một rổ thứ ba, in ra, và trừ khỏi mẫu số của sàn.
 const na = [];
 if (!CUR_BRANCH) {
-  na.push('protect-integration-branch: 2 ca cần một NHÁNH đang đứng — HEAD đang detached '
+  na.push('protect-integration-branch: 3 ca cần một NHÁNH đang đứng — HEAD đang detached '
     + '(bình thường ở CI `pull_request`). Chạy suite ở máy để phủ chúng.');
 }
 
@@ -2481,12 +2490,12 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 173;
+const RATCHET = 174;
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa
 // NGỪNG CHẠY, và sàn — thứ tồn tại để phân biệt hai chuyện đó — sẽ báo nhầm.
-const naCount = CUR_BRANCH ? 0 : 2;
+const naCount = CUR_BRANCH ? 0 : 3;
 const total = ran + skipped + naCount;
 if (total < RATCHET) {
   fail.push(`chỉ có ${total} khẳng định (${ran} chạy + ${skipped} bỏ qua + ${naCount} không dựng được), sàn là ${RATCHET} — một case đã `
