@@ -73,16 +73,86 @@ const env = {
 };
 
 // ── Chạy assertion tất định trong task ───────────────────────────────────────
-function runAssertions(body) {
-  const block = body.match(/## Chấm lớp 1[\s\S]*?```bash\n([\s\S]*?)```/);
-  if (!block) return { ran: 0, failed: [] };
-  const cmds = block[1].split('\n').map(s => s.trim()).filter(s => s && !s.startsWith('#'));
-  const failed = [];
-  for (const c of cmds) {
-    const r = spawnSync(c, { shell: true, encoding: 'utf8', cwd: repoPath('') });
-    if ((r.status ?? 1) !== 0) failed.push(c);
+//
+// BA TRẠNG THÁI, KHÔNG PHẢI HAI. `gates.mjs` có `skip` (chưa khai lệnh ⇒ gate không tồn
+// tại), `rituals.mjs` có `?`, `harness-size` có `n/a`. Runner này — công cụ DUY NHẤT trong
+// bộ có quyền nói *"KHÔNG promote thay đổi này"* — trước 2.24.0 chỉ có pass/fail, nên mọi
+// thứ CHƯA ĐO ĐƯỢC bị đếm là HỎNG.
+//
+// Đo 2026-08-07 trên harness không hỏng: `REGRESSION 40% (2/5)`, và **không FAIL nào là
+// hỏng thật**. Một bộ đo báo 40% khi mọi thứ đúng thì lần sau nó báo 40% vì hỏng thật cũng
+// không ai phản ứng.
+//
+// Hai nguồn của `n/a`:
+//   · assertion còn PLACEHOLDER chưa điền (`<…>` hoặc `CHANGEME`) — nó chưa là một lệnh
+//   · assertion chỉ đúng SAU KHI agent chạy, mà `evals.command` chưa khai ⇒ không agent nào
+//     chạy. Đánh dấu bằng dòng `# requires-agent` ngay TRƯỚC nó.
+const PLACEHOLDER = /<[^>]*\s[^>]*>|CHANGEME/;
+
+/**
+ * Gộp dòng thành LỆNH LOGIC. Bản trước `split('\n')` thẳng, nên một `node -e "…"` nhiều dòng
+ * bị băm thành N "lệnh" rời.
+ *
+ * Hậu quả không chỉ là đếm sai. Đo 2026-08-07 trên Windows: dòng
+ * `…filter(([,v])=>v.passes===true…)` chạy MỘT MÌNH trong `cmd.exe`, và `>` trong `=>` là
+ * CHUYỂN HƯỚNG OUTPUT ⇒ runner **tạo một file `v.passes` trong repo nó đang đo**, rồi
+ * `apply-to --audit` (assertion số 3 của eval 0001) đỏ vì đúng cái file vừa bị tạo.
+ * Bộ eval tự làm hỏng assertion kế tiếp của chính nó.
+ */
+function splitCommands(src) {
+  const out = [];
+  let cur = '', agentNext = false, pendingAgent = false;
+  const flush = () => {
+    if (!cur.trim()) return;
+    out.push({ cmd: cur.trim(), requiresAgent: pendingAgent });
+    cur = ''; pendingAgent = false;
+  };
+  for (const raw of src.split('\n')) {
+    const line = raw.replace(/\s+$/, '');
+    if (!cur && /^\s*#/.test(line)) {                 // chú thích chỉ là chú thích khi ở NGOÀI một lệnh
+      if (/^\s*#\s*requires-agent\b/.test(line)) agentNext = true;
+      continue;
+    }
+    if (!cur && !line.trim()) continue;
+    if (!cur) pendingAgent = agentNext, agentNext = false;
+    cur += (cur ? '\n' : '') + line;
+    // Nháy còn lẻ ⇒ lệnh chưa kết thúc. Đếm trên chuỗi đã bỏ ký tự thoát.
+    const bare = cur.replace(/\\./g, '');
+    const balanced = (bare.match(/"/g) || []).length % 2 === 0 && (bare.match(/'/g) || []).length % 2 === 0;
+    if (balanced && !/\\$/.test(line)) flush();
   }
-  return { ran: cmds.length, failed };
+  flush();
+  return out;
+}
+
+function runAssertions(body, agentRan) {
+  const block = body.match(/## Chấm lớp 1[\s\S]*?```bash\n([\s\S]*?)```/);
+  if (!block) return { ran: 0, failed: [], na: [] };
+  const cmds = splitCommands(block[1]);
+  const failed = [], na = [];
+  let ran = 0;
+  for (const { cmd, requiresAgent } of cmds) {
+    const one = cmd.split('\n')[0].slice(0, 70);
+    if (PLACEHOLDER.test(cmd)) { na.push(`${one} — còn placeholder chưa điền`); continue; }
+    if (requiresAgent && !agentRan) { na.push(`${one} — chấm output của agent, mà \`evals.command\` chưa khai`); continue; }
+    ran++;
+    const r = spawnSync(cmd, { shell: true, encoding: 'utf8', cwd: repoPath('') });
+    if ((r.status ?? 1) !== 0) failed.push(cmd);
+  }
+  return { ran, failed, na };
+}
+
+/**
+ * Assertion KHÔNG ĐƯỢC ghi vào repo đang đo. Lưới bắt lớp lỗi `v.passes` ở trên — và mọi
+ * biến thể của nó, vì nguyên nhân gốc (shell của OS diễn giải chuỗi khác nhau) không thể
+ * chặn hết bằng cách sửa từng task.
+ *
+ * Trả về danh sách đường dẫn mới bẩn, hoặc `null` khi không đọc được git (⇒ `?`, không phải
+ * "sạch" — cùng luật ba giá trị với phần trên).
+ */
+function worktreeFingerprint() {
+  const r = git(['status', '--porcelain']);
+  return r.status === 0 ? r.stdout : null;
 }
 
 /**
@@ -176,10 +246,23 @@ for (const t of tasks) {
   if (DRY) { ok.push(label); continue; }
 
   const agent = runAgent(t);
-  const asserts = runAssertions(t.body);
+  const before = worktreeFingerprint();
+  const asserts = runAssertions(t.body, Boolean(agent));
+  const after = worktreeFingerprint();
+
+  // Assertion vừa ghi vào repo ⇒ FAIL, và nêu tên. Đây là hỏng THẬT, không phải `n/a`:
+  // một bộ đo làm bẩn đối tượng nó đo thì mọi số sau đó đều đáng ngờ, kể cả số của task khác.
+  if (before !== null && after !== null && before !== after) {
+    const now = new Set(after.split('\n').filter(Boolean));
+    for (const l of before.split('\n').filter(Boolean)) now.delete(l);
+    fail.push(`${label}: assertion GHI VÀO REPO đang đo — ${[...now].map(s => s.slice(3)).join(' · ') || '(cây đổi)'}`
+      + '. Gần như luôn là shell của OS diễn giải một ký tự trong assertion (`=>` thành chuyển hướng trên cmd.exe).');
+    asserts.failed.push('(ghi vào repo)');
+  }
 
   if (!agent) {
-    warn.push(`${label}: evals.command chưa khai — chỉ chạy ${asserts.ran} assertion trên trạng thái HIỆN TẠI`);
+    warn.push(`${label}: evals.command chưa khai — chỉ chạy ${asserts.ran} assertion trên trạng thái HIỆN TẠI`
+      + (asserts.na.length ? `, ${asserts.na.length} n/a` : ''));
   } else {
     if (agent.timedOut) warn.push(`${label}: CHẠM WALL-CLOCK CAP (${t.maxMinutes || '?'} phút) — bị cắt`);
     if (agent.retries >= 3) warn.push(`${label}: ${agent.retries} lần retry giống hệt nhau — dấu hiệu VÒNG LẶP MÙ`);
@@ -190,22 +273,39 @@ for (const t of tasks) {
     if (agent.error) fail.push(`${label}: ${agent.error}`);
   }
 
-  const passed = asserts.failed.length === 0 && (!agent || agent.ok);
-  results.push({ id: t.id, kind: t.kind, type: t.type, passed, failedAssertions: asserts.failed, agent });
-  (passed ? ok : fail).push(`${label}${agent ? ` (${agent.minutes}p)` : ''}${asserts.failed.length ? ` → fail: ${asserts.failed[0]}` : ''}`
-    + (agent?.transcript ? ` · transcript: ${agent.transcript}` : ''));
+  // `n/a` THẬT: không assertion nào chạy được, và cũng không có agent để chấm. Task này
+  // KHÔNG pass và KHÔNG fail — nó chưa được đo, và nó phải ra khỏi MẪU SỐ của tỉ lệ.
+  // Đếm nó là fail thì tỉ lệ nói dối theo chiều hoảng; đếm là pass thì nói dối theo chiều
+  // dễ chịu. Cả hai đều tệ hơn việc nói "chưa đo".
+  const measured = asserts.ran > 0 || Boolean(agent);
+  const passed = measured && asserts.failed.length === 0 && (!agent || agent.ok);
+  results.push({ id: t.id, kind: t.kind, type: t.type, measured, passed, failedAssertions: asserts.failed, na: asserts.na, agent });
+
+  for (const n of asserts.na) warn.push(`${label}: n/a — ${n}`);
+
+  if (!measured) {
+    warn.push(`${label}: KHÔNG ĐO ĐƯỢC — ${asserts.na.length} assertion đều n/a và chưa khai \`evals.command\`. Không tính vào tỉ lệ.`);
+  } else {
+    (passed ? ok : fail).push(`${label}${agent ? ` (${agent.minutes}p)` : ''}${asserts.failed.length ? ` → fail: ${asserts.failed[0]}` : ''}`
+      + (agent?.transcript ? ` · transcript: ${agent.transcript}` : ''));
+  }
 }
 
 if (DRY) { report('EVAL (dry)', { ok, warn }); process.exit(0); }
 
 // ── Tách capability vs regression — KHÔNG trộn ───────────────────────────────
-const cap = results.filter(r => r.type === 'capability');
-const reg = results.filter(r => r.type === 'regression');
+// MẪU SỐ chỉ gồm task ĐO ĐƯỢC. Một task `n/a` không phải 0 điểm — nó không có điểm.
+const cap = results.filter(r => r.type === 'capability' && r.measured);
+const reg = results.filter(r => r.type === 'regression' && r.measured);
+const naCount = results.filter(r => !r.measured).length;
 const rate = rs => rs.length ? Math.round(rs.filter(r => r.passed).length / rs.length * 100) : null;
 
 console.log('\n=== TỈ LỆ PASS ===');
 if (cap.length) console.log(`  CAPABILITY  ${rate(cap)}%  (${cap.filter(r => r.passed).length}/${cap.length})  — mục tiêu: ĐẨY LÊN`);
 if (reg.length) console.log(`  REGRESSION  ${rate(reg)}%  (${reg.filter(r => r.passed).length}/${reg.length})  — mục tiêu: BẢO VỆ, phải gần 100%`);
+// In ra, KHÔNG giấu: một mẫu số co lại mà không nói là cách một tỉ lệ đẹp lên mà không ai
+// làm gì. Đây cũng là con số cần nhìn khi so hai lần chạy — 100% trên 1 task ≠ 100% trên 5.
+if (naCount) console.log(`  n/a         ${naCount} task KHÔNG ĐO ĐƯỢC — ngoài mẫu số, KHÔNG phải "pass"`);
 
 // ── So với baseline ──────────────────────────────────────────────────────────
 const basePath = repoPath('.claude', 'state', `eval-baseline${BARE ? '-bare' : ''}.json`);

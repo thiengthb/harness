@@ -11,6 +11,72 @@
 
 ---
 
+## 2.24.0 — 2026-08-07
+
+**minor.** `evals/run.mjs` — công cụ DUY NHẤT có quyền nói *"KHÔNG promote thay đổi này"* —
+có trạng thái thứ ba. Và nó thôi **ghi file vào repo nó đang đo**.
+
+
+### ① `REGRESSION 40% (2/5)` trên một harness KHÔNG hỏng
+
+Đo 2026-08-07, Windows. Ba FAIL, **không cái nào là hỏng thật**:
+
+| task | "FAIL" | thật ra là |
+|---|---|---|
+| `0002` | `git rev-parse HEAD > /dev/null` | `/dev/null` không tồn tại trên `cmd.exe` — **lỗi Parity, chỉ hiện ở Windows** |
+| `0003` | `test -f features/eval-probe.json` | file do AGENT tạo trong task, mà `evals.command` rỗng ⇒ không agent nào chạy |
+| `0004` | `<lệnh install ở chế độ frozen/ci>` | một **placeholder CHANGEME** được đem chạy như lệnh shell |
+
+`gates.mjs` có `skip`, `rituals.mjs` có `?`, `harness-size` có `n/a`. Runner thì không — nên
+mọi thứ **chưa đo được** bị đếm là **hỏng**. Một bộ đo báo 40% khi mọi thứ đúng thì lần sau
+nó báo 40% vì hỏng thật cũng không ai phản ứng.
+
+### ② Runner GHI FILE vào repo nó đang đo — Windows
+
+`runAssertions` cũ `split('\n')` thẳng, nên một `node -e "…"` nhiều dòng bị băm thành N
+"lệnh". Dòng này chạy MỘT MÌNH trong `cmd.exe`:
+
+```
+const bad=Object.entries(f.platforms||{}).filter(([,v])=>v.passes===true&&!v.evidence);
+```
+
+`>` trong `=>` là **chuyển hướng output** ⇒ runner tạo file `v.passes` trong repo. Rồi
+`apply-to --audit` — **assertion số 3 của eval 0001** — đỏ vì đúng file vừa bị tạo. Bộ eval
+tự làm hỏng assertion kế tiếp của chính nó, và triệu chứng đọc y hệt *"template thiếu file"*.
+
+Giờ `splitCommands()` gộp dòng theo **nháy còn lẻ**, và một lưới riêng chụp
+`git status --porcelain` trước/sau: assertion làm bẩn cây ⇒ **FAIL kèm tên file**. Lưới này
+bắt cả những biến thể chưa gặp — nguyên nhân gốc (shell mỗi OS diễn giải chuỗi một kiểu)
+không chặn hết được bằng cách sửa từng task.
+
+### ③ Hai nguồn của `n/a`
+
+- assertion còn **placeholder** (`<… …>` hoặc `CHANGEME`) — nó chưa phải một lệnh
+- assertion chấm **output của agent** khi `evals.command` rỗng — đánh dấu bằng dòng
+  `# requires-agent` NGAY TRƯỚC nó (chỉ áp cho lệnh kế tiếp, không cho cả khối)
+
+Task mà **mọi** assertion đều `n/a` và không có agent ⇒ ra khỏi **MẪU SỐ**. Không phải 0
+điểm — **không có điểm**. Số `n/a` được in ra, không giấu: một mẫu số co lại mà không nói
+là cách một tỉ lệ đẹp lên mà không ai làm gì.
+
+### ④ Kết quả
+
+`REGRESSION 40% (2/5)` → **100% (4/4) + 1 n/a khai ra**. Ba assertion sửa ở task
+(`0002` bỏ `> /dev/null`; `0003` thêm hai `# requires-agent`); `0004` tự thành `n/a`.
+
+Suite `test-evals`: **7 → 10 ca**. Cả ba ca mới đã kiểm ĐỎ với mutant tương ứng.
+
+**Và một ca xanh-giả bị bắt trong lúc viết chính nó:** `runEval()` cứng `--task 9001`, nên
+fixture mới ghi vào thư mục task bị lọc mất và ca ⑩ xanh **vì không có gì chạy**. Giờ
+`runEval` nhận `taskId`, và mỗi ca mới **tự khẳng định task của nó ĐÃ CHẠY** trước khi
+khẳng định bất cứ điều gì khác.
+
+### Không có gì phải làm khi nâng cấp
+
+Chỉ chạm `evals/`. Task nào của bạn có assertion chấm output agent thì thêm
+`# requires-agent` để nó thôi bị đếm là hỏng khi chưa khai `evals.command`.
+---
+
 ## 2.23.0 — 2026-08-06
 
 **minor.** Harness hỏi **bao nhiêu người làm project này**, và câu trả lời TẮT ĐƯỢC ba cơ

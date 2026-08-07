@@ -1,4 +1,4 @@
-<!-- version: 2026-08-06-e -->
+<!-- version: 2026-08-07-a -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,22 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-07 — Bộ eval thôi gọi "chưa đo" là "hỏng" (v2.24.0)
+
+`node evals/run.mjs` báo **40%** trên một harness không hỏng — cả ba FAIL đều là *chưa đo
+được*: một placeholder `CHANGEME` bị đem chạy như lệnh, một assertion chấm output của agent
+mà không agent nào chạy, và `> /dev/null` không tồn tại trên `cmd.exe`. Giờ là **100% + 1
+n/a khai ra**.
+
+**Việc bạn phải làm khác đi:** task nào của bạn chấm output của agent thì thêm dòng
+`# requires-agent` ngay trước assertion đó — nếu không, nó vẫn bị đếm là hỏng khi
+`evals.command` chưa khai.
+
+Nghiêm trọng hơn, **chỉ trên Windows**: runner băm `node -e "…"` nhiều dòng thành từng dòng,
+và `cmd.exe` đọc `>` trong `=>` là chuyển hướng ⇒ nó **tạo file rác trong repo đang đo**, làm
+đỏ `apply-to --audit` ở task kế tiếp. Đã sửa, và có lưới riêng: assertion nào làm bẩn cây thì
+FAIL kèm tên file.
 
 ## 2026-08-06 — Harness hỏi bạn làm một mình hay có đội (v2.23.0)
 

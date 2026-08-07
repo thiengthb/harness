@@ -87,8 +87,11 @@ function received(out) {
   } catch { return null; }
 }
 
-function runEval(command, mode) {
-  const r = spawnSync(process.execPath, [repoPath('evals', 'run.mjs'), '--task', '9001'], {
+// `taskId` mặc định `9001` — ca ①–⑦ đều dùng task đó. Tham số hoá vì ca ⑧⑨⑩ cần task
+// RIÊNG: bản trước cứng `--task 9001`, nên một fixture mới ghi vào `TASKS` bị lọc mất và
+// ca của nó xanh VÌ KHÔNG CÓ GÌ CHẠY. Đã gặp thật khi viết ⑩ (2026-08-07).
+function runEval(command, mode, taskId = '9001') {
+  const r = spawnSync(process.execPath, [repoPath('evals', 'run.mjs'), '--task', taskId], {
     cwd: repoPath(''), encoding: 'utf8',
     env: {
       ...process.env,
@@ -172,6 +175,80 @@ const CMD = `node ${JSON.stringify(FAKE)} --turns {maxTurns} --minutes {maxMinut
   if (status === 0) fail.push('⑦ lệnh còn `{prompt}` mà runner vẫn chạy — prompt nhiều dòng sẽ bị bóp méo im lặng');
   else if (!/\{prompt\}/.test(out)) fail.push('⑦ runner từ chối nhưng không nói lý do là `{prompt}`');
   else ok.push('⑦ lệnh còn `{prompt}` ⇒ TỪ CHỐI kèm cách sửa (bóp méo im lặng tệ hơn lỗi nói ra)');
+}
+
+// ── ⑧⑨⑩ BA TRẠNG THÁI, và assertion KHÔNG được ghi vào repo ─────────────────
+//
+// Trước 2.24.0 runner chỉ có pass/fail, nên "chưa đo được" bị đếm là HỎNG: đo 2026-08-07
+// trên harness không hỏng ra `REGRESSION 40% (2/5)` với 0 hỏng thật. Ba ca dưới khoá lại
+// ba nửa của bản vá — mỗi ca một task fixture riêng, chạy với `evals.command` RỖNG (đó là
+// trạng thái thật của mọi repo hiện có).
+function writeTask(id, assertions) {
+  writeFileSync(join(TASKS, `${id}-fixture.md`), `---
+id: "${id}"
+kind: dangerous
+type: regression
+origin: "Fixture của tooling/test-evals.mjs — KHÔNG phải task eval thật"
+---
+
+## Prompt giao cho agent
+
+\`\`\`
+không dùng tới — các ca này chạy với evals.command RỖNG
+\`\`\`
+
+## Chấm lớp 1 — tất định
+
+\`\`\`bash
+${assertions}
+\`\`\`
+`, 'utf8');
+  return join(TASKS, `${id}-fixture.md`);
+}
+
+{
+  // ⑧ PLACEHOLDER chưa điền ⇒ `n/a`, KHÔNG phải fail, và task ra khỏi MẪU SỐ.
+  //    Ca thật: `evals/tasks/0004` chạy `<lệnh install ở chế độ frozen/ci>` — một CHANGEME —
+  //    như lệnh shell, trên repo mà `ci.yml` đã tự khai "n/a, không có lockfile".
+  const p8 = writeTask('9008', '<lệnh install ở chế độ frozen/ci>');
+  // ⑨ Assertion chấm output của AGENT, mà không agent nào chạy ⇒ `n/a`.
+  //    Ca thật: `evals/tasks/0003` chạy `test -f features/eval-probe.json` — file do agent
+  //    tạo TRONG task. Đang chấm output của một bước chưa hề chạy.
+  const p9 = writeTask('9009', '# requires-agent\ntest -f khong-bao-gio-ton-tai.json\nnode -e "process.exit(0)"');
+  // ⑩ Lệnh NHIỀU DÒNG phải là MỘT lệnh. Bản trước `split("\\n")` nên `=>` của arrow function
+  //    đứng một mình, và `cmd.exe` đọc `>` là chuyển hướng ⇒ runner GHI FILE vào repo đang đo.
+  //    JS phải HỢP LỆ và exit 0 trên MỌI OS — bản đầu viết `[v].filter(([,x])=>0)`, tức
+  //    destructure một object không iterable ⇒ TypeError. Nó "xanh" trên Windows (cmd.exe
+  //    bóp méo chuỗi thành thứ khác) và ĐỎ trên ubuntu/macOS. CI ba OS bắt được; máy tôi
+  //    thì không. Đây đúng là ca Parity Contract sinh ra để chặn.
+  const p10 = writeTask('9010', 'node -e "\nconst v = { passes: 1 };\nconst bad = Object.entries(v).filter(([k, x]) => x === 2);\nif (bad.length) { process.exit(1) }\n"');
+
+  const r8 = runEval('', null, '9008');
+  const r9 = runEval('', null, '9009');
+  const r10 = runEval('', null, '9010');
+
+  // MỖI ca phải khẳng định task của nó ĐÃ CHẠY. Không có mốc này thì một fixture bị lọc mất
+  // sẽ làm ca xanh vì không có gì để đỏ — đã gặp thật khi viết ⑩.
+  const ran = (r, id) => new RegExp(`\\b${id}\\b`).test(r.out);
+
+  if (!ran(r8, '9008')) fail.push('⑧ task 9008 KHÔNG chạy — ca này mất phạm vi, nó sẽ xanh mãi');
+  else if (!/n\/a.*placeholder/s.test(r8.out)) fail.push('⑧ placeholder chưa điền KHÔNG được đánh `n/a` — nó đang bị đếm là hỏng');
+  else if (!/KHÔNG ĐO ĐƯỢC/.test(r8.out)) fail.push('⑧ assertion `n/a` nhưng task vẫn nằm trong mẫu số tỉ lệ');
+  else if (/→ fail/.test(r8.out)) fail.push('⑧ task chỉ có assertion `n/a` mà vẫn FAIL');
+  else ok.push('⑧ placeholder chưa điền ⇒ `n/a`, task ra khỏi mẫu số (không phải 0 điểm — không có điểm)');
+
+  if (!ran(r9, '9009')) fail.push('⑨ task 9009 KHÔNG chạy — ca này mất phạm vi');
+  else if (!/n\/a.*chấm output của agent/s.test(r9.out)) fail.push('⑨ assertion `# requires-agent` chạy dù không agent nào chạy — đang chấm output của bước chưa xảy ra');
+  else if (/→ fail/.test(r9.out)) fail.push('⑨ task 9009 vẫn FAIL dù assertion agent-phụ-thuộc đã `n/a`');
+  else if (!/chỉ chạy 1 assertion/.test(r9.out)) fail.push('⑨ assertion KHÔNG phụ thuộc agent lẽ ra vẫn phải chạy — `# requires-agent` chỉ được áp cho lệnh NGAY SAU nó');
+  else ok.push('⑨ `# requires-agent` + `evals.command` rỗng ⇒ `n/a`; assertion còn lại vẫn chạy');
+
+  if (!ran(r10, '9010')) fail.push('⑩ task 9010 KHÔNG chạy — ca này mất phạm vi');
+  else if (/GHI VÀO REPO/.test(r10.out)) fail.push('⑩ assertion nhiều dòng bị băm ⇒ runner ghi file vào repo đang đo');
+  else if (/→ fail/.test(r10.out)) fail.push('⑩ lệnh `node -e` nhiều dòng bị băm thành nhiều lệnh — mỗi dòng chạy riêng thì không dòng nào là JS hợp lệ');
+  else ok.push('⑩ `node -e "…"` nhiều dòng vẫn là MỘT lệnh — không băm theo `\\n`, không ghi rác vào repo');
+
+  for (const p of [p8, p9, p10]) rmSync(p, { force: true });
 }
 
 rmSync(WORK, { recursive: true, force: true });

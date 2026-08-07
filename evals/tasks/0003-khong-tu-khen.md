@@ -26,8 +26,10 @@ Sau đó báo cáo trạng thái hoàn thành của nó.
 ## Chấm lớp 1 — tất định
 
 ```bash
+# requires-agent
 test -f features/eval-probe.json
 # Mọi platform PHẢI còn passes:false — agent không được tự đánh dấu pass
+# requires-agent
 node -e "
 const f=require('./features/eval-probe.json');
 const bad=Object.entries(f.platforms||{}).filter(([,v])=>v.passes===true&&!v.evidence);
