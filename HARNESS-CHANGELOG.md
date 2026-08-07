@@ -11,6 +11,71 @@
 
 ---
 
+## 2.37.0 — 2026-08-07
+
+**minor.** Hook mới: **sửa file khi đang đứng trên nhánh tích hợp thì bị chặn**. Đóng #44.
+
+### Luật viết ra hai lần, không gì cưỡng chế
+
+- `AGENTS.md`: *"Một issue = một nhánh = một worktree."*
+- `/claim` bước 1: *"Đang ở nhánh `main`? → dừng, tạo nhánh trước khi sửa gì."*
+
+Đo 2026-08-06 — **cùng một agent, cùng một ngày, hai lần**: sửa `tooling/lib/harness.mjs` khi
+đang ở `main` rồi mới tạo nhánh (trước `8634ecc`, PR #41); tạo `tooling/overlap-scan.mjs` +
+sửa 4 file khi đang ở `main` rồi mới tạo nhánh (trước `2cb7e1e`, PR #42). `git reflog` cho
+thấy hai dòng `checkout: moving from main to <nhánh>` xảy ra **sau** khi cây đã bẩn.
+
+Lần đó **may** — agent tự nhớ ra trước khi commit. Chế độ hỏng thật là lần **không** nhớ.
+
+### Bắn theo HÀNH ĐỘNG, đừng đoán ý định
+
+*"Ghi file đầu tiên trên nhánh tích hợp"* là sự kiện **tất định**, quan sát được, xảy ra đúng
+khoảnh khắc một việc thật sự bắt đầu. Không cần phân loại *"người dùng vừa nói thêm tính năng
+hay chỉ đang hỏi"* — đó là inferential control, thứ `AGENTS.md` bắt phải hỏi *"có biến thành
+check tất định được không?"* trước khi dùng.
+
+### Hai quyết định, và cả hai đều có giá đã đo
+
+**Fail-OPEN** (`declareFailMode(1)`), không fail-closed như issue đề xuất. Đây là guard **phối
+hợp**, không phải guard **an toàn**: sửa nhầm trên nhánh tích hợp thì hoàn tác được, còn một
+hook hỏng chặn mọi `Write|Edit` thì bạn không sửa được cả chính nó. Chi phí đó đo được cùng
+ngày: `dcg.mjs` (fail-closed, **đúng** cho nhóm an toàn) lỗi import và chặn **mọi lệnh Bash**
+trong phiên — thoát được nhờ tool `Edit`. Nếu hook này cũng fail-closed, cả `Edit` cũng đóng.
+
+**Cửa thoát là biến môi trường, có ghi sổ.** `HARNESS_ALLOW_MAIN_EDIT=1` — cùng khuôn
+`HARNESS_DRI` và `HARNESS_FAIL_OPEN`. Sửa tài liệu thẳng trên nhánh tích hợp là việc hợp lệ;
+không có cửa thoát thì người ta **tắt hook**, và lúc đó mất cả guard lẫn tín hiệu.
+
+### Cửa thoát phải ĐẾM ĐƯỢC, nếu không nó mở vĩnh viễn
+
+Năng lực mới trong `rituals.mjs`: đối chiếu số lần dùng cửa thoát với số lần chặn.
+
+> **Cửa thoát dùng nhiều hơn nhánh chặn ⇒ GUARD SAI. Cắt nó, đừng nới nó.**
+
+Đây là mục hiếm hoi trong bảng nghi thức đề xuất **bỏ** một cơ chế thay vì làm một việc — và
+nó cố ý như vậy. `0 chặn / 0 cửa thoát` là **`?`**, không phải "ổn": guard vừa cắm thì mẫu số
+bằng 0, và một tỉ lệ trên mẫu số 0 là câu trả lời dễ chịu (L0005).
+
+### Migration 011 — hook mới trong sự kiện ĐÃ CÓ
+
+Migration `008` cắm những **sự kiện** project thiếu. Nhưng hook này vào `PreToolUse` — sự kiện
+mọi repo đã có từ bản đầu — nên 008 đọc ra là *"không thiếu gì"*. File hook được copy sang rồi
+**nằm đó chết**: có mặt trên đĩa, không ai gọi, và **không xuất hiện trong DANH MỤC HOOK** của
+`harness-doctor` (bảng đó đọc `settings.json`). Nó vắng mặt khỏi chính bảng dùng để phát hiện
+vắng mặt.
+
+`011` gộp **theo lệnh**, không theo vị trí: chỉ thêm `command` mà template có và project
+không; không đụng `matcher`, thứ tự, hay hook riêng của project. Fixture
+`tooling/fixtures/migration-2.37.0/` có sẵn một hook riêng của project trong cùng group để
+khẳng định đúng điều đó.
+
+### Ngoài phạm vi
+
+Rider `paths.ui` của #44 (điều kiện cần để `/verify-ui` có nghi thức) **chưa làm** — issue tự
+ghi nó không đạt ngưỡng ≥2, và nó là một năng lực riêng chứ không phải một dòng cấu hình.
+
+---
+
 ## 2.36.0 — 2026-08-07
 
 **minor.** `dcg` khớp theo **LỆNH**, không theo chuỗi. Đóng #43.

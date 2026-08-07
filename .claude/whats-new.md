@@ -1,4 +1,4 @@
-<!-- version: 2026-08-07-k -->
+<!-- version: 2026-08-07-l -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,24 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-07 — Sửa file khi đang đứng trên `main` giờ bị CHẶN (v2.37.0)
+
+Luật *"một issue = một nhánh = một worktree"* viết ở `AGENTS.md` **và** `/claim`, và không gì
+cưỡng chế nó. Đo 2026-08-06: cùng một agent vi phạm **hai lần trong một ngày**.
+
+**Việc bạn phải làm khác đi:** tạo nhánh **trước** khi sửa — thay đổi trong cây làm việc đi
+theo bạn, không mất gì. Sửa tài liệu/changelog thẳng trên nhánh tích hợp vẫn hợp lệ:
+
+```powershell
+$env:HARNESS_ALLOW_MAIN_EDIT='1'
+```
+
+Cửa thoát **được ghi sổ**, và `rituals.mjs` đối chiếu nó với số lần chặn: **dùng nhiều hơn
+chặn ⇒ guard sai, và bảng sẽ đề xuất CẮT nó.**
+
+Hook này **fail-open** (hỏng thì cho qua, có báo) — khác `dcg`. Nó là guard *phối hợp*, không
+phải guard *an toàn*, và một hook hỏng chặn mọi `Write|Edit` thì chặn cả đường sửa chính nó.
 
 ## 2026-08-07 — `dcg` thôi chặn văn bản NHẮC tới lệnh (v2.36.0)
 
