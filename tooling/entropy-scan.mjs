@@ -278,6 +278,14 @@ if (touched.length) {
     const clean = p.split('#')[0].split(':')[0].replace(/\/$/, '');
     if (!clean.includes('/') || !TOP_LEVEL.has(clean.split('/')[0])) return;
     if (existsSync(repoPath(clean))) return;
+    // TƯƠNG ĐỐI VỚI FILE ĐANG NHẮC, không chỉ với gốc repo. Một `README.md` trong thư mục con
+    // viết đường dẫn tương đối với CHÍNH NÓ — đó là cách đọc đúng cho người mở file đó.
+    //
+    // Đo ở `sakubun` 2026-08-07: `mobile/README.md` nhắc `lib/config.ts`, và file thật là
+    // `mobile/lib/config.ts`. Template có cấu trúc phẳng nên ca này KHÔNG hiện ra ở đây —
+    // lần thứ ba trong một ngày một khuyết tật chỉ lộ ra SAU KHI phân phối.
+    const whereDir = where.includes('/') ? where.slice(0, where.lastIndexOf('/')) : '';
+    if (whereDir && existsSync(repoPath(whereDir, clean))) return;
     if (!dangling.has(clean)) dangling.set(clean, new Set());
     dangling.get(clean).add(where);
   };

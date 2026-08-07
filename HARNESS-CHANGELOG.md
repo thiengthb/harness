@@ -11,6 +11,40 @@
 
 ---
 
+## 2.30.2 — 2026-08-07
+
+**patch.** §9b giải đường dẫn **tương đối với file đang nhắc nó**, không chỉ với gốc repo.
+
+### Đo được ở `sakubun`, không đo được ở đây
+
+```
+mobile/README.md  nhắc  `lib/config.ts`      →  §9b báo "KHÔNG TỒN TẠI"
+file thật:        mobile/lib/config.ts        →  README đọc ĐÚNG, check đọc SAI
+```
+
+Một `README.md` trong thư mục con viết đường dẫn tương đối với **chính nó** — đó là cách đọc
+đúng cho người mở file đó. Template có cấu trúc phẳng nên ca này **không xuất hiện tự nhiên
+ở đây**.
+
+Đây là **lần thứ ba trong một ngày** một khuyết tật chỉ lộ ra *sau khi phân phối*
+(2.30.0 → `settings.local.json` chỉ CI thấy; 2.30.1 → nhật ký bị trích như đường dẫn chỉ repo
+con thấy; 2.30.2 → đường dẫn tương đối chỉ repo có thư mục con thấy). Ba lần cùng một hình
+dạng: **template là một mẫu vật không điển hình của chính tập nó phục vụ.**
+
+### Đổi gì
+
+- `noteRef()` thử thêm `repoPath(dirname(where), clean)` trước khi kết luận là chết.
+- **Fixture `tooling/fixtures/relative-ref/`** — vì không có ca thật ở template, nhánh này sẽ
+  không bao giờ được chạy qua. Fixture dựng đúng ca đó, và test khẳng định **cả hai vế**:
+  nhánh còn trong mã nguồn, **và** fixture còn đủ file. Thiếu vế thứ hai thì ca xanh mãi mà
+  không kiểm gì.
+
+  Fixture phải được **git track** — §9b quét theo `git ls-files`, nên một fixture untracked
+  cho coverage bằng 0 trong khi test vẫn xanh. (Đã xảy ra đúng vậy lúc viết bản vá này: mutant
+  đầu tiên chỉ giết được khẳng định đọc-mã-nguồn, không giết được khẳng định hành vi.)
+
+---
+
 ## 2.30.1 — 2026-08-07
 
 **patch.** File ĐƯỢC ship thôi trích đường dẫn KHÔNG được ship.
