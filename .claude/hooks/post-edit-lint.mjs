@@ -25,8 +25,17 @@ if (r.status !== 0) {
   const log = spill('lint', (r.stdout || '') + '\n' + (r.stderr || ''));
   telemetry('gate-fails', ['post-edit-lint', rel]);
   // Output NGẮN vào context; chi tiết ra file. Output dài làm bẩn context agent.
-  console.error(`⛔ lint còn lỗi ở ${rel}. Sửa trước khi đi tiếp.`);
+  //
+  // KHÔNG viết "BỊ CHẶN" ở đây, cố ý. Đây là `PostToolUse`: file ĐÃ ghi xong rồi, nên câu đó
+  // sai sự thật — không có gì bị chặn cả, chỉ là việc TIẾP THEO bị dừng. Hợp đồng output ở
+  // `tooling/test-hooks.mjs` biết sự kiện: `PreToolUse` phải nói `BỊ CHẶN`, `PostToolUse` phải
+  // có `⛔`, và CẢ HAI phải có dòng gợi ý `→ `.
+  //
+  // Dòng `→ ` là thứ agent đọc để biết làm gì tiếp — thiếu nó thì hook chỉ nói "không", và
+  // một hook chỉ nói "không" là một hook đẩy agent đi đoán. Đó là chỗ nhánh này từng lệch.
+  console.error(`⛔ lint còn lỗi ở ${rel} — file ĐÃ ghi, việc tiếp theo dừng ở đây.`);
   console.error(`   Chi tiết: ${log}`);
+  console.error(`   → sửa lỗi lint trong ${rel} rồi ghi lại file; hook chạy lại và tự thông.`);
   process.exit(EXIT_BLOCK);
 }
 

@@ -257,21 +257,14 @@ const cases = [
   ['post-edit-lint.mjs', { tool_input: { file_path: 'assets/logo.png' } }, OK, 'file không lint được → bỏ qua'],
   ['post-edit-lint.mjs', { tool_input: { file_path: 'packages/x/y.gen.ts' } }, OK, 'file generated → bỏ qua', GUARD_CFG],
   ['post-edit-lint.mjs', {}, OK, 'không có file_path → bỏ qua'],
-  // KHÔNG có ca `expect: BLOCK` cho post-edit-lint ở bảng này — CỐ Ý, và đây là một phát hiện
-  // chứ không phải một khoảng trống bị bỏ quên.
+  // NHÁNH CHẶN — bốn ca trên đều đi vào `pass()`, nên tới 2.33.0 phần hook thật sự LÀM GÌ ĐÓ
+  // chưa từng chạy trong suite. Fixture `config-lint-fails.json` trỏ `lintFix` tới một script
+  // thất bại tất định; đó là đường duy nhất tới được nhánh này.
   //
-  // Bảng này cưỡng chế một hợp đồng output cho MỌI nhánh từ chối: stderr phải chứa `BỊ CHẶN`
-  // và một dòng gợi ý `→ `. Hợp đồng đó đúng 100% với mọi ca đang có. `post-edit-lint` là
-  // nhánh chặn DUY NHẤT không khớp: nó `process.exit(EXIT_BLOCK)` thẳng thay vì gọi `block()`,
-  // và in `⛔ lint còn lỗi ở …` + `   Chi tiết: <log>`.
-  //
-  // Và nó có thể ĐÚNG khi khác: đây là `PostToolUse` — file đã ghi xong rồi, nên "BỊ CHẶN" là
-  // một câu SAI SỰ THẬT. Hợp đồng kia mã hoá ngữ nghĩa `PreToolUse` vào một chuỗi ký tự.
-  //
-  // Nới hợp đồng cho vừa một hook (đổi `/BỊ CHẶN/` thành `/⛔/`) là làm yếu một check đang
-  // đúng với tất cả các ca còn lại, và làm thế để ca MỚI CỦA MÌNH xanh. Quyết định "hook
-  // PostToolUse nói gì khi từ chối" là hợp đồng output của harness ⇒ việc của DRI.
-  // Mutant ở khối MUTANTS vẫn khẳng định phạm vi `paths.lintable` là thật, không cần ca này.
+  // Hợp đồng output ở ② biết SỰ KIỆN: đây là `PostToolUse`, nên nó KHÔNG bị đòi nói "BỊ CHẶN"
+  // — file đã ghi xong rồi, câu đó sai sự thật. Nó phải mang `⛔` và một dòng gợi ý `→ `.
+  ['post-edit-lint.mjs', { tool_input: { file_path: 'src/a.ts' } }, BLOCK, 'lint thất bại → dừng việc tiếp theo, và NÓI được làm gì',
+    { HARNESS_CONFIG: () => repoPath('tooling', 'fixtures', 'config-lint-fails.json') }, /lint còn lỗi/],
 
   // ── observe.mjs — QUAN SÁT, không bao giờ chặn ở BẤT KỲ sự kiện nào ─────────
   // Nó nhận 3 sự kiện khác nhau trong MỘT file, nên cái phải khẳng định là: mỗi nhánh
@@ -299,6 +292,30 @@ const ok = [], fail = [];
 // một test bị skip âm thầm đọc y hệt một test đang xanh.
 if (!MERGED_REF) fail.push(`SETUP: không dựng được commit fixture cho protect-migrations — ${setupErr || 'không rõ lý do'}`);
 
+// SỰ KIỆN CỦA MỖI HOOK — đọc từ `.claude/settings.json`, KHÔNG chép tay.
+//
+// Hợp đồng output ở ② bên dưới đòi câu từ chối khác nhau theo sự kiện, nên nó cần biết hook
+// nào chạy ở đâu. Một bản sao viết tay ở đây sẽ lệch im lặng ngay lần ai đó chuyển một hook
+// sang sự kiện khác — và chuyển sự kiện là đúng thứ migration 008 tồn tại để phân phối.
+//
+// `ConfigChange` xếp cùng nhóm `PreToolUse`: nó cũng chặn TRƯỚC khi thay đổi có hiệu lực,
+// nên "BỊ CHẶN" là câu đúng ở đó.
+const preToolUseHooks = (() => {
+  const hooks = readJson(repoPath('.claude', 'settings.json'))?.hooks ?? {};
+  const out = new Set();
+  for (const [event, groups] of Object.entries(hooks)) {
+    if (event !== 'PreToolUse' && event !== 'ConfigChange') continue;
+    for (const g of groups || []) for (const h of g.hooks || []) {
+      const m = String(h.command || '').match(/hooks[/\\]([A-Za-z0-9_.-]+\.mjs)/);
+      if (m) out.add(m[1]);
+    }
+  }
+  return out;
+})();
+if (!preToolUseHooks.size) {
+  fail.push('settings.json: không bóc được hook nào của PreToolUse — neo của hợp đồng output đã trôi, sửa neo thay vì xoá check');
+}
+
 // Case: [hook, input, expect, label, env?, msg?]
 //   msg   — RegExp khẳng định LÝ DO cụ thể. Bắt buộc ở những chỗ hai nhánh từ chối
 //           khác nhau dễ bị nhầm lẫn cho nhau.
@@ -325,18 +342,26 @@ for (const [hook, input, expect, label, env, msg] of cases) {
     continue;
   }
 
-  // ② ĐƯỜNG HÀNH ĐỘNG — hợp đồng PHỔ QUÁT cho mọi nhánh từ chối.
+  // ② ĐƯỜNG HÀNH ĐỘNG — hợp đồng cho mọi nhánh từ chối.
   //    Kiểm CẢ phần TỪ CHỐI (nói sai ở đâu) LẪN phần GỢI Ý (làm gì bây giờ).
   //    Không có check này thì xoá dòng gợi ý của một hook đi mà cả suite vẫn xanh —
   //    và dòng gợi ý CHÍNH LÀ thứ agent đọc để biết phải làm gì, tức là toàn bộ
   //    giá trị của hook. Một hook chỉ nói "không" là một hook đẩy agent đi đoán.
+  //
+  //    HỢP ĐỒNG BIẾT SỰ KIỆN, không mã hoá một sự kiện thành một chuỗi ký tự.
+  //    `PreToolUse` chặn TRƯỚC khi hành động xảy ra ⇒ "BỊ CHẶN" là câu đúng.
+  //    `PostToolUse` chạy SAU khi file đã ghi ⇒ "BỊ CHẶN" là câu SAI SỰ THẬT; nó phải nói
+  //    được rằng việc TIẾP THEO dừng, và `⛔` là dấu đó.
+  //    Phần KHÔNG đổi theo sự kiện: dòng gợi ý `→ `. Mọi hook từ chối đều phải có nó.
   if (expect === BLOCK) {
-    if (!/BỊ CHẶN/.test(err)) {
-      fail.push(`${hook.padEnd(28)} ${label}  →  exit đúng nhưng KHÔNG nói bị chặn. Exit code đúng không phải bằng chứng nổ đúng lý do.`);
+    const pre = preToolUseHooks.has(hook);
+    const mark = pre ? /BỊ CHẶN/ : /⛔/;
+    if (!mark.test(err)) {
+      fail.push(`${hook.padEnd(28)} ${label}  →  exit đúng nhưng KHÔNG mang dấu từ chối ${pre ? '`BỊ CHẶN`' : '`⛔`'} của sự kiện ${pre ? 'PreToolUse' : 'PostToolUse'}. Exit code đúng không phải bằng chứng nổ đúng lý do.`);
       continue;
     }
     if (!/\n\s*→ /.test(err)) {
-      fail.push(`${hook.padEnd(28)} ${label}  →  chặn mà KHÔNG có dòng gợi ý "→ ". Agent bị chặn mà không biết làm gì tiếp là agent sẽ đoán.`);
+      fail.push(`${hook.padEnd(28)} ${label}  →  từ chối mà KHÔNG có dòng gợi ý "→ ". Agent bị dừng mà không biết làm gì tiếp là agent sẽ đoán.`);
       continue;
     }
   }
@@ -2279,7 +2304,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 160;
+const RATCHET = 161;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

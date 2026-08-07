@@ -11,6 +11,45 @@
 
 ---
 
+## 2.33.0 — 2026-08-07
+
+**minor.** Hợp đồng output của hook **biết sự kiện**, và nhánh chặn của `post-edit-lint` lần
+đầu được test chạm tới. Đóng #54.
+
+### Vấn đề: một hợp đồng mã hoá ngữ nghĩa thành chuỗi ký tự
+
+`test-hooks.mjs` đòi mọi nhánh từ chối phải in `BỊ CHẶN` + một dòng gợi ý `→ `. Đúng 100% với
+mọi ca đang có — vì mọi nhánh chặn khác đều là `PreToolUse`.
+
+`post-edit-lint` là `PostToolUse`: **file đã ghi xong rồi**. Nói *"BỊ CHẶN"* ở đó là một câu
+**sai sự thật** — không có gì bị chặn cả, chỉ là việc tiếp theo dừng lại.
+
+Hai đường sai đều đã cân nhắc và bỏ: bắt hook nói dối cho đồng nhất, hoặc nới `/BỊ CHẶN/`
+thành `/⛔/` cho cả suite — cái sau làm yếu một check đang đúng với mọi ca còn lại, **để một ca
+mới của chính mình chuyển xanh**.
+
+### Đổi gì
+
+| sự kiện | dấu từ chối | dòng gợi ý |
+|---|---|---|
+| `PreToolUse` · `ConfigChange` | `BỊ CHẶN` | `→ ` **bắt buộc** |
+| `PostToolUse` | `⛔` | `→ ` **bắt buộc** |
+
+Sự kiện của mỗi hook **đọc từ `.claude/settings.json`**, không chép tay — một bản sao trong
+test sẽ lệch im lặng ngay lần ai đó chuyển một hook sang sự kiện khác, mà chuyển sự kiện đúng
+là thứ migration `008` tồn tại để phân phối.
+
+`post-edit-lint` được thêm dòng `→ ` (nó vốn có nội dung khuyên nhưng không đúng hình dạng),
+và câu từ chối nói rõ *"file ĐÃ ghi, việc tiếp theo dừng ở đây"*.
+
+### Nhánh chặn lần đầu có test
+
+Bốn ca `post-edit-lint` đang có **đều đi vào `pass()`** — nên tới bản này, phần hook thật sự
+làm gì đó chưa từng chạy trong suite. Ca mới dùng `config-lint-fails.json` (`lintFix` trỏ tới
+một script thất bại tất định) — đường duy nhất tới được nhánh đó.
+
+---
+
 ## 2.32.0 — 2026-08-07
 
 **minor.** Banner đầu phiên **biết vai** và **gọi tên** thay vì đếm. Đóng #56 và #51 —
