@@ -9,10 +9,10 @@
  * Chạy trong CI trên cả 3 OS (.github/workflows/harness-parity.yml).
  */
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, dangerousCommand, infraFailure, mergeState, codeOnly } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, dangerousCommand, infraFailure, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -1833,6 +1833,92 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   if (/mergeState/.test(cSample)) fail.push(`mergeState${L} codeOnly KHÔNG bỏ được comment — mọi phép kiểm dựng trên nó là vô nghĩa`);
   else if (!cSample.includes('https://x/y')) fail.push(`mergeState${L} codeOnly cắt nhầm URL trong chuỗi — nó sẽ báo oan`);
   else ok.push(`mergeState${L} codeOnly bỏ comment (khối + dòng) mà KHÔNG cắt \`https://\` trong chuỗi`);
+
+  // BÁO OAN LÀ CHIỀU HỎNG THẬT SỰ CỦA HÀM NÀY, và bản đầu đã hỏng đúng như vậy: một template
+  // literal chứa `features/*.json` trong `rituals.mjs` bị đọc là MỞ block comment, nuốt 176
+  // dòng code, và assertion dựng trên nó báo thiếu một thứ đang nằm ngay trong file.
+  const trap = codeOnly('const a = `features/*.json`;\n/** thật */\nconst GIU_LAI = 1;');
+  if (!/GIU_LAI/.test(trap)) fail.push(`mergeState${L} codeOnly coi \`/*\` TRONG CHUỖI là mở comment ⇒ nuốt code thật và BÁO OAN`);
+  else if (/thật/.test(trap)) fail.push(`mergeState${L} codeOnly không bỏ được block comment đứng sau một chuỗi có \`/*\``);
+  else ok.push(`mergeState${L} codeOnly biết CHUỖI: \`/*\` trong template literal KHÔNG mở comment`);
+}
+
+// ─── sổ ghi được thì phải ĐÓNG được ─────────────────────────────────────────
+//
+// `/harness-propose` đỏ VĨNH VIỄN vì `harnessBlocks` đếm mọi dòng từng có trong
+// `gate-fails.log`. Ba lần chặn ngày 2026-08-07 đã xử lý xong qua PR #79–#101, và không lệnh
+// nào làm mục đó xanh lại được (#105).
+//
+// Ca phải khoá chặt nhất KHÔNG phải "đóng thì về 0" — mà là **occurrence MỚI phải tự mở lại**.
+// Nếu đóng một lần là im mãi mãi thì đây không phải cơ chế đóng, nó là nút tắt, và bản vá này
+// còn tệ hơn bug: bug làm tín hiệu kêu oan, nút tắt làm nó câm khi có chuyện thật.
+{
+  const L = ' '.repeat(13);
+  const dir = mkdtempSync(join(tmpdir(), 'harness-close-'));
+  const log = join(dir, 'gate-fails.log');
+  const line = (at, sel, detail) => `${at}|p|${sel}|${detail}\n`;
+  const bad = [];
+
+  writeFileSync(log,
+    line('2026-08-07T12:00:44.000Z', 'protect-harness', '.claude/settings.json')
+    + line('2026-08-07T12:26:00.000Z', 'protect-harness', '.claude/settings.json')
+    + line('2026-08-07T12:30:00.000Z', 'dcg', 'git push --force'));
+
+  const n = (sel) => openTelemetryEntries('gate-fails', sel, { dir })?.length;
+  if (n('protect-harness') !== 2) bad.push(`trước khi đóng: ${n('protect-harness')} ≠ 2`);
+  if (n('dcg') !== 1) bad.push(`selector lọc sai: dcg = ${n('dcg')} ≠ 1`);
+
+  if (!closeTelemetry('gate-fails', 'protect-harness', 'đã đi qua PR #79-#101', { dir })) bad.push('closeTelemetry từ chối một lần đóng hợp lệ');
+  if (n('protect-harness') !== 0) bad.push(`sau khi đóng: ${n('protect-harness')} ≠ 0`);
+  // Đóng CÓ SELECTOR không được đụng selector khác — nếu không, đóng một mục là làm câm cả sổ.
+  if (n('dcg') !== 1) bad.push(`đóng protect-harness làm mất luôn dcg: ${n('dcg')} ≠ 1`);
+
+  // ĐÂY LÀ CA QUAN TRỌNG NHẤT CỦA CẢ KHỐI.
+  appendFileSync(log, line('2026-12-01T00:00:00.000Z', 'protect-harness', '.claude/settings.json'));
+  if (n('protect-harness') !== 1) bad.push(`occurrence MỚI sau khi đóng KHÔNG mở lại (${n('protect-harness')} ≠ 1) — đây là nút tắt, không phải cơ chế đóng`);
+
+  // Lý do là BẮT BUỘC: đóng không lý do là tắt đèn, không phải xử lý.
+  if (closeTelemetry('gate-fails', 'protect-harness', '', { dir })) bad.push('closeTelemetry cho đóng mà KHÔNG có lý do');
+  if (closeTelemetry('gate-fails', '', 'có lý do nhưng thiếu selector', { dir })) bad.push('closeTelemetry cho đóng mà không có selector');
+
+  // Log KHÔNG TỒN TẠI là 0 thật; log KHÔNG ĐỌC ĐƯỢC là `null` ⇒ `?` ở bên gọi. Gộp hai cái
+  // là đúng lớp lỗi mà L0006 nói tới.
+  if (openTelemetryEntries('khong-co-so-nay', null, { dir })?.length !== 0) bad.push('log chưa tồn tại phải là 0, không phải null');
+
+  // Dòng ĐÓNG không được đếm như một lần hook chạy — nếu không, danh mục hook đẻ ra một
+  // "hook" tên __CLOSED__ chưa từng tồn tại.
+  const tallied = tallyLines(readFileSync(log, 'utf8'));
+  if (tallied.has(TELEMETRY_CLOSED)) bad.push('tallyLines đếm dòng __CLOSED__ như một hook');
+
+  if (bad.length) fail.push(`đóng sổ${L} ${bad.length} ca sai: ${bad.join(' | ')}`);
+  else ok.push(`đóng sổ${L} 9 ca — đóng CÓ lý do, KHÔNG đụng selector khác, và occurrence MỚI TỰ MỞ LẠI`);
+
+  // HAI ĐẦU: `rituals.mjs` không được tự `readFileSync` một `.log` nữa. Còn một chỗ đọc thô
+  // là còn một bộ đếm không đóng được — và nó sẽ là bộ đếm không ai nhớ.
+  // Chỉ soi các sổ do `telemetry()` GHI (định dạng `|`). `fixlog-closed.log` cố ý ngoài danh
+  // sách: nó là cơ chế đóng CỦA RIÊNG fixlog, định dạng tab, và đã đóng được từ v2.11.0.
+  const rit = codeOnly(readFileSync(repoPath('tooling', 'rituals.mjs'), 'utf8'));
+  // HAI LẦN NEO SAI TRƯỚC KHI ĐÚNG, ghi lại cả hai vì mỗi lần sai theo một hướng khác nhau:
+  //
+  //   1. `['"\`]<tên>\.log` — khớp cả `\`gate-runs.log\`` trong một THÔNG BÁO cho người đọc.
+  //      Cấm nhắc tên sổ, chứ không cấm đọc thô. BÁO OAN.
+  //   2. `readFileSync\([^)]*<tên>` — `[^)]*` dừng ở dấu `)` ĐẦU TIÊN, nên lời gọi LỒNG NHAU
+  //      `readFileSync(join(telemetryDir(), 'gate-fails.log'))` đi lọt. Mutant M4 sống sót.
+  //      CHO QUA NHẦM — hướng tệ hơn.
+  //
+  // Neo đúng: **tên sổ trong nháy ĐƠN/KÉP** là một đường dẫn file trong code; thông báo cho
+  // người đọc dùng backtick bên trong template literal. Đó là ranh giới có thật trong repo này,
+  // không phải một mẹo regex.
+  const rawRead = ['gate-fails', 'main-edits', 'gate-runs', 'hook-runs']
+    .filter(k => new RegExp(`['"]${k}\\.log['"]`).test(rit));
+  if (rawRead.length) {
+    fail.push(`đóng sổ${L} rituals.mjs còn đọc THÔ sổ telemetry: ${rawRead.join(' · ')} — bộ đếm đó không đóng được`);
+  } else ok.push(`đóng sổ${L} rituals.mjs đọc cả 4 sổ telemetry qua \`openTelemetryEntries\`, không \`readFileSync\` thô`);
+
+  // Lối ra phải in ngay ở chỗ báo đỏ. Một cơ chế đóng người đọc không tìm thấy = không có.
+  if (!/--close harness-propose/.test(rit)) {
+    fail.push(`đóng sổ${L} dòng \`due\` của /harness-propose không in ra lệnh đóng — người đọc không có cách nào biết nó đóng được`);
+  } else ok.push(`đóng sổ${L} dòng \`due\` tự in lệnh đóng nó (lối ra nằm ở chỗ báo đỏ)`);
 }
 
 // ─── pack.json: MỌI field được ghi phải có bên ĐỌC ───────────────────────────

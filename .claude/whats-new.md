@@ -1,4 +1,4 @@
-<!-- version: 2026-08-08-b -->
+<!-- version: 2026-08-08-c -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -9,6 +9,21 @@
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
 
+## 2026-08-08 — Sổ telemetry ĐÓNG được (v2.41.0)
+
+`/harness-propose` đỏ vì đếm **mọi dòng từng có** trong `gate-fails.log`. Ba lần chặn hôm qua
+đã xử lý xong, nghi thức vẫn đỏ, và **không lệnh nào làm nó xanh lại được**. Một tín hiệu như
+vậy thôi là tín hiệu — người đọc học được rằng nó không đáng phản ứng.
+
+```
+node tooling/rituals.mjs --close harness-propose "<đã làm gì>"
+```
+
+Không phải nút tắt: **lý do bắt buộc**, dòng đóng nằm trong **chính cái sổ đang audit**, và
+**một lần chặn mới sẽ tự mở lại**. Sau khi đóng, bảng vẫn nói *"3 lần, tất cả ĐÃ ĐÓNG"* —
+không nói *"chưa từng xảy ra"*.
+
+**Việc bạn phải làm khác đi:** thấy mục đỏ mà việc đã xong — đóng nó kèm lý do, đừng bỏ qua nó.
 ## 2026-08-08 — `wt-clean` thôi mù với squash-merge (v2.40.0)
 
 `git branch --merged` không phân biệt được nhánh **đã squash-merge** với nhánh **chưa từng có

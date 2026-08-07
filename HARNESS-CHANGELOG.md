@@ -11,6 +11,56 @@
 
 ---
 
+## 2.41.0 — 2026-08-08
+
+**minor.** Sổ telemetry **đóng được**. Đóng #105. `L0006` lên 4 lần xuất hiện.
+
+### Một tín hiệu không bao giờ xanh lại được thì thôi là tín hiệu
+
+`/harness-propose` đỏ vì `rituals.mjs` đếm **mọi dòng từng có** trong `gate-fails.log`. Ba lần
+chặn ngày 2026-08-07 lúc `12:00:44` · `12:26:00` · `12:26:01` **đã xử lý xong** — mở
+`HARNESS_DRI`, rồi mọi thay đổi vùng cấm đi qua PR #79–#101. Việc đã xong, nghi thức vẫn đỏ,
+và **không lệnh nào làm nó xanh lại được**.
+
+`fixlog` có `--close` từ **v2.11.0**. Bài học đó được giải ở đúng một chỗ và không tổng quát
+hoá cho cái sổ **cùng file, cách 380 dòng**.
+
+### Đây KHÔNG phải nút tắt — ba thứ giữ nó trung thực
+
+| | |
+|---|---|
+| **Lý do bắt buộc** | không có lý do thì `closeTelemetry` trả `false` |
+| **Dòng đóng nằm trong CHÍNH cái sổ đang audit** | nó không xoá gì; người review sau đọc được cả hai |
+| **Occurrence MỚI tự mở lại** | đóng lúc `T` chỉ vô hiệu các dòng TRƯỚC `T` |
+
+```
+node tooling/rituals.mjs --close harness-propose "<đã làm gì>"
+```
+
+Lệnh này **in ngay trong dòng báo đỏ**. Một cơ chế đóng mà người đọc không tìm thấy thì tương
+đương không có — và mục này đã đỏ vĩnh viễn suốt vì đúng lý do đó.
+
+### Đóng sổ xong, lịch sử KHÔNG được biến mất
+
+Bản đầu in `ok  chưa lần nào bị chặn ở vùng cấm` cho một repo đã bị chặn ba lần và xử lý xong.
+Giờ nó in `3 lần bị chặn ở vùng cấm, tất cả ĐÃ ĐÓNG` — đúng lớp lỗi mà cơ chế này sinh ra để
+tránh, xuất hiện lại trong chính thông báo của nó.
+
+### `codeOnly()` phải biết CHUỖI — bản v2.40.0 bắn oan
+
+`rituals.mjs` có một template literal chứa `features/*.json`. Cặp regex ngây thơ đọc đó là
+**mở block comment** và nuốt từ dòng 173 tới `*/` thật ở dòng 349 — **176 dòng code biến mất**,
+và một assertion dựng trên nó báo thiếu một thứ đang nằm ngay trong file.
+
+Giờ nó là một máy quét trạng thái biết mình đang ở trong chuỗi hay không. **Nội dung chuỗi
+được giữ**, có chủ ý: lệnh mà một thông báo in ra sống trong chuỗi, và đó là thứ hợp đồng hai
+đầu cần soi. Còn hở, ghi ra để không ai tưởng nó kín: **regex literal** chứa `//` hoặc `/*` vẫn
+đánh lừa được nó.
+
+**Ảnh hưởng tới project đã áp:** không có hành vi nào đổi cho tới khi ai đó gõ `--close`.
+
+---
+
 ## 2.40.1 — 2026-08-08
 
 **patch.** Assertion eval dùng cú pháp POSIX giờ bị bắt — nó chỉ đỏ trên Windows, và im trên
