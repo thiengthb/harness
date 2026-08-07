@@ -11,6 +11,36 @@
 
 ---
 
+## 2.30.1 — 2026-08-07
+
+**patch.** File ĐƯỢC ship thôi trích đường dẫn KHÔNG được ship.
+
+### Đo được: một con trỏ chết ở MỌI repo tiêu thụ, xanh ở template
+
+Ngay sau khi v2.30.0 mang §9b vào template, chạy nó ở `sakubun` cho ra:
+
+```
+docs/progress/vong-hoc-2026-W32.md  (tooling/apply-to.mjs, tooling/harness-doctor.mjs)
+```
+
+Hai file đó **được ship** xuống repo con. Nhật ký thì **không** — `apply-to.mjs` IGNORE
+`^docs/progress/(?!_)` một cách cố ý. Nên một comment trích dẫn dạng đường dẫn ở đó là con
+trỏ chết **vĩnh viễn ở mọi repo tiêu thụ**, trong khi ở template nó xanh vì file có thật.
+
+Đây là loại lỗi không công cụ nào ở phía template thấy được: **nó chỉ hiện ra sau khi phân
+phối**. Bắt nó ở đây rẻ hơn bắt nó ở repo người khác.
+
+### Đổi gì
+
+- Ba chỗ trích dẫn được viết lại thành chữ (`tooling/apply-to.mjs`, `tooling/harness-doctor.mjs`,
+  `tooling/lib/harness.mjs`) — nội dung giữ nguyên, chỉ thôi trông như đường dẫn.
+- **Hợp đồng hai đầu mới** ở `test-hooks.mjs`, cùng khuôn với `PACK_SCHEMA`: 66 file được ship
+  không file nào được trích tên file cụ thể trong `docs/progress/**` hay `.claude/learnings/**`.
+  Tham chiếu tới **thư mục** thì hợp lệ — thư mục đó có ở repo con vì khuôn `_TEMPLATE.md`
+  được ship; chỉ tên file cụ thể mới chết.
+
+---
+
 ## 2.30.0 — 2026-08-07
 
 **minor.** Nhận hai phép kiểm **đi lên từ `sakubun`** — lần đầu chiều LÊN thật sự chuyển

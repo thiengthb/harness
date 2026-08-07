@@ -708,7 +708,9 @@ const NATIVE_OR_NOT_A_SKILL = new Set([
 // comment dưới. Lần viết bản vá này là lần THỨ BA cái bẫy đó bắt được người đang sửa nó.)
 //
 // Đo 2026-08-07: dòng advice này bắn ở MỌI lần chạy doctor, về một quyết định đã được phán
-// xử bằng văn bản trong chính file bị tố (`docs/progress/vong-hoc-2026-W32.md:93`). Nhật ký
+// xử bằng văn bản trong chính file bị tố — nhật ký vòng học tuần W32, dòng 93. (Không viết
+// đường dẫn nhật ký ở đây: thư mục đó không được ship xuống repo tiêu thụ, nên trích dẫn dạng
+// đường dẫn trong file NÀY thành con trỏ chết ở mọi repo con.) Nhật ký
 // đó còn xếp nó vào bảng "BÀI HỌC ĐẮT NHẤT CỦA PHIÊN" như một trong BA lần output của harness
 // suýt làm hỏng một cơ chế đang chạy. Một cảnh báo vĩnh viễn về việc không được làm là đúng
 // lớp lỗi #56 — và nó dạy người đọc bỏ qua mục advice, tức làm hỏng cả những mục đúng.
@@ -811,7 +813,7 @@ if (emptySlots.length) {
 //
 // Một công cụ advisory cắm vào đó nổ theo cách im lặng nhất có thể. Check này bắt
 // đúng ca đó và KHÔNG bắt provisioner thật: nó chỉ nhận diện các script advisory của
-// chính harness này. Xem `.claude/learnings/2026-W32-tai-phan-vai-native.md` §0.
+// chính harness này. Xem bài học tuần W32 "tái phân vai native" trong `.claude/learnings/`, §0.
 const NOT_PROVISIONER = /(check-reservations|wt-clean|gates|observe|protect-|block-|dcg|session-start|post-edit-lint|harness-doctor|entropy-scan|harness-size)\b/;
 for (const ev of ['WorktreeCreate', 'WorktreeRemove']) {
   for (const g of settings.hooks?.[ev] ?? []) {

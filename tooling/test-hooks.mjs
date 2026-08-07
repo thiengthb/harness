@@ -1717,6 +1717,40 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   } else ok.push(`entropy-scan.mjs${' '.repeat(12)} allowlist GLOBAL_OK khớp thật trên OS này (${present.length} file được miễn, 0 rò)`);
 }
 
+// ─── File ĐƯỢC SHIP không được trích đường dẫn KHÔNG được ship ───────────────
+//
+// Hợp đồng hai đầu, cùng khuôn với `PACK_SCHEMA`: `apply-to.mjs` quyết cái gì xuống repo con,
+// và mọi file đi cùng phải tôn trọng quyết định đó.
+//
+// Đo 2026-08-07 ở `sakubun`: §9b báo `docs/progress/vong-hoc-2026-W32.md` là đường dẫn chết,
+// bị `tooling/apply-to.mjs` và `tooling/harness-doctor.mjs` trỏ tới. Hai file đó ĐƯỢC ship;
+// nhật ký thì KHÔNG (`apply-to` IGNORE `^docs/progress/(?!_)`). Nên một comment trích dẫn
+// dạng đường dẫn ở đó thành con trỏ chết ở **mọi repo tiêu thụ**, mãi mãi — trong khi ở
+// template nó xanh, vì ở template file đó có thật.
+//
+// Đây là ca không công cụ nào ở phía template thấy được: nó chỉ hiện ra SAU KHI phân phối.
+// Bắt nó ở đây rẻ hơn bắt nó ở repo người khác.
+{
+  const L = ' '.repeat(6);
+  // Hai thư mục `apply-to.mjs` cố ý KHÔNG ship (khuôn `_`-prefix thì có).
+  // Đòi hẳn TÊN FILE `.md`: một tham chiếu tới THƯ MỤC (`.claude/learnings/`) là hợp lệ —
+  // thư mục đó CÓ ở repo con vì khuôn `_TEMPLATE.md` được ship. Chỉ tên file cụ thể mới chết.
+  const UNSHIPPED = /(docs\/progress\/(?!_)[A-Za-z0-9_-]+\.md|\.claude\/learnings\/(?!_TEMPLATE)[A-Za-z0-9_-]+\.md)/g;
+  const shippedFiles = git(['ls-files', 'tooling', '.claude/hooks', '.claude/skills']).stdout
+    .split('\n').filter(Boolean).filter(f => /\.(mjs|md)$/.test(f) && !f.startsWith('tooling/test-'));
+  const offenders = [];
+  for (const f of shippedFiles) {
+    let txt = ''; try { txt = readFileSync(repoPath(f), 'utf8'); } catch { continue; }
+    for (const m of txt.matchAll(UNSHIPPED)) offenders.push(`${f} → ${m[1]}`);
+  }
+  if (!shippedFiles.length) {
+    fail.push(`ship ↔ trích dẫn${L} không liệt kê được file được ship — neo của ca này đã trôi`);
+  } else if (offenders.length) {
+    fail.push(`ship ↔ trích dẫn${L} ${offenders.length} chỗ trích đường dẫn KHÔNG được ship: ${offenders.slice(0, 3).join(' · ')}`
+      + ` — ở repo tiêu thụ chúng là con trỏ chết VĨNH VIỄN. Viết tên nhật ký bằng chữ, đừng viết thành đường dẫn.`);
+  } else ok.push(`ship ↔ trích dẫn${L} ${shippedFiles.length} file được ship, không file nào trích nhật ký/learnings dạng đường dẫn`);
+}
+
 // ─── §9b đường dẫn chết: KHÔNG có, và phép kiểm CÒN PHẠM VI ──────────────────
 //
 // Nhận từ pack `sakubun` @0655730. Ca nguy hiểm không phải "có đường dẫn chết" — mà là phép
@@ -2102,7 +2136,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 156;
+const RATCHET = 157;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {
