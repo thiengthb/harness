@@ -60,7 +60,7 @@ export const RITUALS = [
     cmd: '/claim',
     what: 'nhận việc: đọc nhật ký cũ, đặt chỗ vùng nóng, tạo docs/progress/<issue>.md',
     check: (s) => {
-      if (s.issue == null) return { state: '?', why: 'nhánh không theo quy ước `<type>/<issue>-<slug>` nên không suy ra được issue — không đo được' };
+      if (s.issue == null) return { state: '?', cause: 'branch-no-issue', why: 'nhánh không theo quy ước `<type>/<issue>-<slug>` nên không suy ra được issue — không đo được' };
       if (!s.issue) return { state: 'ok', why: 'đang ở nhánh tích hợp, không có issue để nhận' };
       // Solo vẫn cần nhật ký — chỉ khác NGƯỜI ĐỌC. "người sau" là lời khuyên rỗng khi bạn
       // là người duy nhất, và một lý do rỗng làm cả nghi thức đọc như thủ tục. Người đọc
@@ -80,7 +80,7 @@ export const RITUALS = [
       // vào một dòng `ok`, và nhật ký W32 đã bắt được đúng ca đó: *"/handoff OK — không có
       // gì để giao lại"* trong khi có 2 commit chưa push và người dùng sắp sang máy khác.
       // Nhánh không theo quy ước `<type>/<issue>-<slug>` là ca THƯỜNG GẶP, không phải ca lạ.
-      if (s.issue == null) return { state: '?', why: 'không suy ra được issue từ tên nhánh — không đo được. Có việc dở hay không thì bảng này KHÔNG biết' };
+      if (s.issue == null) return { state: '?', cause: 'branch-no-issue', why: 'không suy ra được issue từ tên nhánh — không đo được. Có việc dở hay không thì bảng này KHÔNG biết' };
       if (!s.issue) return { state: 'ok', why: 'đang ở nhánh tích hợp — không có gì để giao lại' };
       if (!s.progressExists) return { state: 'ok', why: '/claim đang tới hạn trước — nhật ký chưa tồn tại' };
       if (s.commitsSinceProgress > 0) {
@@ -168,7 +168,7 @@ export const RITUALS = [
       // không feature nào khai issue này (dòng dưới). Đổi thành `== null` làm dòng đó thành
       // mã chết. Đã thử và bị chính eval `0006` bắt, 2026-08-07.
       if (s.ui === null) return { state: '?', why: 'không đọc được features/ — không đo được' };
-      if (s.issue == null) return { state: '?', why: 'không suy ra được issue từ tên nhánh — không biết có feature nào cần chụp không' };
+      if (s.issue == null) return { state: '?', cause: 'branch-no-issue', why: 'không suy ra được issue từ tên nhánh — không biết có feature nào cần chụp không' };
       if (!s.issue) return { state: 'ok', why: 'đang ở nhánh tích hợp — không có feature nào để chụp' };
       if (s.ui === undefined) return { state: 'ok', why: `không có features/*.json nào khai issue ${s.issue}` };
       if (s.ui.state === 'n/a') return { state: 'ok', why: `${s.ui.id}: web ngoài scope${s.ui.why ? ` (${s.ui.why})` : ''}` };

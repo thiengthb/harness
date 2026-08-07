@@ -1,4 +1,4 @@
-<!-- version: 2026-08-07-f -->
+<!-- version: 2026-08-07-g -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,19 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-07 — Banner đầu phiên biết vai, và gọi tên thay vì đếm (v2.32.0)
+
+Hai thứ bạn thấy mỗi phiên vừa đổi:
+
+**Mất một dòng đỏ.** `⚠️ chưa khai báo lệnh verify/test — việc số 1 cần làm` giờ chỉ in ở repo
+**tiêu thụ**. Ở template nó là placeholder đúng, và nó đã đỏ 7/7 phiên kể từ commit đầu tiên —
+dạy người đọc bỏ qua đúng cái khối có tín hiệu thật.
+
+**`? N mục KHÔNG đo được` giờ nói N là những mục nào**, gộp theo nguyên nhân chung.
+
+**Việc bạn phải làm khác đi:** không gì. Nếu repo bạn là consumer và chưa khai `commands`, dòng
+đỏ kia **vẫn đúng** — nó chỉ thôi bắn nhầm ở template.
 
 ## 2026-08-07 — Runner gate có chi phí SÀN, và giờ nó hiện ra (v2.31.0)
 
