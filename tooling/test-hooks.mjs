@@ -9,10 +9,11 @@
  * Chạy trong CI trên cả 3 OS (.github/workflows/harness-parity.yml).
  */
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, rmSync, readdirSync, cpSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, dangerousCommand } from './lib/harness.mjs';
+import { pickEventArray, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
 
@@ -329,6 +330,10 @@ const ok = [], fail = [];
 // PASS. Đẩy vào `fail` cũng sai: hành vi của hook ở detached HEAD là ĐÚNG (không có nhánh thì
 // không có gì để chặn). Nên: một rổ thứ ba, in ra, và trừ khỏi mẫu số của sàn.
 const na = [];
+// `na` gộp nhiều CA vào một DÒNG (dòng dưới nói "3 ca"), nên `na.length` KHÔNG phải số ca —
+// đó là lý do `naCount` ở cuối file là hằng số. Ca n/a nào có điều kiện KHÁC "HEAD detached"
+// phải tự đếm ở đây, nếu không nó rơi khỏi tổng và sàn báo nhầm "một case đã ngừng chạy".
+let naExtra = 0;
 if (!CUR_BRANCH) {
   na.push('protect-integration-branch: 3 ca cần một NHÁNH đang đứng — HEAD đang detached '
     + '(bình thường ở CI `pull_request`). Chạy suite ở máy để phủ chúng.');
@@ -1110,6 +1115,63 @@ for (const [env, expect, label, msg] of GATE_CASES) {
     if (r?.state !== want) fail.push(`rituals.mjs${' '.repeat(17)} claude-code-drift/tập sự kiện: ${label} → state=${r?.state}, mong đợi ${want}`);
     else if (!msg.test(r.why)) fail.push(`rituals.mjs${' '.repeat(17)} claude-code-drift/tập sự kiện: ${label} → \`why\` không khớp ${msg}: "${r.why}"`);
     else ok.push(`rituals.mjs${' '.repeat(17)} claude-code-drift/tập sự kiện: ${label}`);
+  }
+
+  // ④b-quinquies PHẦN TRÍCH XUẤT của `native-surface` — issue #88.
+  //
+  //     Ba ca trên khoá TRẠNG THÁI NGHI THỨC (đã đo chưa, đo ở version nào). Chúng không
+  //     chạm `nativeHookEvents()` — chỗ thật sự rút dữ liệu ra khỏi binary, và là chỗ duy
+  //     nhất có logic đáng sai. Khẳng định vào hàm THUẦN `pickEventArray`, cùng lý do bảng
+  //     `dangerousCommand`: một binary 285 MB không dựng được trong CI ba OS.
+  {
+    const L = ' '.repeat(11);
+    const big = JSON.stringify(['PreToolUse', 'PostToolUse', 'Stop', 'SessionEnd', 'Setup', 'PreCompact', 'ConfigChange', 'TaskCompleted']);
+    const small = JSON.stringify(['PreToolUse', 'PostToolUse', 'Stop', 'SessionEnd', 'Setup', 'PreCompact', 'ConfigChange']);
+
+    const PICK = [
+      [`a=${small};b=${big};`, 8, 'nhiều ứng viên ⇒ lấy mảng DÀI NHẤT, không lấy cái ĐẦU TIÊN'],
+      [`z=${big};y=${small};`, 8, 'dài nhất thắng kể cả khi nó đứng TRƯỚC'],
+      [`v=['PreToolUse','PostToolUse','Stop','SessionEnd','Setup','PreCompact','ConfigChange']`, 7, 'nháy đơn vẫn parse được'],
+      [`w=["Alpha","Beta","Gamma","Delta","Epsilon","Zeta","Eta"]`, null, 'mảng đủ dài nhưng KHÔNG chứa PreToolUse ⇒ bỏ'],
+      [`u=["PreToolUse","PostToolUse","Stop"]`, null, 'mảng quá ngắn ⇒ bỏ (ngưỡng ≥7)'],
+      [`không có mảng nào`, null, 'không có ứng viên ⇒ null, KHÔNG phải mảng rỗng'],
+    ];
+    const badPick = PICK.filter(([txt, want]) => (pickEventArray(txt)?.length ?? null) !== want);
+    if (badPick.length) fail.push(`native-surface${L} pickEventArray sai ${badPick.length}/${PICK.length} ca: ${badPick.map(c => c[2]).join(' · ')}`);
+    else ok.push(`native-surface${L} pickEventArray ${PICK.length} ca — "lấy mảng ĐẦU TIÊN" bị giết; tập CON đọc y hệt "vendor bỏ N sự kiện"`);
+
+    // Ca vắt qua ranh giới khối: chỗ DUY NHẤT phép quét sai IM LẶNG — nó trả `null`, và
+    // `null` đọc y hệt "bundle đổi hình dạng". Fixture vài trăm byte + khối nhỏ, nên nó
+    // chạy được ở cả ba OS thay vì đòi một binary 285 MB.
+    const fx = join(tmpdir(), `native-surface-${process.pid}.bin`);
+    const CH = 128, OV = 64;
+    writeFileSync(fx, 'x'.repeat(CH - 20) + big + 'y'.repeat(300), 'latin1');
+    let straddle;
+    try { straddle = nativeHookEvents(fx, { chunk: CH, overlap: OV }); }
+    finally { try { unlinkSync(fx); } catch { /* dọn được thì tốt */ } }
+    if (big.length <= CH - OV) {
+      fail.push(`native-surface${L} fixture thôi vắt qua ranh giới khối (mảng ${big.length}B ≤ bước nhảy ${CH - OV}B) — ca này đã ngừng kiểm thứ nó sinh ra để kiểm`);
+    } else if (straddle?.length !== 8) {
+      fail.push(`native-surface${L} mảng vắt qua ranh giới khối bị BỎ SÓT (được ${straddle?.length ?? 'null'}/8) — chồng lấn không cứu được, và phép đo im lặng trả null`);
+    } else {
+      ok.push(`native-surface${L} mảng vắt qua ranh giới khối vẫn bắt được — chồng lấn ${OV}B làm đúng việc của nó`);
+    }
+
+    // Chồng lấn phải LỚN HƠN mảng thật, và ca này đỏ TRƯỚC khi nó thôi đúng. `OVERLAP = 8192`
+    // an toàn hôm nay vì mảng ~700 B; nó thôi an toàn khi vendor thêm sự kiện tới lúc mảng
+    // vượt 8 KB — lúc đó phép đo trả `null`, đọc y hệt "bundle đổi hình dạng".
+    const real = nativeHookEvents();
+    if (!real) {
+      na.push(`native-surface${L} không đo được binary ở máy này (CLAUDE_CODE_EXECPATH?) — biên chồng lấn KHÔNG kiểm được, và đây không phải "đạt"`);
+      naExtra++;
+    } else {
+      const realBytes = JSON.stringify(real).length;
+      if (realBytes >= SCAN.overlap) {
+        fail.push(`native-surface${L} mảng thật ${realBytes}B ĐÃ VƯỢT chồng lấn ${SCAN.overlap}B — một mảng rơi đúng ranh giới khối sẽ bị bỏ sót IM LẶNG. Nâng \`SCAN.overlap\``);
+      } else {
+        ok.push(`native-surface${L} mảng thật ${realBytes}B < chồng lấn ${SCAN.overlap}B — còn ${SCAN.overlap - realBytes}B biên trước khi phép quét hỏng im lặng`);
+      }
+    }
   }
 
   // ④b-quater `guard-nhanh-tich-hop`: một cửa thoát không ai đếm là cửa thoát mở vĩnh viễn.
@@ -2516,12 +2578,12 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 177;
+const RATCHET = 180;   // +3 ở v2.38.1 (#88): pickEventArray · vắt ranh giới khối · biên chồng lấn
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa
 // NGỪNG CHẠY, và sàn — thứ tồn tại để phân biệt hai chuyện đó — sẽ báo nhầm.
-const naCount = CUR_BRANCH ? 0 : 3;
+const naCount = (CUR_BRANCH ? 0 : 3) + naExtra;
 const total = ran + skipped + naCount;
 if (total < RATCHET) {
   fail.push(`chỉ có ${total} khẳng định (${ran} chạy + ${skipped} bỏ qua + ${naCount} không dựng được), sàn là ${RATCHET} — một case đã `
