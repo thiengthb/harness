@@ -134,6 +134,9 @@ function mktree(entries) {
   return r.stdout;
 }
 
+// Nhánh đang chạy — `protect-integration-branch` cần nó để dựng ca "đang đứng trên nhánh
+// tích hợp" mà không phụ thuộc suite chạy ở nhánh nào.
+const CUR_BRANCH = git(['branch', '--show-current']).stdout.trim() || 'main';
 let MERGED_REF = null, setupErr = '';
 try {
   const blob = git(['hash-object', '-w', '--stdin'], { input: '-- migration đã merge, dùng cho test\n' }).stdout;
@@ -282,6 +285,20 @@ const cases = [
   ['block-secrets.mjs', { tool_input: { file_path: null } }, OK, 'input rác không làm crash'],
   ['block-generated-edit.mjs', {}, OK, 'input rỗng không làm crash'],
   ['protect-harness.mjs', { tool_input: {} }, OK, 'input rỗng không làm crash'],
+  // ── protect-integration-branch — BẮN THEO HÀNH ĐỘNG, không đoán ý định ─────
+  // "Ghi file đầu tiên trên nhánh tích hợp" là sự kiện TẤT ĐỊNH. Ba trạng thái, và cả ba
+  // đều phải khoá: chặn khi đúng nhánh · im khi khác nhánh · cửa thoát mở được VÀ ghi sổ.
+  // `HARNESS_INTEGRATION_BRANCH` trỏ vào chính nhánh đang chạy — cùng cửa mà
+  // `protect-migrations` đã mở, vì cùng nhu cầu: test cần một ref tất định.
+  ['protect-integration-branch.mjs', { tool_input: { file_path: 'tooling/x.mjs' } }, BLOCK,
+    'sửa file khi đang ở nhánh tích hợp bị chặn', { HARNESS_INTEGRATION_BRANCH: () => CUR_BRANCH }, /nhánh tích hợp/],
+  ['protect-integration-branch.mjs', { tool_input: { file_path: 'tooling/x.mjs' } }, OK,
+    'ở nhánh KHÁC thì im lặng', { HARNESS_INTEGRATION_BRANCH: 'khong-phai-nhanh-nay' }],
+  ['protect-integration-branch.mjs', { tool_input: { file_path: 'docs/x.md' } }, OK,
+    'cửa thoát HARNESS_ALLOW_MAIN_EDIT mở được, và NÓI RA',
+    { HARNESS_INTEGRATION_BRANCH: () => CUR_BRANCH, HARNESS_ALLOW_MAIN_EDIT: '1' }, /với cửa thoát/],
+  ['protect-integration-branch.mjs', { tool_input: {} }, OK, 'không có file_path → bỏ qua'],
+
   ['protect-feature-files.mjs', { tool_input: { file_path: '' } }, OK, 'path rỗng không làm crash'],
   ['protect-tests.mjs', { tool_input: null }, OK, 'input rác không làm crash'],
 ];
@@ -919,6 +936,9 @@ for (const [env, expect, label, msg] of GATE_CASES) {
     issue: '', progressExists: false, commitsSinceProgress: 0, ahead: 0, integrationBranch: 'origin/main',
     fixlogTotal: 0, fixlogRepeated: 0, learningsNewerThanLessons: 0,
     skillCount: 5, maxSkills: 12, worktrees: 1, maxWorktrees: 4, pendingPacks: 0, harnessBlocks: 0,
+    // "Trạng thái ĐỦ" cho guard nhánh tích hợp = đã gặp ít nhất một ca. 0/0 là `?` (mẫu số
+    // rỗng, L0005), và ca ③ bên dưới khoá đúng điều đó.
+    mainEditEscapes: 0, mainEditBlocks: 1,
     claudeCodeVersion: '2.1.221', reviewedClaudeCode: '2.1.221', reviewedClaudeCodeAt: '2026-08-05T00:00:00.000Z',
     // "Trạng thái ĐỦ" cho ngân sách = đã khai trần VÀ đã đo. Chỉ khai trần thôi là `?` —
     // ca ③ bên dưới khoá đúng điều đó.
@@ -1038,6 +1058,22 @@ for (const [env, expect, label, msg] of GATE_CASES) {
     if (r?.state !== want) fail.push(`rituals.mjs${' '.repeat(17)} harness-propose: ${label} → state=${r?.state}, mong đợi ${want}`);
     else if (!msg.test(r.why)) fail.push(`rituals.mjs${' '.repeat(17)} harness-propose: ${label} → \`why\` không khớp ${msg}`);
     else ok.push(`rituals.mjs${' '.repeat(17)} harness-propose: ${label}`);
+  }
+
+  // ④b-quater `guard-nhanh-tich-hop`: một cửa thoát không ai đếm là cửa thoát mở vĩnh viễn.
+  //     Ba trạng thái, và cái đáng khoá nhất là 0/0 — guard vừa cắm thì MẪU SỐ BẰNG 0, và
+  //     một tỉ lệ trên mẫu số 0 là câu trả lời dễ chịu chứ không phải câu trả lời đúng (L0005).
+  const GUARD = [
+    [{ mainEditEscapes: 0, mainEditBlocks: 0 }, '?', /chưa gặp ca nào/, '0 chặn 0 thoát ⇒ `?`, KHÔNG phải "ổn"'],
+    [{ mainEditEscapes: 5, mainEditBlocks: 1 }, 'due', /GUARD SAI/, 'cửa thoát thắng ⇒ đề xuất CẮT, không nới'],
+    [{ mainEditEscapes: 1, mainEditBlocks: 4 }, 'ok', /chặn 4 lần, cửa thoát 1 lần/, 'chặn thắng ⇒ im, nhưng NÓI RA cả hai số'],
+    [{ mainEditEscapes: null, mainEditBlocks: 2 }, '?', /không đo được/, 'không đọc được telemetry ⇒ `?`'],
+  ];
+  for (const [state, want, msg, label] of GUARD) {
+    const r = get(state, 'guard-nhanh-tich-hop');
+    if (r?.state !== want) fail.push(`rituals.mjs${' '.repeat(17)} guard-nhánh: ${label} → state=${r?.state}, mong đợi ${want}`);
+    else if (!msg.test(r.why)) fail.push(`rituals.mjs${' '.repeat(17)} guard-nhánh: ${label} → \`why\` không khớp ${msg}: "${r.why}"`);
+    else ok.push(`rituals.mjs${' '.repeat(17)} guard-nhánh: ${label}`);
   }
 
   // ④b-ter `capo-report`: BA cách một trần chi tiêu nói dối, và không cách nào được thành `ok`.
@@ -2139,6 +2175,15 @@ const MUTANTS = [
     s => s.replace(/matchAny\(rel, pathsFor\('harness'\)\)/, 'false'),
     { tool_input: { file_path: '.claude/settings.json' } },
     'paths.harness bị vô hiệu ⇒ settings.json LỌT — phạm vi được cưỡng chế thật'],
+  // Phạm vi của guard này là PHÉP SO NHÁNH. Đảo nó thành so ngược: hook vẫn chạy, vẫn có
+  // đủ nhánh code, chỉ là nó chặn nhầm chỗ — và ca "đang ở nhánh tích hợp" phải LỌT.
+  // Neo vào phép so chứ không vào `pass()`: một mutant chỉ làm hook crash thì không chứng
+  // minh gì, nó chỉ chứng minh hook có tồn tại.
+  ['protect-integration-branch.mjs',
+    s => s.replace('branch !== integration', 'branch === integration'),
+    { tool_input: { file_path: 'tooling/x.mjs' } },
+    'đảo phép so nhánh ⇒ sửa trên nhánh tích hợp LỌT — phép so đó là thật, không phải trang trí',
+    { HARNESS_INTEGRATION_BRANCH: () => CUR_BRANCH }],
   // Neo vào nhánh `_index.json`, KHÔNG vào nhánh so-issue. Lý do là đo được, không phải
   // tiện tay: `issueFromBranch('main')` trả về null nên hook `pass()` NGAY, và nhánh so-issue
   // không tới được từ `main` — đó cũng là lý do `harness-doctor` báo hook này "chưa có BẰNG
@@ -2416,7 +2461,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 164;
+const RATCHET = 173;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

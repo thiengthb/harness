@@ -59,6 +59,10 @@
           {
             "type": "command",
             "command": "node .claude/hooks/protect-migrations.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/protect-integration-branch.mjs"
           }
         ]
       }

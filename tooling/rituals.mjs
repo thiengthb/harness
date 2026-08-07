@@ -201,6 +201,25 @@ export const RITUALS = [
     // đòi ("agent làm sai cùng một thứ ≥2 lần, hoặc bị hook chặn mà bạn nghĩ hook sai").
     //
     // Ngưỡng 2 khớp với ngưỡng của skill: một lần là ngẫu nhiên, hai lần là một hình dạng.
+    id: 'guard-nhanh-tich-hop',
+    cmd: 'guard nhánh tích hợp',
+    what: 'đối chiếu số lần dùng CỬA THOÁT với số lần CHẶN — cửa thoát thắng nghĩa là guard sai',
+    check: (s) => {
+      if (s.mainEditEscapes == null || s.mainEditBlocks == null) {
+        return { state: '?', why: 'không đọc được telemetry của guard nhánh tích hợp — không đo được' };
+      }
+      const total = s.mainEditEscapes + s.mainEditBlocks;
+      // Chưa có ca nào ⇒ chưa đo được TỈ LỆ. Không phải "ổn": guard mới cắm thì mẫu số bằng 0,
+      // và một tỉ lệ trên mẫu số 0 là câu trả lời dễ chịu chứ không phải câu trả lời đúng (L0005).
+      if (total === 0) return { state: '?', why: 'guard nhánh tích hợp chưa gặp ca nào (0 chặn, 0 cửa thoát) — chưa có mẫu để nói nó đúng hay sai' };
+      if (s.mainEditEscapes > s.mainEditBlocks) {
+        return { state: 'due', why: `cửa thoát dùng ${s.mainEditEscapes} lần, chặn ${s.mainEditBlocks} lần — GUARD SAI. `
+          + 'Điều kiện thoát của #44: cắt nó, ĐỪNG nới nó. Một guard bị đi vòng nhiều hơn được tuân theo là một guard đang dạy người ta đi vòng' };
+      }
+      return { state: 'ok', why: `chặn ${s.mainEditBlocks} lần, cửa thoát ${s.mainEditEscapes} lần — guard còn đúng hơn sai` };
+    },
+  },
+  {
     id: 'harness-propose',
     cmd: '/harness-propose',
     what: 'đổi vùng cấm bằng đường hợp pháp — hook, settings, AGENTS.md, harness.config.json',
@@ -442,6 +461,25 @@ export function collect() {
       if (!existsSync(f)) return 0;              // log tồn tại được nhưng rỗng là 0 THẬT
       return readFileSync(f, 'utf8').split('\n').filter(l => l.split('|')[2] === 'protect-harness').length;
     }, null),
+
+    // GUARD NHÁNH TÍCH HỢP: cửa thoát so với nhánh chặn.
+    //
+    // `protect-integration-branch` bắt buộc có cửa thoát — sửa tài liệu thẳng trên nhánh tích
+    // hợp là việc hợp lệ, và không có cửa thoát thì người ta tắt hook, mất cả guard lẫn tín
+    // hiệu. Nhưng một cửa thoát không ai đếm là một cửa thoát mở vĩnh viễn.
+    //
+    // Phép so là điều kiện thoát của chính issue #44: **cửa thoát dùng NHIỀU HƠN nhánh chặn
+    // ⇒ guard sai, CẮT nó — đừng nới nó.** Đây là mục hiếm hoi trong bảng này đề xuất bỏ một
+    // cơ chế thay vì làm một việc, và nó cố ý như vậy.
+    ...(() => {
+      const count = (file, col2) => {
+        const f = join(telemetryDir(), file);
+        if (!existsSync(f)) return 0;
+        try { return readFileSync(f, 'utf8').split('\n').filter(Boolean).filter(l => !col2 || l.split('|')[2] === col2).length; }
+        catch { return null; }
+      };
+      return { mainEditEscapes: count('main-edits.log'), mainEditBlocks: count('gate-fails.log', 'protect-integration-branch') };
+    })(),
 
     preMergeRanAt: num(() => {
       const f = join(telemetryDir(), 'gate-runs.log');

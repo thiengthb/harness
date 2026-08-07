@@ -1,0 +1,79 @@
+{
+  "$comment": "FIXTURE của migration 011 — repo đã có sự kiện PreToolUse từ lâu (nên 008 đọc ra là \"không thiếu sự kiện nào\" và không làm gì), nhưng THIẾU hook mới mà template vừa thêm vào chính sự kiện đó. NEO test khẳng định: ThisIsALocalPermissionTheProjectAdded (nội dung của PROJECT sống sót qua một lần ghi lại JSON), $comment_worktree (không mất $comment nào), và một hook RIÊNG của project trong cùng group — nó phải còn nguyên và không bị đổi thứ tự.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/session-start.mjs"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/dcg.mjs"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/block-secrets.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/protect-harness.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/cua-project-khong-duoc-cham.mjs"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/post-edit-lint.mjs"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node tooling/gates.mjs --stage stop"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "ask": [
+      "ThisIsALocalPermissionTheProjectAdded(*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Edit(**/*.gen.*)"
+    ]
+  },
+  "$comment_worktree": "Khoá của project, migration 008 KHÔNG được chạm.",
+  "worktree": {
+    "basePath": ".claude/worktrees"
+  }
+}

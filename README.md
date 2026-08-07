@@ -108,7 +108,7 @@ CLAUDE.md                    → @AGENTS.md
 ├── settings.json            harness của TEAM (commit, chỉ DRI sửa)
 ├── settings.local.example.json  van xả áp cá nhân (sparsePaths, statusline)
 ├── whats-new.md             thông báo đổi harness, hiện MỘT LẦN mỗi version
-├── hooks/*.mjs              10 hook, Node thuần, chạy 3 OS
+├── hooks/*.mjs              11 hook, Node thuần, chạy 3 OS
 ├── rules/                   rule theo `paths`, có owner + expires-review
 ├── skills/                  12 skill · trần `limits.maxSkills` tính trên tầng DISCOVERY (đang 3),
 │                            không trên tổng (`disable-model-invocation: true` → chi phí context 0)
