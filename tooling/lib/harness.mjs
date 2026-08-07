@@ -184,6 +184,48 @@ export function isSolo() {
  * câu trả lời của họ. "Chưa khai" là trạng thái ĐÚNG ở đó — advice đòi sửa nó là advice
  * không ai được phép làm theo, đúng bug #56 (`session-start.mjs:203`).
  */
+/**
+ * PHÁN ĐOÁN của mục "LỚP XÁC MINH" trong `harness-doctor` — hàm THUẦN, cùng lý do tách như
+ * `coordinationLayer` và `governanceDrift`: doctor CHẠY `test-hooks.mjs`, nên test spawn
+ * doctor sẽ đệ quy.
+ *
+ * VẤN ĐỀ NÓ BẮT — đo 2026-08-07 (`/harness-retro` §2):
+ *
+ *     sakubun-single-user   harness: CÓ (v2.13.0)   features/ thật: 0
+ *
+ * Repo ĐÃ ship và đang NỢ xác minh thật (4 mục auto-memory qua 2 project ghi "pending live
+ * verify"), nhưng `features/*.json` — cơ chế default-FAIL + `evidence` mà `AGENTS.md` gọi là
+ * "không thương lượng" — CHƯA DÙNG LẦN NÀO.
+ *
+ * Nó không tự lộ ra vì MẪU SỐ BẰNG 0: `check-feature-integrity`, gate `preMerge` và
+ * `/verify-ui` đều lặp qua `features/*.json`. Không feature nào ⇒ lặp qua tập rỗng ⇒ XANH.
+ * Mẫu số 0 làm mọi tỉ lệ thành 100%. Cùng lớp lỗi `evals/run.mjs` sửa ở v2.24.0, nhưng
+ * NGƯỢC CHIỀU — ở đó "chưa đo" thành FAIL, ở đây thành PASS. Chiều PASS nguy hiểm hơn:
+ * không ai đi điều tra một dấu tick xanh.
+ *
+ * NĂM trạng thái. Hai vế của cảnh báo là bắt buộc:
+ *   · `template`   — repo template không có feature thật theo thiết kế ⇒ KHÔNG advice.
+ *                    Bỏ vế này là tái tạo #56 lần thứ ba.
+ *   · `quiet`      — không commit nào 7 ngày qua ⇒ chưa ship gì thì chưa nợ gì. Bỏ vế này
+ *                    là nổ ở mọi repo mới toanh và thành nhiễu ngay ngày đầu.
+ *   · `unknown`    — không đọc được lịch sử git ⇒ `?`, KHÔNG phải "ổn".
+ *   · `covered`    — có feature thật.
+ *   · `empty`      — có commit mà 0 feature ⇒ đây là ca duy nhất sinh advice.
+ */
+export function verificationCoverage({ role, features, commits7d } = {}) {
+  if (role === 'template') return { mode: 'template-na', advice: null };
+  if (commits7d == null) return { mode: 'unknown', advice: null };
+  if (features > 0) return { mode: 'covered', advice: null };
+  if (commits7d === 0) return { mode: 'quiet', advice: null };
+  return {
+    mode: 'empty',
+    advice: `${commits7d} commit trong 7 ngày qua, 0 feature được khai trong features/ ⇒ `
+      + 'check-feature-integrity, gate preMerge và /verify-ui đang chạy trên TẬP RỖNG. '
+      + 'Mọi tỉ lệ xác minh của repo này hiện là 100% vì mẫu số bằng 0. '
+      + 'Khai feature: cp features/_TEMPLATE.json features/<id>.json',
+  };
+}
+
 export function coordinationLayer({ teamSize: ts, role } = {}) {
   if (ts === 1) return { mode: 'solo', advice: null };
   if (Number.isInteger(ts) && ts > 1) return { mode: 'team', advice: null };

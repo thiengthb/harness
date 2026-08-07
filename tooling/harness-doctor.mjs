@@ -17,7 +17,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, TEST_TELEMETRY_DIR, coordinationLayer } from './lib/harness.mjs';
+import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, TEST_TELEMETRY_DIR, coordinationLayer, verificationCoverage } from './lib/harness.mjs';
 
 const QUICK = process.argv.includes('--quick');
 // PHẢI chụp TRƯỚC khi chạy các suite bên dưới: nó là mốc phân biệt "telemetry suite của lần
@@ -197,6 +197,36 @@ if (attrMissing.length) advice.push(`.gitattributes thiếu \`${attrMissing.join
 // mọi commit, nhưng nó làm cơ chế đó VÔ HÌNH. Một guard tắt mà không ai nhìn thấy thì lần
 // sau người ta debug "vì sao đặt chỗ không có tác dụng" bằng cách đọc code. Đây là kênh
 // thấy được, và nó là chỗ duy nhất hai ca `1` và `chưa khai` được kể tách nhau.
+// ── Lớp xác minh có mẫu số không, hay đang chạy trên tập rỗng ────────────────
+// Phán đoán ở `verificationCoverage` (lib, hàm THUẦN); đây chỉ THU THẬP + IN.
+console.log('\n── LỚP XÁC MINH ──');
+const { readdirSync: rd } = await import('node:fs');
+const featureCount = (() => {
+  const dir = repoPath('features');
+  if (!exists(dir)) return 0;
+  try {
+    // `example-feature.json` là VÍ DỤ của template, nằm trong IGNORE của apply-to nên không
+    // đi xuống consumer. Đếm nó là đếm một feature không ai viết ⇒ mẫu số giả.
+    // `readdirSync` được khai bằng `const … = await import(…)` ở DƯỚI file này ⇒ ở đây nó
+    // còn trong TDZ. Dùng `readdirSync` thẳng là ReferenceError lúc chạy, không phải lúc lint.
+    return rd(dir).filter(f => f.endsWith('.json') && !f.startsWith('_') && f !== 'example-feature.json').length;
+  } catch { return 0; }
+})();
+const commits7d = (() => {
+  const r = git(['log', '--oneline', '--since=7 days ago']);
+  return r.status === 0 ? r.stdout.split('\n').filter(Boolean).length : null;
+})();
+const vc = verificationCoverage({ role: repoRole(), features: featureCount, commits7d });
+const VC_LINE = {
+  'template-na': '  n/a  repo template không có feature thật theo thiết kế',
+  unknown: '  ?    không đọc được lịch sử git — không đo được',
+  quiet: `  ok   0 commit 7 ngày qua — chưa ship thì chưa nợ xác minh (${featureCount} feature)`,
+  covered: `  ok   ${featureCount} feature được khai · ${commits7d} commit 7 ngày qua`,
+  empty: `  ⚠️   ${commits7d} commit 7 ngày qua · 0 feature — lớp xác minh đang chạy trên TẬP RỖNG`,
+};
+console.log(VC_LINE[vc.mode]);
+if (vc.advice) advice.push(vc.advice);
+
 // Chỉ phần THU THẬP + IN ở đây; phán đoán nằm ở `coordinationLayer` trong lib (hàm THUẦN).
 console.log('\n── LỚP PHỐI HỢP ──');
 const ts = cfg.project?.teamSize;
