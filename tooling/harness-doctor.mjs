@@ -700,7 +700,19 @@ const NATIVE_OR_NOT_A_SKILL = new Set([
   // Cập nhật 2026-08-04: vendor thêm lệnh thì thêm vào đây, đừng bỏ qua check.
   'clear', 'context', 'compact', 'doctor', 'help', 'memory', 'skills', 'plugin', 'verify', 'tmp',
 ]);
-const HISTORICAL = /^(HARNESS-CHANGELOG\.md|\.claude\/whats-new\.md|docs\/adr\/|\.claude\/learnings\/)/;
+// `docs/progress/` là NHẬT KÝ — cùng bản chất với changelog/ADR/learnings, chỉ khác định dạng.
+// Nó ghi *"ngày X tôi quyết KHÔNG cắt hai chỗ nhắc skill whats-new vì chúng là bia mộ"*, và
+// nó KHÔNG THỂ ghi câu đó mà không gọi tên thứ đã bị xoá. Đó là việc của nó.
+//
+// (Tên skill ở comment này cố ý KHÔNG viết dạng slash-trong-backtick — xem cảnh báo ở khối
+// comment dưới. Lần viết bản vá này là lần THỨ BA cái bẫy đó bắt được người đang sửa nó.)
+//
+// Đo 2026-08-07: dòng advice này bắn ở MỌI lần chạy doctor, về một quyết định đã được phán
+// xử bằng văn bản trong chính file bị tố (`docs/progress/vong-hoc-2026-W32.md:93`). Nhật ký
+// đó còn xếp nó vào bảng "BÀI HỌC ĐẮT NHẤT CỦA PHIÊN" như một trong BA lần output của harness
+// suýt làm hỏng một cơ chế đang chạy. Một cảnh báo vĩnh viễn về việc không được làm là đúng
+// lớp lỗi #56 — và nó dạy người đọc bỏ qua mục advice, tức làm hỏng cả những mục đúng.
+const HISTORICAL = /^(HARNESS-CHANGELOG\.md|\.claude\/whats-new\.md|docs\/adr\/|\.claude\/learnings\/|docs\/progress\/)/;
 const deadRefs = new Map();
 for (const f of git(['ls-files']).stdout.split('\n').filter(Boolean)) {
   if (!/\.(md|mjs)$/.test(f) || HISTORICAL.test(f)) continue;

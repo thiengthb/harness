@@ -1166,6 +1166,41 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   else if (badRem.length) fail.push(`lib/harness.mjs${' '.repeat(13)} isRecordedRemoval() sai ở ${badRem.length}/${REM.length} ca: ${badRem.map(([, , , l]) => l).join(' · ')}`);
   else ok.push(`lib/harness.mjs${' '.repeat(13)} isRecordedRemoval(): loại trừ theo CẢ tên LẪN file, ${REM.length} ca`);
 
+  // ②b `HISTORICAL`: miễn trừ theo BẢN CHẤT, không theo tiện lợi.
+  //
+  //    Hồ sơ lịch sử — changelog, bia mộ, ADR, learnings, nhật ký `docs/progress/` — PHẢI
+  //    được phép gọi tên một skill đã bị xoá: chúng ghi lại việc xoá đó. Mọi file khác thì
+  //    không, và đó là toàn bộ giá trị của check tham chiếu chết.
+  //
+  //    Bảng này khoá CẢ HAI CHIỀU vì cả hai đều là hồi quy có thật:
+  //      · thiếu một loại hồ sơ ⇒ advice đỏ VĨNH VIỄN về một việc không được làm (lớp #56),
+  //        và một mục advice không bao giờ tắt dạy người đọc bỏ qua CẢ những mục đúng.
+  //      · nới ra tới `docs/` ⇒ check mất nghĩa, vì gần như mọi tham chiếu chết đều ở docs
+  //        (đo 2026-08-04: xoá một skill để lại 5 tham chiếu, 3 trong số đó ở `docs/`).
+  const HIST = [
+    ['HARNESS-CHANGELOG.md', true, 'changelog'],
+    ['.claude/whats-new.md', true, 'thông báo thay đổi'],
+    ['docs/adr/0002-x.md', true, 'ADR'],
+    ['.claude/learnings/2026-W32-x.md', true, 'bài học'],
+    ['docs/progress/vong-hoc-2026-W32.md', true, 'nhật ký — ghi lại chính quyết định KHÔNG cắt'],
+    ['docs/TEAM.md', false, 'tài liệu thường ⇒ KHÔNG được miễn'],
+    ['docs/ANTI-PATTERNS.md', false, 'docs/ khác ⇒ KHÔNG được miễn (nới tới docs/ là xoá check)'],
+    ['AGENTS.md', false, 'hợp đồng làm việc ⇒ KHÔNG được miễn'],
+    ['tooling/harness-doctor.mjs', false, 'mã nguồn ⇒ KHÔNG được miễn'],
+  ];
+  // Bóc regex từ MÃ NGUỒN thay vì chép lại nó: một bản sao trong test sẽ xanh mãi trong khi
+  // bản thật đã trôi đi đâu đó — đúng lớp lỗi mà ca ③ ngay dưới đây tồn tại để chống.
+  const histLit = readFileSync(repoPath('tooling', 'harness-doctor.mjs'), 'utf8')
+    .match(/^const HISTORICAL = \/(.+)\/;$/m);
+  const histRe = histLit ? new RegExp(histLit[1]) : null;
+  if (!histRe) {
+    fail.push(`harness-doctor.mjs${' '.repeat(10)} không bóc được HISTORICAL từ mã nguồn — neo của check này đã trôi, sửa neo thay vì xoá check`);
+  } else {
+    const badHist = HIST.filter(([p, want]) => histRe.test(p) !== want);
+    if (badHist.length) fail.push(`harness-doctor.mjs${' '.repeat(10)} HISTORICAL sai ${badHist.length}/${HIST.length} ca: ${badHist.map(([, , l]) => l).join(' · ')}`);
+    else ok.push(`harness-doctor.mjs${' '.repeat(10)} HISTORICAL: ${HIST.length} ca — 5 loại hồ sơ được miễn, docs/ thường thì KHÔNG`);
+  }
+
   // ③ CHỐNG LỆCH: doctor phải đọc telemetry của suite qua HẰNG SỐ CHUNG, không phải chuỗi
   //    viết tay. Đây là check RẺ cho một lỗi ĐẮT: nếu hai bên trỏ khác thư mục, doctor đọc
   //    chỗ rỗng rồi kết luận "chưa có bằng chứng" về những cái gác vừa chạy xong trong chính
@@ -1958,7 +1993,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 152;
+const RATCHET = 153;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

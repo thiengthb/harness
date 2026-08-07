@@ -11,6 +11,38 @@
 
 ---
 
+## 2.28.1 — 2026-08-07
+
+**patch.** `harness-doctor` thôi tố nhật ký `docs/progress/` là tham chiếu chết.
+
+### Đo được: một advice đỏ vĩnh viễn về một việc KHÔNG ĐƯỢC LÀM
+
+```
+`/whats-new` được nhắc ở docs/progress/vong-hoc-2026-W32.md nhưng KHÔNG có
+.claude/skills/whats-new/SKILL.md — tham chiếu chết. Sửa chỗ nhắc, hoặc dựng lại skill.
+```
+
+Dòng này bắn ở **mọi** lần chạy doctor. Nhưng chính file bị tố đã phán xử nó bằng văn bản
+(`docs/progress/vong-hoc-2026-W32.md:93`): *"KHÔNG cắt hai chỗ nhắc — chúng chính là bia mộ."*
+Nhật ký còn xếp nó vào bảng **"BÀI HỌC ĐẮT NHẤT CỦA PHIÊN"** như một trong ba lần output của
+harness suýt làm hỏng một cơ chế đang chạy.
+
+`HISTORICAL` đã miễn changelog · whats-new · ADR · learnings vì chúng là **hồ sơ lịch sử** và
+phải được phép gọi tên thứ đã bị xoá. `docs/progress/` là nhật ký — cùng bản chất, chỉ khác
+định dạng, và bị bỏ sót. Cùng lớp lỗi với #56: một cảnh báo vĩnh viễn về việc không được làm
+dạy người đọc bỏ qua mục advice, tức làm hỏng **cả những mục đúng**.
+
+### Đổi gì
+
+- `HISTORICAL` thêm `docs/progress/`.
+- Bảng 9 ca ở `test-hooks.mjs` khoá **cả hai chiều**: năm loại hồ sơ được miễn, `docs/` thường
+  thì KHÔNG. Nới miễn trừ tới `docs/` là xoá check — đo 2026-08-04, xoá một skill để lại 5
+  tham chiếu chết và 3 trong số đó nằm ở `docs/`.
+- Test bóc regex từ **mã nguồn** thay vì chép lại nó: một bản sao trong test sẽ xanh mãi
+  trong khi bản thật đã trôi.
+
+---
+
 ## 2.28.0 — 2026-08-07
 
 **minor.** `budget.monthlyUsdCap` thôi là field ma — nó được đối chiếu với số đo thật, và
