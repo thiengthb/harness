@@ -1742,6 +1742,56 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   } else ok.push(`entropy-scan.mjs${' '.repeat(12)} allowlist GLOBAL_OK khớp thật trên OS này (${present.length} file được miễn, 0 rò)`);
 }
 
+// ─── Mọi khoá trong `budget` phải có BÊN ĐỌC, hoặc tự khai là đã cắt ─────────
+//
+// Cùng khuôn với `PACK_SCHEMA`: một danh sách, hai đầu. Khác chỗ đầu kia không phải một bảng
+// tôi viết ra mà là CẢ REPO — nên phép kiểm là "tìm được ít nhất một chỗ đọc nó".
+//
+// Ca này ra đời từ một lỗi ĐO của chính tôi. Ở v2.28.0 tôi kết luận cả ba field còn lại của
+// `budget` là field ma, và viết điều đó vào `docs/ECONOMICS.md` dưới dạng ba dấu ❌. Đo lại
+// 2026-08-07 cho đủ repo: HAI trong ba CÓ bên đọc (`evals/run.mjs:177-178`). Tôi đã grep
+// `tooling/` + `.claude/hooks/` + `docs/` và quên `evals/`.
+//
+// Đó là lớp lỗi tệ hơn field ma: một tài liệu nói SAI về chính cơ chế của mình, và nói sai
+// theo hướng "chỗ này rỗng" — tức mời người sau đi cắt một thứ đang chạy.
+//
+// Phép kiểm này chạy trên CẢ REPO nên nó không bỏ sót được thư mục nào. Cả hai chiều đều bị
+// khoá: field không ai đọc phải bị cắt, và field ĐANG có người đọc thì không được lẳng lặng
+// biến mất khỏi config.
+{
+  const L = ' '.repeat(9);
+  const budget = readJson(repoPath('harness.config.json'))?.budget ?? {};
+  const keys = Object.keys(budget).filter(k => !k.startsWith('$comment'));
+  // Đọc nguồn MỘT LẦN cho mọi key: `git ls-files` để không quét `node_modules`, và bỏ chính
+  // config (nơi khai) cùng changelog (hồ sơ lịch sử, được phép nhắc field đã cắt).
+  const src = git(['ls-files']).stdout.split('\n').filter(Boolean)
+    .filter(f => /\.(mjs|yml|yaml)$/.test(f) && f !== 'harness.config.json' && !f.includes('/fixtures/'))
+    .map(f => { try { return readFileSync(repoPath(f), 'utf8'); } catch { return ''; } })
+    .join('\n');
+  const orphan = keys.filter(k => !new RegExp(`budget\\?\\.${k}\\b|budget\\.${k}\\b`).test(src));
+  // CHIỀU NGƯỢC: mã nguồn đọc một khoá mà config không khai. `evals/run.mjs` dùng
+  // `?? 25` nên khoá biến mất KHÔNG gây lỗi — nó lặng lẽ rơi về mặc định, và người sửa
+  // config không biết mình vừa tắt một cái cap. Bỏ chiều này thì ca trên chỉ khoá được một
+  // nửa, và tôi đã viết nhầm là "cả hai chiều" cho tới khi mutant thứ hai KHÔNG đỏ.
+  // Đòi `budget` phải là một TRUY CẬP THUỘC TÍNH thật — có dấu chấm hoặc ký tự từ ngay trước.
+  // Bản đầu khớp tên `budget` trần và bắt nhầm hai thứ: một tên FILE có đuôi `-budget.mjs`
+  // (dấu `-` đứng trước) và một tên khoá đã cắt được nhắc trong một comment (backtick đứng
+  // trước). Một phép kiểm bắt nhầm văn xuôi và tên file là đúng khuyết tật của `dcg` ở #43.
+  //
+  // Và comment NÀY cố ý không viết ví dụ dưới dạng truy cập thuộc tính: check quét cả file
+  // này, nên một ví dụ đúng cú pháp sẽ tự tố giác mình. Đã xảy ra ở lần viết đầu.
+  const referenced = [...src.matchAll(/[)\w]\.budget\??\.([A-Za-z][A-Za-z0-9_]*)/g)].map(m => m[1]);
+  const ghost = [...new Set(referenced)].filter(k => !keys.includes(k));
+  if (!keys.length) {
+    fail.push(`budget ↔ bên đọc${L} không đọc được khoá nào trong \`budget\` — neo của ca này đã trôi`);
+  } else if (orphan.length || ghost.length) {
+    const parts = [];
+    if (orphan.length) parts.push(`${orphan.join(' · ')} — KHÔNG cơ chế nào đọc. Cắt nó, hoặc nối vào một chỗ đọc thật; một con số trong config mà không ai đọc làm người ta TIN là có lớp bảo vệ`);
+    if (ghost.length) parts.push(`${ghost.join(' · ')} — mã nguồn ĐỌC mà config KHÔNG khai. Với \`?? mặc-định\` thì nó rơi về mặc định LẶNG LẼ, và người sửa config không biết mình vừa tắt một cái cap`);
+    fail.push(`budget ↔ bên đọc${L} ${parts.join(' | ')}`);
+  } else ok.push(`budget ↔ bên đọc${L} ${keys.length} khoá — không khoá nào thừa, không khoá nào bị đọc mà chưa khai`);
+}
+
 // ─── Banner đầu phiên: cảnh báo dựa trên PLACEHOLDER phải biết VAI (#56) ─────
 //
 // `harness.config.json` khai mọi lệnh là `""` và `project.id` là `CHANGEME-…` — placeholder
@@ -2304,7 +2354,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 161;
+const RATCHET = 162;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

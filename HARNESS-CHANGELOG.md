@@ -11,6 +11,43 @@
 
 ---
 
+## 2.35.0 — 2026-08-07
+
+**minor.** Cắt **một** field ma trong `budget`, và khoá cả bảng bằng máy. Đóng #72 —
+nhưng **hai phần ba tiền đề của issue đó là SAI**, và bảng ở v2.28.0 cũng vậy.
+
+### SỬA LẠI một kết luận của v2.28.0
+
+v2.28.0 nói ba field còn lại của `budget` đều là field ma, và ghi điều đó vào
+`docs/ECONOMICS.md` dưới dạng **ba dấu ❌**. Đo lại 2026-08-07 trên **cả repo**:
+
+| field | bên đọc THẬT |
+|---|---|
+| `maxTurnsPerRun` | ✅ `evals/run.mjs:177` — mặc định cho task không tự khai `maxTurns` |
+| `maxWallClockMinutes` | ✅ `evals/run.mjs:178` — mặc định cho task không tự khai `maxMinutes` |
+| `maxToolCallsPerRun` | ❌ **không ai** — đúng là field ma |
+
+Nguyên nhân: lần đo v2.28.0 grep `tooling/` + `.claude/hooks/` + `docs/` và **quên `evals/`**.
+
+Đây là lớp lỗi **tệ hơn** field ma: một tài liệu nói SAI về chính cơ chế của mình, và nói sai
+theo hướng *"chỗ này rỗng"* — tức mời người sau đi cắt một thứ đang chạy.
+
+### Đổi gì
+
+- `maxToolCallsPerRun` → `$comment_da_cat_*` (tiền lệ `modelTiering` ở 2.0.0). Harness **không
+  có nguồn dữ liệu** để đếm tool-call mỗi phiên; cap thật nằm ở tầng gateway/CLI.
+- `docs/ECONOMICS.md` cột "ai cưỡng chế" nói đúng, kèm một ghi chú nói ra chính lần sai đó.
+- **Hợp đồng hai chiều** ở `test-hooks.mjs`, quét **cả repo** nên không bỏ sót thư mục nào:
+  - mọi khoá trong `budget` phải tìm được **ít nhất một chỗ đọc**;
+  - mọi khoá **mã nguồn đọc** phải được config khai. `evals/run.mjs` dùng `?? mặc-định`, nên
+    một khoá biến mất **không gây lỗi** — nó lặng lẽ rơi về mặc định, và người sửa config
+    không biết mình vừa tắt một cái cap.
+
+**Chiều thứ hai suýt bị bỏ.** Bản đầu tôi viết comment *"cả hai chiều đều bị khoá"* trong khi
+chỉ có một — phát hiện vì mutant thứ hai **không đỏ**.
+
+---
+
 ## 2.34.0 — 2026-08-07
 
 **minor.** `AGENTS.md` **ngắn đi 7 dòng** và thôi nói chuyện với một đội không tồn tại.
