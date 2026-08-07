@@ -1813,8 +1813,19 @@ for (const [env, expect, label, msg] of GATE_CASES) {
     }
   }
 
+  // ĐƯỜNG DẪN TƯƠNG ĐỐI VỚI FILE ĐANG NHẮC. Một README trong thư mục con viết đường dẫn
+  // tương đối với CHÍNH NÓ — cách đọc đúng cho người mở file đó. Template có cấu trúc phẳng
+  // nên ca này không xuất hiện tự nhiên; fixture dựng nó, và fixture PHẢI còn nguyên vẹn,
+  // nếu không ca này xanh mà không kiểm gì.
+  const FIX = 'tooling/fixtures/relative-ref';
+  if (!exists(repoPath(FIX, 'README.md')) || !exists(repoPath(FIX, 'docs', 'ghi-chu.md'))) {
+    bad.push(`fixture ${FIX} không còn đủ ⇒ nhánh giải-tương-đối MẤT PHẠM VI, nó sẽ xanh mãi`);
+  } else if (!/whereDir && existsSync\(repoPath\(whereDir, clean\)\)/.test(esSrc)) {
+    bad.push('§9b không còn giải đường dẫn tương đối với thư mục của file nhắc nó — mọi README trong thư mục con sẽ bị báo nhầm');
+  }
+
   if (bad.length) fail.push(`entropy-scan §9b${L} ${bad.join(' · ')}`);
-  else ok.push(`entropy-scan §9b${L} 0 đường dẫn chết, quét theo git ls-files, 2 loại trừ đều còn lý do`);
+  else ok.push(`entropy-scan §9b${L} 0 đường dẫn chết · quét theo git ls-files · 2 loại trừ còn lý do · giải cả đường dẫn tương đối`);
 }
 
 // ─── _index.json: cổng KHÔNG được im khi danh sách feature nói dối ────────────
