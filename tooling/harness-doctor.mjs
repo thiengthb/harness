@@ -368,6 +368,34 @@ const KNOWN_SKILL_KEYS = new Set([
   'user-invocable', 'allowed-tools', 'disallowed-tools', 'model', 'effort',
   'context', 'agent', 'background', 'hooks', 'paths', 'shell',
 ]);
+
+// ── Đối chiếu với BẢNG GỐC trong binary, không chỉ với danh sách trên (#94) ──
+//
+// Danh sách trên là thứ harness cho là HỢP LỆ CHO MỘT SKILL — nó hẹp có chủ ý. Bảng trong
+// binary là HỢP NHẤT skill + plugin + agent + output-style (60 key, có `mcpServers`,
+// `themes`, `workflows`), nên nhận cả bảng cho một `SKILL.md` là NỚI check chứ không sửa nó.
+//
+// Dùng bảng gốc để tách hai chuyện mà bản trước gộp làm một:
+//   · key vendor KHÔNG có     ⇒ gõ sai, hoặc field harness tự nghĩ ra. Tín hiệu thật.
+//   · key vendor CÓ, list chưa⇒ allowlist đang MỤC. Comment trên chỉ CẢNH BÁO điều này;
+//                               giờ nó được PHÁT HIỆN, và tự nói khi tới lúc cập nhật.
+//
+// Và CHUẨN HOÁ trước khi so: vendor đọc key qua `s.replace(/[-_]/g,'').toLowerCase()`, nên
+// `whenToUse` ≡ `when_to_use`. Bản trước so chuỗi thô ⇒ báo một key ĐANG CHẠY là lạ. Đúng lớp
+// lỗi `dcg` sửa ở v2.36.0: so chuỗi thay vì so thứ mà chuỗi NGHĨA LÀ.
+//
+// Không đọc được binary ⇒ rơi về hành vi cũ và NÓI RA là chưa xác minh. Ba trạng thái.
+const { nativeFrontmatterKeys, normKey } = await import('./native-surface.mjs');
+// `claudeCodeVersionMeasured()`, KHÔNG phải regex tự chế trên đường dẫn. Bản đầu của tôi dùng
+// `execPath.match(/\d+\.\d+\.\d+/)` và in ra "Claude Code 24.18.0" — đó là version NODE, lấy
+// từ đoạn `nvm/v24.18.0/` trong chính đường dẫn. Một con số trông đúng và sai.
+const { claudeCodeVersionMeasured } = await import('./rituals.mjs');
+const ccVersion = claudeCodeVersionMeasured() || '';
+const vendorKeys = nativeFrontmatterKeys();
+const vendorSet = vendorKeys ? new Set(vendorKeys.map(normKey)) : null;
+const knownNorm = new Set([...KNOWN_SKILL_KEYS].map(normKey));
+const nfkWhy = process.env.CLAUDE_CODE_EXECPATH
+  ? 'không match được bảng key trong binary' : 'CLAUDE_CODE_EXECPATH không được đặt';
 // Claude Code CHỈ đọc `paths` trong .claude/rules/*.md. Năm trường còn lại là đầu
 // vào cho entropy-scan.mjs — hợp lệ, có người đọc thật, nhưng KHÔNG được vendor
 // cưỡng chế. Gọi đúng tên để repo thứ N không tưởng chúng là cấu hình.
@@ -385,6 +413,7 @@ const fmKeys = (txt) => {
 let skillTotal = 0, discoverable = 0, grantsWrite = [];
 const skillNames = new Set();
 const unknownKeys = [];
+const staleAllowlist = [];   // key vendor CÓ mà allowlist chưa biết — allowlist mục, không phải skill sai
 const skillsDir = repoPath('.claude', 'skills');
 if (exists(skillsDir)) {
   for (const name of readdirSync(skillsDir)) {
@@ -400,7 +429,12 @@ if (exists(skillsDir)) {
     // Thân skill nói "không ra thay đổi" mà frontmatter tiền-duyệt Write = mâu thuẫn.
     if (/^allowed-tools:.*\b(Write|Edit)\b/m.test(fm)
         && /không ra thay đổi|KHÔNG tự sửa|chỉ đọc|DỪNG, báo cáo/i.test(txt)) grantsWrite.push(name);
-    for (const k of keys) if (!KNOWN_SKILL_KEYS.has(k)) unknownKeys.push(`skill/${name}: ${k}`);
+    for (const k of keys) {
+      if (knownNorm.has(normKey(k))) continue;
+      // Hai chuyện khác nhau, hai câu khác nhau — xem khối comment ở KNOWN_SKILL_KEYS.
+      if (vendorSet?.has(normKey(k))) staleAllowlist.push(`skill/${name}: ${k}`);
+      else unknownKeys.push(`skill/${name}: ${k}`);
+    }
   }
 }
 const skillCap = cfg.limits?.maxSkills ?? 12;
@@ -445,7 +479,17 @@ if (exists(rulesDir)) {
   console.log(`  rule: ${readdirSync(rulesDir).filter(f => f.endsWith('.md')).length} file · ${rulesNoPaths} không có \`paths\` (nạp cho MỌI request)`);
   if (rulesNoPaths > 3) advice.push(`${rulesNoPaths} rule không có \`paths\` — mỗi cái là thuế context cho mọi người ở mọi request. Trần hợp lý: 3–5 rule an toàn toàn cục`);
 }
-for (const u of unknownKeys) advice.push(`frontmatter key lạ — ${u} (allowlist cập nhật 2026-08-04; nếu vendor vừa thêm field này thì cập nhật allowlist trong doctor, đừng bỏ qua check)`);
+for (const u of unknownKeys) advice.push(`frontmatter key lạ — ${u} — `
+  + (vendorSet
+    ? `KHÔNG có trong bảng ${vendorSet.size} key của binary Claude Code ${ccVersion || ''}. Gõ sai, hoặc field harness tự nghĩ ra mà vendor không đọc`
+    : `allowlist cập nhật 2026-08-04, và lần này KHÔNG đối chiếu được với binary (${nfkWhy}) — chưa xác minh, đừng đọc thành "đã kiểm"`));
+for (const s of staleAllowlist) advice.push(`allowlist ĐANG MỤC — ${s}: vendor CÓ đọc key này, `
+  + `\`KNOWN_SKILL_KEYS\` trong harness-doctor thì chưa biết. Skill không sai; danh sách sai. Thêm key vào đó`);
+if (vendorSet && !staleAllowlist.length && !unknownKeys.length) {
+  console.log(`  frontmatter: ${knownNorm.size} key curated, đối chiếu ${vendorSet.size} key ĐO TỪ BINARY — không lệch`);
+} else if (!vendorSet) {
+  console.log(`  frontmatter: KHÔNG đối chiếu được với binary (${nfkWhy}) — allowlist chưa xác minh, đây không phải "ok"`);
+}
 
 // ── Danh mục công cụ: SINH, không gõ tay ─────────────────────────────────────
 //

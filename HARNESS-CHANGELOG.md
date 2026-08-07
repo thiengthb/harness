@@ -11,6 +11,62 @@
 
 ---
 
+## 2.39.3 — 2026-08-08
+
+**patch.** Allowlist frontmatter thôi so CHUỖI THÔ, và biết tự nói khi nó đang mục. Đóng #94.
+
+### Hai lỗi, một gốc: một hằng số viết tay mô tả bề mặt vendor
+
+`KNOWN_SKILL_KEYS` (16 key, ghi ngày rà `2026-08-04`) có comment tự cảnh báo *"allowlist không
+ngày sẽ báo một field ĐANG CHẠY là inert"*. Cảnh báo đúng, và nó đã thành sự thật.
+
+**① So chuỗi thô.** Vendor chuẩn hoá tên key trước khi đọc — đo từ binary 2.1.224:
+
+```js
+ahs = (e) => e.replace(/[-_]/g, "").toLowerCase()
+```
+
+Nên `whenToUse` ≡ `when_to_use`, `disallowed-tools` ≡ `disallowedTools`. Một skill khai
+`whenToUse` bị doctor báo là key lạ trong khi Claude Code đọc nó bình thường. Cùng lớp lỗi
+`dcg` sửa ở v2.36.0: so chuỗi thay vì so **thứ mà chuỗi nghĩa là**.
+
+**② Danh sách thiếu.** Bảng gốc trong binary có **60** key. Thiếu ít nhất `when_to_use` ·
+`metadata` · `license` · `compatibility`.
+
+Đối chiếu 16 key đang khai với bảng 60: **cả 16 đều hợp lệ**. Không có key sai — chỉ thiếu.
+
+### Đổi gì: ba nhánh thay vì hai
+
+**Không** nhận cả 60 key. Bảng đó là **hợp nhất** skill + plugin + agent + output-style (chứa
+`mcpServers`, `themes`, `workflows`); nhận hết cho một `SKILL.md` là **nới** check chứ không
+sửa nó. Dùng nó làm **oracle**:
+
+| key trong frontmatter | doctor nói |
+|---|---|
+| trong 16 key curated | im |
+| **không** trong 16, **có** trong 60 của binary | *"allowlist ĐANG MỤC — vendor CÓ đọc key này. Skill không sai; danh sách sai"* |
+| không có ở cả hai | *"KHÔNG có trong bảng 60 key của binary — gõ sai, hoặc field harness tự nghĩ ra"* |
+| binary không đọc được | rơi về hành vi cũ, **và nói rõ là chưa xác minh** — `?`, không phải `ok` |
+
+Nhánh giữa là phần đáng giá: nó biến *"danh sách này sẽ mục"* — thứ comment chỉ **cảnh báo** —
+thành thứ **phát hiện được**, và nó tự nói khi tới lúc cập nhật. Cùng nâng cấp v2.38.0 làm cho
+tập sự kiện hook.
+
+### Test, và một mutant lấy từ bug CÓ THẬT
+
+`pickLongestArray()` tách ra dùng chung cho cả hai bảng — chép đôi nó nghĩa là ca *"lấy mảng
+ĐẦU TIÊN"* chỉ khoá được một bản.
+
+Mutant đắt nhất **là bug tôi thật sự mắc khi viết**: lớp ký tự chỉ nhận `[a-z]`, mà bảng thật
+chứa `mcpServers` · `disallowedTools` · `permissionMode` ⇒ nó khớp **0 mảng**. Và một `null` ở
+đây **đọc y hệt "vendor đổi hình dạng bundle"** — bug tự nguỵ trang thành một phát hiện. Khôi
+phục đúng bản đó ⇒ suite `exit 1`.
+
+### Một con số trông đúng và sai
+
+Bản đầu in *"binary Claude Code 24.18.0"*. Đó là version **Node**, lấy từ đoạn `nvm/v24.18.0/`
+trong chính `CLAUDE_CODE_EXECPATH`, bằng một regex `\d+\.\d+\.\d+` tự chế. Repo đã có
+`claudeCodeVersionMeasured()` cho đúng việc này — giờ dùng nó.
 ## 2.39.2 — 2026-08-08
 
 **patch.** Agent KHÔNG CHẠY được thôi bị chấm là agent LÀM SAI. Đóng #93 ①.

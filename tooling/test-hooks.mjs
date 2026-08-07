@@ -13,7 +13,7 @@ import { readFileSync, writeFileSync, rmSync, readdirSync, cpSync, mkdirSync, un
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, dangerousCommand, infraFailure } from './lib/harness.mjs';
-import { pickEventArray, nativeHookEvents, SCAN } from './native-surface.mjs';
+import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
 
@@ -1172,6 +1172,40 @@ for (const [env, expect, label, msg] of GATE_CASES) {
         ok.push(`native-surface${L} mảng thật ${realBytes}B < chồng lấn ${SCAN.overlap}B — còn ${SCAN.overlap - realBytes}B biên trước khi phép quét hỏng im lặng`);
       }
     }
+
+    // ── Bảng key frontmatter (#94) ────────────────────────────────────────────
+    //
+    // Cùng phép chọn "mảng dài nhất", neo khác. Ca đáng giá nhất là ca CHỮ HOA: bản đầu của
+    // regex này chỉ nhận `[a-z]`, và bảng thật chứa `mcpServers` · `disallowedTools` ·
+    // `permissionMode` ⇒ nó khớp **0 mảng**, im lặng. Một `null` ở đây đọc y hệt "vendor đổi
+    // hình dạng bundle", nên bug đó tự nguỵ trang thành một phát hiện.
+    const FM20 = (extra = []) => JSON.stringify([
+      'name', 'description', 'model', 'allowed-tools', 'argument-hint', 'arguments',
+      'disable-model-invocation', 'user-invocable', 'effort', 'shell', 'version',
+      'when_to_use', 'paths', 'hooks', 'context', 'agent', 'created_by', 'improved_by',
+      'metadata', 'license', ...extra,
+    ]);
+    const FM = [
+      [`x=${FM20()};`, 20, 'bảng tối thiểu 20 key có neo disable-model-invocation'],
+      [`a=${FM20()};b=${FM20(['mcpServers', 'disallowedTools', 'permissionMode'])};`, 23,
+        'MUTANT chữ hoa: bảng có mcpServers/disallowedTools vẫn khớp, và bản DÀI HƠN thắng'],
+      [`y=${JSON.stringify(['alpha', 'beta', 'gamma'])}`, null, 'mảng quá ngắn ⇒ bỏ'],
+      [`z=${JSON.stringify(Array.from({ length: 25 }, (_, i) => `key${i}`))}`, null,
+        'đủ dài nhưng KHÔNG có neo disable-model-invocation ⇒ bỏ'],
+    ];
+    const badFM = FM.filter(([txt, want]) => (pickFrontmatterKeys(txt)?.length ?? null) !== want);
+    if (badFM.length) fail.push(`native-surface${L} pickFrontmatterKeys sai ${badFM.length}/${FM.length} ca: ${badFM.map(c => c[2]).join(' · ')}`);
+    else ok.push(`native-surface${L} pickFrontmatterKeys ${FM.length} ca — lớp ký tự nhận CHỮ HOA (mcpServers…), thiếu nó thì khớp 0 mảng và im`);
+
+    // Chuẩn hoá: vendor đọc key qua replace(/[-_]/g,'').toLowerCase(). Không chuẩn hoá thì
+    // doctor báo một key ĐANG CHẠY là lạ — đúng lớp lỗi dcg sửa ở v2.36.0.
+    const NORM = [
+      ['disallowed-tools', 'disallowedTools'], ['when_to_use', 'whenToUse'],
+      ['argument-hint', 'ArgumentHint'], ['keep-coding-instructions', 'keepCodingInstructions'],
+    ];
+    const badNorm = NORM.filter(([a, b]) => normKey(a) !== normKey(b));
+    if (badNorm.length) fail.push(`native-surface${L} normKey không gộp ${badNorm.length}/${NORM.length} cặp: ${badNorm.map(p => p.join('≠')).join(' · ')}`);
+    else ok.push(`native-surface${L} normKey gộp ${NORM.length} cặp hyphen/underscore/camelCase — như vendor`);
   }
 
   // ④b-quater `guard-nhanh-tich-hop`: một cửa thoát không ai đếm là cửa thoát mở vĩnh viễn.
@@ -2649,7 +2683,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 183;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.1 (#93): infraFailure
+const RATCHET = 185;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94)
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa

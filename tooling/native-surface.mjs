@@ -72,11 +72,22 @@ export const SCAN = { chunk: 8 * 1024 * 1024, overlap: 8192 };
  * phép chọn.
  */
 export function pickEventArray(text, prev = null) {
+  return pickLongestArray(text, EVENT_ARRAY_SRC, 'PreToolUse', prev);
+}
+
+/**
+ * THUẦN — chọn mảng DÀI NHẤT khớp `src` và có chứa `must`.
+ *
+ * Tách khỏi `pickEventArray` khi bảng key frontmatter (#94) cần đúng phép chọn này với một
+ * neo khác. Hai bảng, một phép phán đoán — chép đôi nó nghĩa là ca test *"lấy mảng ĐẦU TIÊN"*
+ * chỉ khoá được một bản.
+ */
+export function pickLongestArray(text, src, must, prev = null) {
   let best = prev;
   // Regex MỚI mỗi lần: `matchAll` đòi cờ `g`, và một regex `g` dùng chung giữa nhiều lời gọi
   // là một mẩu trạng thái ẩn không đáng có trong một hàm khai là THUẦN.
-  for (const m of String(text).matchAll(new RegExp(EVENT_ARRAY_SRC, 'g'))) {
-    if (!m[0].includes('PreToolUse')) continue;
+  for (const m of String(text).matchAll(new RegExp(src, 'g'))) {
+    if (must && !m[0].includes(must)) continue;
     try {
       const arr = JSON.parse(m[0].replace(/'/g, '"'));
       // Lấy mảng DÀI NHẤT: bundle có thể chứa nhiều tập con (ví dụ danh sách sự kiện của
@@ -91,7 +102,37 @@ export function pickEventArray(text, prev = null) {
   return best;
 }
 
-export function nativeHookEvents(execPath = process.env.CLAUDE_CODE_EXECPATH || '', { chunk = SCAN.chunk, overlap = SCAN.overlap } = {}) {
+/**
+ * Bảng key frontmatter mà Claude Code THẬT SỰ đọc — issue #94.
+ *
+ * Đây là HỢP NHẤT của skill + plugin + agent + output-style (nó chứa `mcpServers`, `themes`,
+ * `workflows`). **Đừng nhận cả bảng cho một `SKILL.md`** — làm thế là nới check thay vì sửa
+ * nó. Chỗ dùng đúng là `harness-doctor`: phân biệt *"key gõ sai"* với *"key vendor CÓ mà
+ * allowlist chưa biết"*.
+ *
+ * Neo có chữ hoa TỪ KÝ TỰ THỨ HAI: bảng thật chứa `mcpServers`, `disallowedTools`,
+ * `permissionMode`. Bản đầu của regex này chỉ nhận chữ thường và khớp **0 mảng** — im lặng,
+ * và một `null` ở đây đọc y hệt *"vendor đổi hình dạng bundle"*.
+ */
+const FM_KEY_ARRAY_SRC = String.raw`\[(?:\s*"[a-z][A-Za-z0-9_-]{2,40}"\s*,){19,}\s*"[a-z][A-Za-z0-9_-]{2,40}"\s*\]`;
+
+export function pickFrontmatterKeys(text, prev = null) {
+  return pickLongestArray(text, FM_KEY_ARRAY_SRC, '"disable-model-invocation"', prev);
+}
+
+/** Vendor chuẩn hoá tên key trước khi đọc — `disallowed-tools` ≡ `disallowedTools`. */
+export const normKey = (s) => String(s).replace(/[-_]/g, '').toLowerCase();
+
+export function nativeFrontmatterKeys(execPath = process.env.CLAUDE_CODE_EXECPATH || '', opts = {}) {
+  return scanBinary(execPath, pickFrontmatterKeys, opts);
+}
+
+export function nativeHookEvents(execPath = process.env.CLAUDE_CODE_EXECPATH || '', opts = {}) {
+  return scanBinary(execPath, pickEventArray, opts);
+}
+
+/** Đọc binary theo khối có chồng lấn, gom ứng viên qua `pick`. Xem đầu file về chi phí. */
+function scanBinary(execPath, pick, { chunk = SCAN.chunk, overlap = SCAN.overlap } = {}) {
   if (!execPath || !exists(execPath)) return null;
   let fd;
   try { fd = openSync(execPath, 'r'); } catch { return null; }
@@ -102,7 +143,7 @@ export function nativeHookEvents(execPath = process.env.CLAUDE_CODE_EXECPATH || 
       const n = readSync(fd, buf, 0, chunk, pos);
       if (n <= 0) break;
       const s = tail + buf.toString('latin1', 0, n);
-      best = pickEventArray(s, best);
+      best = pick(s, best);
       tail = s.slice(-overlap);
       pos += n;
     }
