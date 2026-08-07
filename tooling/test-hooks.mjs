@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, rmSync, readdirSync, cpSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage } from './lib/harness.mjs';
 
 const BLOCK = 2, OK = 0;
 
@@ -1325,6 +1325,41 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   else ok.push(`telemetryDir${L} ${TABLE.length} ca — project id \`fixture-*\` chuyển hướng khỏi sổ THẬT kể cả khi không ai set biến môi trường`);
 }
 
+// ─── verificationCoverage: mẫu số 0 phải HIỆN RA, nhưng chỉ ở đúng ca ────────
+//
+// Đo 2026-08-07: `sakubun-single-user` có harness v2.13.0 và `features/` thật = **0**, trong
+// khi auto-memory ghi 4 mục "pending live verify" qua 2 project. Nợ xác minh CÓ THẬT, chỉ
+// không nằm ở chỗ harness nhìn được.
+//
+// Nó không tự lộ vì mọi cơ chế đo lặp qua `features/*.json` ⇒ tập rỗng ⇒ XANH. Cùng lớp lỗi
+// `evals/run.mjs` sửa ở v2.24.0 nhưng NGƯỢC CHIỀU: ở đó "chưa đo" thành FAIL, ở đây thành
+// PASS — và không ai đi điều tra một dấu tick xanh.
+//
+// Bảng này chủ yếu khoá HAI VẾ MIỄN TRỪ, vì bỏ vế nào cũng hỏng theo một kiểu riêng:
+//   · `template` — bỏ ⇒ tái tạo #56 lần thứ ba (đỏ vĩnh viễn trong repo template)
+//   · `quiet`    — bỏ ⇒ nổ ở mọi repo mới toanh, thành nhiễu ngay ngày đầu
+{
+  const L = ' '.repeat(6);
+  //        role         features  commits7d   mode           có advice?
+  const TABLE = [
+    ['consumer',  0,   14,   'empty',       true ],   // ca thật: ship mà không khai feature
+    ['consumer',  3,   14,   'covered',     false],
+    ['consumer',  0,    0,   'quiet',       false],   // repo mới — chưa ship thì chưa nợ
+    ['template',  0,   14,   'template-na', false],   // #56 KHÔNG được tái tạo
+    ['consumer',  0, null,   'unknown',     false],   // không đọc được git ⇒ `?`, không phải "ổn"
+    ['unknown',   0,   14,   'empty',       true ],   // vai lạ ⇒ KHÔNG được miễn
+  ];
+  const bad = [];
+  for (const [role, features, commits7d, wantMode, wantAdvice] of TABLE) {
+    const r = verificationCoverage({ role, features, commits7d });
+    const got = `${r.mode}/${Boolean(r.advice)}`;
+    const want = `${wantMode}/${wantAdvice}`;
+    if (got !== want) bad.push(`${role} f=${features} c=${commits7d}: ${got} ≠ ${want}`);
+  }
+  if (bad.length) fail.push(`verificationCoverage${L} ${bad.length}/${TABLE.length} ca sai: ${bad.join(' | ')}`);
+  else ok.push(`verificationCoverage${L} ${TABLE.length} ca — chỉ "có commit mà 0 feature" mới kêu; template và repo mới được miễn, vai lạ thì không`);
+}
+
 // ─── coordinationLayer: repo TEMPLATE không được bị đòi khai `teamSize` ──────
 //
 // Bug #56 đang mở là đúng lớp này: một advice đỏ VĨNH VIỄN trong repo template, về một việc
@@ -1755,7 +1790,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 141;
+const RATCHET = 142;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

@@ -11,6 +11,68 @@
 
 ---
 
+## 2.26.0 — 2026-08-07
+
+**minor.** `harness-doctor` nói ra khi lớp xác minh đang chạy trên **tập rỗng**.
+Từ `/harness-retro` §2 (#65).
+
+
+### Đo được: repo ship thật, `features/` rỗng, mọi thứ báo xanh
+
+```
+sakubun-single-user   harness: CÓ (v2.13.0)   features/ thật: 0
+```
+
+`features/` ở đó chỉ có `_index.json` và `_TEMPLATE.json`. Nhưng nợ xác minh **có thật** —
+auto-memory của hai project ghi 4 mục *"pushed to main; live verify pending"* /
+*"đã deploy + build APK, chặn vì chưa có thiết bị kiểm chứng"*.
+
+`features/*.json` là cơ chế default-FAIL + `evidence` mà `AGENTS.md` gọi là **"không thương
+lượng"**. Ở repo duy nhất thật sự ship, nó **chưa được dùng lần nào**.
+
+### Vì sao nó không tự lộ ra: MẪU SỐ BẰNG 0
+
+`check-feature-integrity`, gate `preMerge` và `/verify-ui` đều lặp qua `features/*.json`.
+Không feature nào ⇒ chúng lặp qua **tập rỗng** ⇒ **XANH**. Một mẫu số bằng 0 làm mọi tỉ lệ
+thành 100%.
+
+Cùng lớp lỗi `evals/run.mjs` sửa ở v2.24.0, **ngược chiều**: ở đó "chưa đo" bị đếm thành
+FAIL, ở đây thành PASS. Chiều PASS nguy hiểm hơn — **không ai đi điều tra một dấu tick xanh.**
+
+### Mục `LỚP XÁC MINH`, năm trạng thái, hai vế miễn trừ bắt buộc
+
+Phán đoán tách sang `verificationCoverage()` — hàm THUẦN ở `lib/harness.mjs`, cùng lý do với
+`coordinationLayer` và `governanceDrift` (doctor CHẠY `test-hooks` nên test spawn doctor sẽ
+đệ quy).
+
+| trạng thái | khi nào | advice |
+|---|---|---|
+| `template-na` | repo template | **không** — bỏ vế này là tái tạo #56 lần thứ ba |
+| `quiet` | 0 commit 7 ngày qua | **không** — bỏ vế này là nổ ở mọi repo mới toanh |
+| `unknown` | không đọc được git | **không** — `?`, không phải "ổn" |
+| `covered` | có feature thật | không |
+| `empty` | **có commit mà 0 feature** | **CÓ** — ca duy nhất kêu |
+
+Câu cảnh báo **có số**, không phải lời khuyên chung:
+
+```
+14 commit trong 7 ngày qua, 0 feature được khai trong features/ ⇒ check-feature-integrity,
+gate preMerge và /verify-ui đang chạy trên TẬP RỖNG. Mọi tỉ lệ xác minh của repo này hiện
+là 100% vì mẫu số bằng 0.
+```
+
+`example-feature.json` **không** được đếm: nó là ví dụ của template, nằm trong `IGNORE` của
+`apply-to` nên không đi xuống consumer. Đếm nó là dựng một mẫu số giả.
+
+### Không có gì phải làm khi nâng cấp
+
+Repo template: mục mới in `n/a`, **không** thêm advice. Repo consumer chưa ship gì: `quiet`.
+Chỉ repo **đang ship mà chưa khai feature** mới thấy dòng mới — và đó là điểm.
+
+Sàn test: **141 → 142**.
+
+---
+
 ## 2.25.0 — 2026-08-07
 
 **minor.** Telemetry của FIXTURE thôi rơi vào sổ THẬT. Từ `/harness-retro` §3 (#66).
