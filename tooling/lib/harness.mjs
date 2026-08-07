@@ -945,7 +945,8 @@ export function repoRole() {
  * "6 từ đầu" là phép nhóm LEXICAL áp lên văn bản người viết TỰ DO. Nó chỉ gom được khi người
  * viết tình cờ mở đầu giống nhau — và đo 2026-08-06 trên chính repo này: 5 mục fixlog ⇒ 5 nhóm
  * đơn lẻ, 0 nhóm đạt ngưỡng, TRONG KHI 3/5 mục là cùng một gác (`dcg` chặn nhầm) và
- * `.claude/learnings/2026-W32-dcg-quet-than-heredoc.md` đã ghi chúng là lần 3, 4, 5.
+ * bài học tuần W32 "dcg quét thân heredoc" (trong `.claude/learnings/`) đã ghi chúng là
+ * lần 3, 4, 5.
  *
  * Hỏng theo chiều NGUY HIỂM: `/harness-retro` đọc "chưa nhóm nào đạt ngưỡng ≥2" — tức câu trả
  * lời DỄ CHỊU — trong khi sự thật là ngưỡng đã bị vượt từ lâu. Cùng lớp lỗi với `hookRan()`:

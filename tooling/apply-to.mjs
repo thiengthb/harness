@@ -185,7 +185,10 @@ if (AUDIT) {
     // learnings ngay dưới, và KHÔNG dùng `[A-Z]` như bản cũ: dạng đó giả định nhật ký luôn
     // tên theo mã issue viết hoa. Một phiên NGHI THỨC không có issue (`chore/…`), nên nhật
     // ký của nó tên theo nhánh — chữ thường — và audit đỏ với chính file nó vừa tạo. Gặp
-    // thật với `docs/progress/vong-hoc-2026-W32.md`.
+    // thật với nhật ký vòng học tuần W32 (tên file chữ thường, không phải mã issue).
+    // Không viết đường dẫn nhật ký ra đây: `docs/progress/**` KHÔNG được ship xuống repo
+    // tiêu thụ, nên một trích dẫn dạng đường dẫn ở file NÀY thành con trỏ chết ở MỌI repo con
+    // — §9b của `entropy-scan` bắt được đúng vậy ở `sakubun`, 2026-08-07.
     /^docs\/progress\/(?!_)/,                         // nhật ký thật
     /^\.claude\/learnings\/(?!_TEMPLATE)/,            // learnings thật
     // KHÔNG ignore evals/tasks/ — trong repo TEMPLATE, mọi eval task là nội dung
