@@ -11,6 +11,89 @@
 
 ---
 
+## 2.39.2 — 2026-08-08
+
+**patch.** Agent KHÔNG CHẠY được thôi bị chấm là agent LÀM SAI. Đóng #93 ①.
+
+### Đo được, không suy ra
+
+Lần đầu `evals.command` được lấp và chạy thật (2026-08-07, clone dùng một lần):
+
+```
+=== TỈ LỆ PASS ===
+  REGRESSION  25%  (1/4)
+```
+
+Ba task "fail" trả về sau **0.1 phút**; task chạy thật mất **3.9 phút**. Transcript của cả ba:
+
+```
+You've hit your session limit · resets 12am (Asia/Saigon)
+```
+
+**Agent chưa từng chạy.** Nhưng `runAgent()` vẫn trả một object, `Boolean(agent)` là `true`,
+nên `measured` là `true` — và assertion tất định, chấm một cây **không có gì xảy ra**, fail.
+
+### Vì sao đây là chế độ hỏng tệ nhất trong cả harness
+
+Một phép đo **KHÔNG XẢY RA** được ghi thành một phép đo **THẤT BẠI**, và con số đổ về phía
+*"harness của bạn chỉ bảo vệ được 25%"*.
+
+Đó không phải một con số sai vô hại. Đó là con số đẩy người đọc đi **CẮT những lớp đang làm
+việc** — và nó xuất hiện ở lớp đắt nhất, mờ nhất, ít người kiểm lại nhất. `L0005` (*"bộ đếm đổ
+về phía dễ chịu"*) ở biến thể nguy hiểm hơn bản gốc: ở đây bộ đếm đổ về phía **hoảng**, và
+phản ứng với hoảng là tháo dỡ.
+
+`run.mjs` **đã có** ba trạng thái và **đã** loại `n/a` khỏi mẫu số. Thiếu đúng một thứ: phép
+nhận diện *"agent hỏng vì hạ tầng"*.
+
+### Đổi gì
+
+`infraFailure(text)` — hàm THUẦN trong `lib/harness.mjs`, sáu nhóm chữ ký: quota/session ·
+rate limit · credit/billing · xác thực · mạng · lỗi phía nhà cung cấp.
+
+`runAgent()` trả thêm `infra`, và `measured` loại nó ra:
+
+```js
+const measured = (asserts.ran > 0 || Boolean(agent)) && !agent?.infra;
+```
+
+Thông báo tách **hai nguyên nhân** mà bản trước gộp — *"chưa nối agent"* (cấu hình, đứng im
+tới khi người sửa) khác *"agent không chạy được"* (hạ tầng, thường TẠM THỜI, chạy lại là có số):
+
+```
+9001 […]: KHÔNG ĐO ĐƯỢC — agent hỏng vì HẠ TẦNG (chạm trần phiên/quota), trả về sau 0.1p.
+Đây KHÔNG phải "agent làm sai": nó chưa từng chạy. Task ra khỏi mẫu số. Chạy lại khi hạ tầng ổn
+```
+
+### Khớp RỘNG có chủ ý
+
+Cái giá của một `?` nhầm là một dòng *"chưa đo được"*. Cái giá của một `FAIL` nhầm là một kết
+luận sai về chính harness, ghi vào ADR. Hai cái giá đó **không đối xứng** — nên khi phân vân
+thì nghiêng về `?`. Bảng test khoá cả chiều ngược: 4 ca output bình thường (gồm *"Tôi từ chối
+chạy lệnh phá hoại này"* — đó là **KẾT QUẢ**, không phải hỏng) **không** được nhận nhầm.
+
+### Test
+
+`evals/fixtures/fake-agent.mjs` thêm chế độ `quota` — in chữ ký **nguyên văn** rồi **exit 0**.
+Chi tiết quyết định: một agent chết vì quota trông y hệt một agent chạy xong, nên **exit code
+không phân biệt được**; chỉ nội dung mới phân biệt được.
+
+Ca ⑪ dùng task `9001`, mà assertion của nó chạy được và **PASS**. Nên nếu phép nhận diện biến
+mất, task sẽ PASS chứ không FAIL — và ca vẫn đỏ, vì nó đòi chữ `KHÔNG ĐO ĐƯỢC`. Nó khoá **cả
+hai** chiều nói dối, không chỉ chiều hoảng. Kiểm: gỡ `!agent?.infra` ⇒ `exit 1`.
+
+### Ghi lại: suite hook có ca PHỤ THUỘC TRẠNG THÁI
+
+Khi verify bản này, `test-hooks.mjs` fail 3 ca ở một lần chạy rồi xanh ở lần sau — và
+`origin/main` **sạch** cũng fail 1 ca rồi xanh ở lần sau. Không liên quan tới bản vá này (đã
+kiểm bằng `git stash`). Ba ca đó quanh `lớp kinh tế` (mẩu bánh mì `StopFailure`) và
+`block() tự ghi gate-fails`, đều dùng thư mục telemetry/state dùng chung.
+
+Chưa sửa ở đây — nhưng một lớp xác minh **chập chờn** thì mọi con số nó in ra đều mất một phần
+thẩm quyền, và nó đáng một issue riêng.
+
+---
+
 ## 2.39.0 — 2026-08-08
 
 **minor.** Ngân sách biết **VAI** của repo. `budgetStatus()` nhận `role`, và `harness-doctor`

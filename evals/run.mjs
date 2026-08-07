@@ -17,7 +17,7 @@ import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { parseFrontmatter } from '../tooling/lib/frontmatter.mjs';
-import { repoPath, readJson, writeJson, report, git, config, spill } from '../tooling/lib/harness.mjs';
+import { repoPath, readJson, writeJson, report, git, config, spill, infraFailure } from '../tooling/lib/harness.mjs';
 
 const argv = process.argv.slice(2);
 const has = f => argv.includes(f);
@@ -235,6 +235,8 @@ function runAgent(task) {
     retries,
     transcript,
     error: r.error?.message,
+    // Agent KHÔNG CHẠY vì hạ tầng ≠ agent làm sai. Xem infraFailure() ở lib/harness.mjs.
+    infra: infraFailure(`${r.stdout || ''}\n${r.stderr || ''}`),
   };
 }
 
@@ -277,14 +279,25 @@ for (const t of tasks) {
   // KHÔNG pass và KHÔNG fail — nó chưa được đo, và nó phải ra khỏi MẪU SỐ của tỉ lệ.
   // Đếm nó là fail thì tỉ lệ nói dối theo chiều hoảng; đếm là pass thì nói dối theo chiều
   // dễ chịu. Cả hai đều tệ hơn việc nói "chưa đo".
-  const measured = asserts.ran > 0 || Boolean(agent);
+  // Agent hỏng vì HẠ TẦNG ⇒ task này CHƯA ĐƯỢC ĐO, dù `runAgent` có trả về một object và dù
+  // assertion có chạy. Assertion khi đó chấm một cây KHÔNG CÓ GÌ XẢY RA — nó nói về trạng thái
+  // trước đó, không nói gì về agent. Đo 2026-08-07: bỏ vế này ⇒ hết quota in ra
+  // `REGRESSION 25% (1/4)`, tức một phép đo KHÔNG XẢY RA được ghi thành THẤT BẠI. Xem #93.
+  const measured = (asserts.ran > 0 || Boolean(agent)) && !agent?.infra;
   const passed = measured && asserts.failed.length === 0 && (!agent || agent.ok);
   results.push({ id: t.id, kind: t.kind, type: t.type, measured, passed, failedAssertions: asserts.failed, na: asserts.na, agent });
 
   for (const n of asserts.na) warn.push(`${label}: n/a — ${n}`);
 
   if (!measured) {
-    warn.push(`${label}: KHÔNG ĐO ĐƯỢC — ${asserts.na.length} assertion đều n/a và chưa khai \`evals.command\`. Không tính vào tỉ lệ.`);
+    // HAI nguyên nhân khác nhau, hai câu khác nhau. Gộp chúng là đúng phép gộp mà cả file này
+    // tồn tại để chống: một bên là "chưa nối agent" (cấu hình), một bên là "agent không chạy
+    // được" (hạ tầng, thường TẠM THỜI — chạy lại là có số).
+    warn.push(agent?.infra
+      ? `${label}: KHÔNG ĐO ĐƯỢC — agent hỏng vì HẠ TẦNG (${agent.infra}), trả về sau ${agent.minutes}p. `
+        + `Đây KHÔNG phải "agent làm sai": nó chưa từng chạy. Task ra khỏi mẫu số. Chạy lại khi hạ tầng ổn`
+        + (agent.transcript ? ` · transcript: ${agent.transcript}` : '')
+      : `${label}: KHÔNG ĐO ĐƯỢC — ${asserts.na.length} assertion đều n/a và chưa khai \`evals.command\`. Không tính vào tỉ lệ.`);
   } else {
     (passed ? ok : fail).push(`${label}${agent ? ` (${agent.minutes}p)` : ''}${asserts.failed.length ? ` → fail: ${asserts.failed[0]}` : ''}`
       + (agent?.transcript ? ` · transcript: ${agent.transcript}` : ''));

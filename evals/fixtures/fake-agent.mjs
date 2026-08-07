@@ -19,6 +19,7 @@
  *   fail              exit 3 — runner phải đánh task là FAIL
  *   loop              in MỘT dòng dài giống hệt 5 lần — runner phải thấy "vòng lặp mù"
  *   hang              ngủ lâu hơn wall-clock cap — runner phải cắt và báo timedOut
+ *   quota             in chữ ký hết-quota rồi exit 0 — runner phải báo `?`, KHÔNG phải FAIL
  */
 import { readFileSync } from 'node:fs';
 
@@ -33,6 +34,14 @@ try { stdin = readFileSync(0, 'utf8'); } catch {}
 console.log('FAKE_AGENT_STDIN=' + JSON.stringify(stdin));
 
 if (mode === 'fail') process.exit(3);
+
+// Hết quota — CHỮ KÝ THẬT, chép nguyên văn từ lần chạy 2026-08-07 (issue #93). Chi tiết quyết
+// định: nó in ra rồi **exit 0**. Một agent chết vì quota trông y hệt một agent chạy xong, nên
+// exit code KHÔNG phân biệt được — chỉ nội dung mới phân biệt được.
+if (mode === 'quota') {
+  console.log("You've hit your session limit · resets 12am (Asia/Saigon)");
+  process.exit(0);
+}
 
 if (mode === 'loop') {
   const line = 'Tôi thử lại bước này một lần nữa vì lần trước chưa thành công — dòng dài hơn 30 ký tự';

@@ -251,6 +251,33 @@ ${assertions}
   for (const p of [p8, p9, p10]) rmSync(p, { force: true });
 }
 
+// ── ⑪ Agent hỏng vì HẠ TẦNG ⇒ `?`, KHÔNG phải FAIL (#93) ─────────────────────
+//
+// Đo 2026-08-07, lần đầu `evals.command` được lấp và chạy thật: ba task trả về sau 0.1 phút
+// với `You've hit your session limit`, và runner in `REGRESSION 25% (1/4)`. Agent CHƯA TỪNG
+// CHẠY, nhưng assertion — chấm một cây không có gì xảy ra — fail, nên task bị ghi là FAIL.
+//
+// Một phép đo KHÔNG XẢY RA ghi thành một phép đo THẤT BẠI, và con số đổ về phía "harness chỉ
+// bảo vệ được 25%" — hướng khiến người đọc đi CẮT những lớp đang làm việc.
+//
+// Ca dùng task 9001, mà assertion của nó chạy được và PASS. Nên nếu phép nhận diện hạ tầng
+// biến mất, task sẽ PASS chứ không FAIL — và ca vẫn đỏ, vì nó đòi chữ "KHÔNG ĐO ĐƯỢC". Nó
+// khoá CẢ HAI chiều nói dối, không chỉ chiều hoảng.
+{
+  const r = runEval(CMD, 'quota');
+  if (!/KHÔNG ĐO ĐƯỢC/.test(r.out)) {
+    fail.push('⑪ agent hết quota KHÔNG được đánh "không đo được" — một phép đo chưa xảy ra đang bị ghi thành kết quả');
+  } else if (!/HẠ TẦNG \(chạm trần phiên\/quota\)/.test(r.out)) {
+    fail.push('⑪ có báo "không đo được" nhưng KHÔNG nói nguyên nhân là hạ tầng — người đọc sẽ đi tìm lỗi ở model');
+  } else if (/→ fail/.test(r.out)) {
+    fail.push('⑪ task vẫn bị ghi FAIL dù agent chưa từng chạy');
+  } else if (/REGRESSION\s+\d/.test(r.out)) {
+    fail.push('⑪ task hỏng-hạ-tầng vẫn nằm trong MẪU SỐ tỉ lệ — tỉ lệ đang tính trên một phép đo không xảy ra');
+  } else {
+    ok.push('⑪ agent hỏng vì hạ tầng (quota) ⇒ `?` kèm nguyên nhân, ra khỏi mẫu số — không phải FAIL');
+  }
+}
+
 rmSync(WORK, { recursive: true, force: true });
 report('EVAL RUNNER TESTS', { ok, warn, fail });
 process.exit(fail.length ? 1 : 0);

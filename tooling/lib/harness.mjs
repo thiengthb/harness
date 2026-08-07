@@ -861,6 +861,44 @@ export function simpleCommands(cmd) {
 }
 
 /**
+ * Agent KHÔNG CHẠY vì hạ tầng, chứ không phải agent làm sai — issue #93.
+ *
+ * THUẦN. Trả tên nguyên nhân, hoặc `null`.
+ *
+ * VÌ SAO TỒN TẠI. Đo 2026-08-07, lần đầu `evals.command` được lấp và chạy thật: ba trong bốn
+ * task trả về sau **0.1 phút** (task chạy thật mất 3.9p), transcript của cả ba là
+ *
+ *     You've hit your session limit · resets 12am (Asia/Saigon)
+ *
+ * Agent chưa từng chạy. Nhưng `runAgent()` trả một object, `Boolean(agent)` là `true`, nên
+ * `measured` là `true`, và assertion tất định — chạy trên một cây KHÔNG CÓ GÌ XẢY RA — fail.
+ * Báo cáo in `REGRESSION 25% (1/4)`.
+ *
+ * **Một phép đo KHÔNG XẢY RA được ghi thành một phép đo THẤT BẠI**, và con số đổ về phía
+ * *"harness của bạn chỉ bảo vệ được 25%"* — tức đúng hướng khiến người đọc đi CẮT những lớp
+ * đang làm việc. `L0005` ở chiều tệ nhất, và ở lớp đắt nhất.
+ *
+ * `run.mjs` đã có ba trạng thái và một mẫu số loại `n/a` ra — thiếu đúng phép nhận diện này.
+ *
+ * KHỚP RỘNG CÓ CHỦ Ý. Cái giá của một `?` nhầm là một dòng "chưa đo được"; cái giá của một
+ * `FAIL` nhầm là một kết luận sai về chính harness, ghi vào ADR. Hai cái giá đó không đối
+ * xứng, nên khi phân vân thì nghiêng về `?`.
+ */
+export function infraFailure(text) {
+  const t = String(text || '').toLowerCase();
+  const SIGNS = [
+    [/hit your (session|usage) limit|usage limit reached/, 'chạm trần phiên/quota'],
+    [/rate limit|too many requests|\b429\b/, 'rate limit'],
+    [/credit balance is too low|insufficient credit|billing/, 'hết credit / thanh toán'],
+    [/invalid api key|authentication_error|not authenticated|unauthorized|\b401\b/, 'xác thực'],
+    [/econnrefused|enotfound|etimedout|network error|fetch failed/, 'mạng'],
+    [/\b50[0234]\b|internal server error|service unavailable|overloaded/, 'phía nhà cung cấp'],
+  ];
+  for (const [re, why] of SIGNS) if (re.test(t)) return why;
+  return null;
+}
+
+/**
  * PHÁN ĐOÁN của `dcg` — hàm THUẦN, test khẳng định thẳng vào đây.
  *
  * Rule có `program` chỉ nổ khi một LỆNH ĐƠN có đúng chương trình đó, và khớp trên dạng đã bỏ

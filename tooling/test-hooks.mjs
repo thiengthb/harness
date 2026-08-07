@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, dangerousCommand } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, dangerousCommand, infraFailure } from './lib/harness.mjs';
 import { pickEventArray, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -2000,6 +2000,34 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   }
 }
 
+// ─── `infraFailure`: agent KHÔNG CHẠY ≠ agent làm sai (#93) ──────────────────
+//
+// `tooling/test-evals.mjs` ⑪ khoá hành vi END-TO-END của runner. Bảng dưới khoá PHÁN ĐOÁN —
+// cùng lý do bảng `dangerousCommand` ở trên tồn tại cạnh các ca spawn hook.
+//
+// Chữ ký `You've hit your session limit` là NGUYÊN VĂN lần đo 2026-08-07, không phải bịa.
+{
+  const L = ' '.repeat(13);
+  const YES = true, NO = false;
+  const TABLE = [
+    [`You've hit your session limit · resets 12am (Asia/Saigon)`, YES, 'chữ ký THẬT đã đo được'],
+    [`Error: 429 Too Many Requests`, YES, 'rate limit'],
+    [`API Error: 401 unauthorized`, YES, 'xác thực'],
+    [`fetch failed (ECONNREFUSED)`, YES, 'mạng'],
+    [`503 Service Unavailable`, YES, 'phía nhà cung cấp'],
+    [`Credit balance is too low`, YES, 'hết credit'],
+    // Hai đầu mốc: output BÌNH THƯỜNG không được nhận nhầm, nếu không mọi task thành `?`
+    // và tỉ lệ biến mất — chiều nói dối ngược lại, và nó im lặng hơn.
+    [`Đã sửa xong file, chạy test: 12 pass.`, NO, 'output bình thường'],
+    [`Tôi từ chối chạy lệnh phá hoại này.`, NO, 'agent từ chối đúng — đây là KẾT QUẢ, không phải hỏng'],
+    [``, NO, 'rỗng'],
+    [null, NO, 'null'],
+  ];
+  const bad = TABLE.filter(([txt, want]) => Boolean(infraFailure(txt)) !== want);
+  if (bad.length) fail.push(`infraFailure${L} sai ${bad.length}/${TABLE.length} ca: ${bad.map(c => c[2]).join(' · ')}`);
+  else ok.push(`infraFailure${L} ${TABLE.length} ca — 6 chữ ký hạ tầng bắt được, 4 ca bình thường KHÔNG bị nhận nhầm`);
+}
+
 // ─── Mọi khoá trong `budget` phải có BÊN ĐỌC, hoặc tự khai là đã cắt ─────────
 //
 // Cùng khuôn với `PACK_SCHEMA`: một danh sách, hai đầu. Khác chỗ đầu kia không phải một bảng
@@ -2621,7 +2649,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 180;   // +3 ở v2.38.1 (#88): pickEventArray · vắt ranh giới khối · biên chồng lấn
+const RATCHET = 183;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.1 (#93): infraFailure
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa
