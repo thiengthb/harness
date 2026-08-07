@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, dangerousCommand, infraFailure } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, dangerousCommand, infraFailure, mergeState, codeOnly } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -1767,6 +1767,72 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   const ritMissing = MODES.filter(m => m !== 'ok' && !capoBlock.includes(`'${m}'`));
   if (ritMissing.length) fail.push(`budgetStatus${L} rituals capo-report không phân nhánh cho mode: ${ritMissing.join(' · ')} — rơi xuống \`ok\` cuối hàm, tức CHƯA XỬ LÝ đọc thành XANH`);
   else ok.push(`budgetStatus${L} rituals capo-report phân nhánh đủ ${MODES.length - 1} mode (không mode nào rơi nhầm xuống \`ok\`)`);
+}
+
+// ─── mergeState: squash-merge KHÔNG được đọc thành "chưa merge" ──────────────
+//
+// `git branch --merged` hỏi *"commit này có phải tổ tiên của main không"*. Squash-merge tạo
+// một commit MỚI, nên nhánh ĐÃ merge và nhánh CHƯA TỪNG CÓ PR đọc giống hệt nhau. Repo này
+// squash 100% số PR ⇒ bộ dò cũ chưa từng đúng một lần nào (issue #97).
+//
+// Ca phải khoá chặt nhất KHÔNG phải ca squash — mà là ca `unknown`. Nếu "không hỏi được
+// GitHub" đổ về `open`, bản vá này chỉ đổi câu chữ chứ không đổi bản chất: `wt-clean` lại
+// khẳng định "chưa merge" về một thứ nó không biết. Nếu nó đổ về `merged` thì còn tệ hơn —
+// XOÁ một worktree chưa merge vì không hỏi được ai.
+{
+  const L = ' '.repeat(13);
+  const gh = (json) => () => ({ status: 0, stdout: JSON.stringify(json), stderr: '' });
+  const err = (stderr) => () => ({ status: 1, stdout: '', stderr });
+  const MERGED = new Set(['feat/da-la-to-tien']);
+  //   nhãn                          branch                 ask                                      mode
+  const TABLE = [
+    ['git nói tổ tiên',              'feat/da-la-to-tien',  err('không bao giờ được gọi'),           'merged' ],
+    ['squash: GitHub nói đã merge',  'fix/97-x',            gh([{ number: 89, mergedAt: '2026-08-07T13:10:45Z' }]), 'merged'],
+    ['GitHub nói KHÔNG có PR merged','fix/dang-lam',        gh([]),                                  'open'   ],
+    ['không có gh trên máy',         'fix/dang-lam',        err('spawn gh ENOENT'),                  'unknown'],
+    ['gh chưa đăng nhập',            'fix/dang-lam',        err('gh: To get started with GitHub CLI, please run: gh auth login'), 'unknown'],
+    ['gh trả rác',                   'fix/dang-lam',        () => ({ status: 0, stdout: '<html>' }),  'unknown'],
+    ['gh trả object thay vì mảng',   'fix/dang-lam',        gh({ number: 1 }),                       'unknown'],
+    ['detached HEAD',                '',                    gh([]),                                  'unknown'],
+    ['ask ném ra undefined',         'fix/dang-lam',        () => undefined,                         'unknown'],
+  ];
+  const bad = [];
+  for (const [label, branch, ask, want] of TABLE) {
+    const r = mergeState(branch, { mergedSet: MERGED, ask });
+    if (r.state !== want) bad.push(`${label}: ${r.state} ≠ ${want}`);
+    // Mọi trạng thái phải NÓI RA VÌ SAO. Một `unknown` không kèm lý do thì người đọc không
+    // phân biệt được "chưa cài gh" với "repo này không ở GitHub", và sẽ bỏ qua cả hai.
+    if (!r.why) bad.push(`${label}: thiếu \`why\` — trạng thái không giải thích được thì bị bỏ qua`);
+  }
+  // Bằng chứng phải mang SỐ PR, không chỉ nói "đã merge" — reviewer phải tra lại được.
+  const sq = mergeState('fix/97-x', { mergedSet: MERGED, ask: gh([{ number: 89, mergedAt: '2026-08-07T13:10:45Z' }]) });
+  if (sq.pr !== 89 || !sq.why.includes('#89')) bad.push(`ca squash thiếu số PR trong bằng chứng: pr=${sq.pr} why=${sq.why}`);
+
+  if (bad.length) fail.push(`mergeState${L} ${bad.length} ca sai: ${bad.join(' | ')}`);
+  else ok.push(`mergeState${L} ${TABLE.length + 1} ca — squash-merge ĐƯỢC nhận ra, và "không hỏi được" là \`unknown\` chứ KHÔNG phải \`open\``);
+
+  // HAI ĐẦU: `wt-clean.mjs` phải phân nhánh cho cả BA trạng thái. Thiếu `unknown` ⇒ nó rơi vào
+  // nhánh `else` cuối cùng và in nhầm nhãn — đúng bug #97 với một cái tên mới.
+  //
+  // `codeOnly` KHÔNG phải trang trí. Bản đầu của khối này so trên văn bản THÔ và mutant D
+  // (gỡ sạch lời gọi `mergeState` khỏi wt-clean) **đi lọt**, vì chữ `mergeState` vẫn nằm
+  // trong comment giải thích. Một assertion không giết được mutant của chính nó là một
+  // assertion chưa tồn tại — nó chỉ trông như đã tồn tại. Lần thứ tư của bài học này.
+  const wt = codeOnly(readFileSync(repoPath('tooling', 'wt-clean.mjs'), 'utf8'));
+  const miss = ['merged', 'open', 'unknown'].filter(s => !new RegExp(`state === '${s}'|\\b${s}\\.push\\(`).test(wt));
+  if (miss.length) fail.push(`mergeState${L} wt-clean.mjs không phân nhánh cho: ${miss.join(' · ')} — rơi vào \`else\` và in nhầm nhãn`);
+  else ok.push(`mergeState${L} wt-clean.mjs phân nhánh đủ cả 3 trạng thái (unknown KHÔNG bị gộp vào open)`);
+
+  // `wt-clean.mjs` KHÔNG được còn dùng phép hỏi cũ làm căn cứ DUY NHẤT. Nó vẫn được phép gọi
+  // `--merged` (đó là bằng chứng dương rẻ tiền), nhưng phải qua `mergeState`.
+  if (!/mergeState\s*\(/.test(wt)) fail.push(`mergeState${L} wt-clean.mjs không GỌI \`mergeState\` — bug #97 quay lại được mà không ai biết`);
+  else ok.push(`mergeState${L} wt-clean.mjs đi qua \`mergeState\`, không tự hỏi \`--merged\` rồi tự kết luận`);
+
+  // `codeOnly` tự nó phải được chứng minh, nếu không nó chỉ dời chỗ cho cùng một sự tự tin.
+  const cSample = codeOnly('/* mergeState trong comment */\nconst a = 1; // mergeState nữa\nconst u = "https://x/y";');
+  if (/mergeState/.test(cSample)) fail.push(`mergeState${L} codeOnly KHÔNG bỏ được comment — mọi phép kiểm dựng trên nó là vô nghĩa`);
+  else if (!cSample.includes('https://x/y')) fail.push(`mergeState${L} codeOnly cắt nhầm URL trong chuỗi — nó sẽ báo oan`);
+  else ok.push(`mergeState${L} codeOnly bỏ comment (khối + dòng) mà KHÔNG cắt \`https://\` trong chuỗi`);
 }
 
 // ─── pack.json: MỌI field được ghi phải có bên ĐỌC ───────────────────────────

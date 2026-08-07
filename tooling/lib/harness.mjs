@@ -337,6 +337,79 @@ export function budgetStatus({ cap, alertAtPercent = 80, latest = null, now = Da
 }
 
 /**
+ * ═══ BỎ COMMENT, GIỮ CODE ═══════════════════════════════════════════════════
+ *
+ * *"Neo vào CODE, đừng neo vào comment giải thích code"* đã gặp **bốn** lần ở repo này
+ * (v2.10.2 vá guard import; `governanceDrift` báo oan `paths.harness` vì chính ghi chú của nó
+ * nhắc tới khoá đó; và 2026-08-08 một assertion mới toanh của `mergeState` **không giết được
+ * mutant** vì chữ `mergeState` vẫn nằm trong comment của file đã bị gỡ hết lời gọi).
+ *
+ * Lần thứ tư là lúc nó thôi là giai thoại và thành một hàm. Mọi phép kiểm dạng *"file X có
+ * thật sự GỌI Y không"* phải đi qua đây trước.
+ *
+ * PHẠM VI CÓ CHỦ Ý HẸP: bỏ khối `/* *\/` và phần sau `//` tới hết dòng. `//` đứng sau `:`
+ * được giữ (URL trong chuỗi). Nó KHÔNG phải parser JS, và không cần là parser: một chuỗi bị
+ * cắt nhầm chỉ làm phép kiểm chặt hơn ở chỗ nó vốn đã không nên tin chuỗi.
+ */
+export function codeOnly(src) {
+  return String(src)
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .split('\n')
+    .map(line => line.replace(/(^|[^:])\/\/.*$/, '$1'))
+    .join('\n');
+}
+
+/**
+ * ═══ NHÁNH NÀY VÀO `main` CHƯA — BA TRẠNG THÁI, KHÔNG PHẢI HAI ══════════════
+ *
+ * `git branch --merged` hỏi *"commit này có phải tổ tiên của main không"*. **Squash-merge tạo
+ * một commit MỚI**, nên commit gốc không bao giờ thành tổ tiên — và với phép hỏi đó, một nhánh
+ * ĐÃ squash-merge đọc **giống hệt** một nhánh chưa từng có PR.
+ *
+ * Đo 2026-08-07 (issue #97): PR #89 merge lúc 13:10:45Z → squash `cd450bf`, worktree sạch
+ * hoàn toàn, `wt-clean --apply` in *"giữ (chưa merge)"* và không xoá gì. Repo này squash
+ * **100%** số PR, nên bộ dò cũ **chưa từng đúng một lần nào** kể từ khi có.
+ *
+ * Nó lệch về phía "giữ" nên không mất dữ liệu — và đó chính là lý do nó sống lâu mà không ai
+ * thấy. Hệ quả thật không phải mất việc, mà là worktree tích lại IM LẶNG và `/wt` không bao
+ * giờ đỏ. Một cảnh báo không bao giờ bật thì không phân biệt được với một cảnh báo không có.
+ *
+ * BÀI HỌC NÀY ĐÃ ĐƯỢC GHI RA MỘT LẦN RỒI. `overlap-scan.mjs:41` có comment nói đúng chuyện
+ * này — nhưng nó nằm ở file **không xoá gì cả**, còn file thật sự xoá worktree thì không được
+ * áp. Đó là lý do bản vá này là CODE, không phải thêm một comment thứ hai.
+ *
+ * BA trạng thái, và trạng thái thứ ba là lý do hàm này tồn tại:
+ *   · `merged`  — bằng chứng DƯƠNG: git nói tổ tiên, HOẶC GitHub nói có PR đã merge.
+ *   · `open`    — hỏi được GitHub, và nó trả về KHÔNG có PR merged nào.
+ *   · `unknown` — KHÔNG hỏi được (không `gh`, không mạng, chưa đăng nhập, không phải repo
+ *                 GitHub). Đây KHÔNG phải `open`. Gộp nó vào `open` là quay lại đúng bug cũ
+ *                 với một câu chữ dễ chịu hơn: *"giữ (chưa merge)"* khẳng định một điều mà
+ *                 phép đo không biết. Xem `knowledge/lessons/0005`.
+ *
+ * THUẦN: cả `mergedSet` lẫn `ask` đều tiêm vào. Không đọc đĩa, không gọi mạng — nên test lái
+ * được cả ba nhánh mà không cần dựng repo git hay có `gh` trên máy CI.
+ */
+export function mergeState(branch, { mergedSet = new Set(), ask = () => ({ status: 1, stderr: 'chưa tiêm `ask`' }) } = {}) {
+  if (!branch) return { state: 'unknown', why: 'detached HEAD — không có nhánh để hỏi' };
+  if (mergedSet.has(branch)) return { state: 'merged', why: 'git: đã là tổ tiên của origin/main' };
+  const r = ask(branch) ?? {};
+  if (r.status !== 0) {
+    const err = String(r.stderr ?? '');
+    const hint = /ENOENT|command not found|not recognized/i.test(err) ? 'không có `gh` trên máy này'
+      : /auth|login|credential/i.test(err) ? '`gh` chưa đăng nhập'
+      : err.trim().split('\n')[0].slice(0, 80) || 'lỗi không rõ';
+    return { state: 'unknown', why: `không hỏi được GitHub (${hint})` };
+  }
+  let prs;
+  try { prs = JSON.parse(r.stdout || '[]'); }
+  catch { return { state: 'unknown', why: '`gh` trả về thứ không parse được' }; }
+  if (!Array.isArray(prs)) return { state: 'unknown', why: '`gh` trả về thứ không phải mảng' };
+  if (!prs.length) return { state: 'open', why: 'GitHub: không có PR nào đã merge cho nhánh này' };
+  return { state: 'merged', pr: prs[0].number,
+    why: `PR #${prs[0].number} đã merge ${String(prs[0].mergedAt ?? '').slice(0, 10)} — squash, nên git không thấy` };
+}
+
+/**
  * Entry đo chi tiêu GẦN NHẤT, hoặc `null` nếu chưa từng đo. Phần IO của `budgetStatus`.
  */
 export function latestCapoEntry() {

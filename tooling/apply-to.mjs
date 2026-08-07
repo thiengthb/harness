@@ -57,6 +57,7 @@ const SEED = [
   'knowledge/lessons/0003-self-test-gia-dinh-repo-cua-no.md',
   'knowledge/lessons/0004-gac-hong-thi-phai-chan.md',
   'knowledge/lessons/0005-bo-dem-do-ve-phia-de-chiu.md',
+  'knowledge/lessons/0006-do-khong-duoc-khong-phai-la-khong.md',
   'features/_index.json', 'features/_TEMPLATE.json',
   'docs/CONFLICTS.md', 'docs/WIP.md', 'docs/BRANCH-PROTECTION.md',
   'docs/DOR-DOD.md', 'docs/onboarding.md', 'docs/ROADMAP-30D.md',
