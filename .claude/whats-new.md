@@ -1,4 +1,4 @@
-<!-- version: 2026-08-07-c -->
+<!-- version: 2026-08-07-d -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,17 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-07 — `/handoff` thôi nói "không có gì" khi nó KHÔNG BIẾT (v2.29.0)
+
+Nhánh không theo quy ước `<type>/<issue>-<slug>` làm `rituals.mjs` không suy ra được issue —
+và `/handoff` gộp chuyện đó với "đang ở nhánh tích hợp" rồi báo `ok`. Nhật ký W32 đã bắt
+được đúng ca này: *"OK — không có gì để giao lại"* trong khi có 2 commit chưa push.
+
+**Việc bạn phải làm khác đi:** đặt tên nhánh theo quy ước thì bảng đo được. Không thì nó
+báo `?` — thành thật hơn, và đó là điểm.
+
+Kèm bài học **L0005** (`knowledge/lessons/0005-*`, 6 lần, `universal`) + eval `0006`.
 
 ## 2026-08-07 — Trần chi tiêu thôi là con số không ai đọc (v2.28.0)
 

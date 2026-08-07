@@ -893,7 +893,7 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   const base = {
     issue: '', progressExists: false, commitsSinceProgress: 0, ahead: 0, integrationBranch: 'origin/main',
     fixlogTotal: 0, fixlogRepeated: 0, learningsNewerThanLessons: 0,
-    skillCount: 5, maxSkills: 12, worktrees: 1, maxWorktrees: 4, pendingPacks: 0,
+    skillCount: 5, maxSkills: 12, worktrees: 1, maxWorktrees: 4, pendingPacks: 0, harnessBlocks: 0,
     claudeCodeVersion: '2.1.221', reviewedClaudeCode: '2.1.221', reviewedClaudeCodeAt: '2026-08-05T00:00:00.000Z',
     // "Trạng thái ĐỦ" cho ngân sách = đã khai trần VÀ đã đo. Chỉ khai trần thôi là `?` —
     // ca ③ bên dưới khoá đúng điều đó.
@@ -1093,6 +1093,21 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   if (!Array.isArray(broken) || broken.length !== clean.length || !broken.every(r => r.state === '?')) {
     fail.push('rituals.mjs                 trạng thái RỖNG làm bảng sập hoặc cho ra trạng thái khác `?` — SessionStart sẽ mất toàn bộ định hướng');
   } else ok.push(`rituals.mjs${' '.repeat(17)} MUTANT: state rỗng ⇒ ${broken.length} mục \`?\`, bảng KHÔNG sập`);
+
+  // ⑤b MUTANT nguy hiểm hơn ⑤: state là một OBJECT THIẾU KHOÁ, không phải `null`.
+  //     `evaluate(null)` ném lỗi ⇒ bị bắt ⇒ `?`. Nhưng `evaluate({})` KHÔNG ném: mọi `s.x` là
+  //     `undefined`, và một phép so `=== null` cho nó đi thẳng xuống nhánh DỄ CHỊU. Đo
+  //     2026-08-07: 10/12 mục ra `ok`, kèm những dòng như *"undefined/undefined skill"*.
+  //
+  //     Ca này giống thực tế HƠN ca `null`: nó là hình dạng của một `collect()` bị refactor
+  //     làm rơi mất một khoá. Đó đúng là L0005 — bộ đếm đổ về phía dễ chịu — sống trong
+  //     chính file đo bộ đếm.
+  const partial = evaluate({});
+  const notQ = partial.filter(r => r.state !== '?');
+  if (notQ.length) {
+    fail.push(`rituals.mjs${' '.repeat(17)} state THIẾU KHOÁ (không phải null) ⇒ ${notQ.length} mục vẫn ra \`${notQ[0].state}\`: `
+      + `${notQ.map(r => r.id).join(' · ')} — dùng \`== null\` để \`undefined\` cũng là KHÔNG ĐO ĐƯỢC`);
+  } else ok.push(`rituals.mjs${' '.repeat(17)} state THIẾU KHOÁ ⇒ cả ${partial.length} mục \`?\` (undefined KHÔNG lọt thành \`ok\`)`);
 }
 
 // ─── PHÉP ĐẾM mà HAI công cụ cùng hỏi ────────────────────────────────────────
@@ -1993,7 +2008,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 153;
+const RATCHET = 154;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

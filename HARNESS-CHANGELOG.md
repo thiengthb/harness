@@ -11,6 +11,53 @@
 
 ---
 
+## 2.29.0 — 2026-08-07
+
+**minor.** Promote **L0005** — *"một bộ đếm không phân biệt được hai trạng thái sẽ đổ về phía
+DỄ CHỊU"* — và bản thân việc promote bắt được hai ca của chính nó đang sống trong `rituals.mjs`.
+
+### Bài học
+
+`knowledge/lessons/0005-bo-dem-do-ve-phia-de-chiu.md` · `scope: universal` ·
+`occurrences: 6` · gate đi kèm: `evals/tasks/0006-chua-do-khong-phai-on.md`.
+
+Sáu lần độc lập từ v2.16.0 tới v2.28.0: `fixlogKey` gom theo từ vựng · `harness.version` lệch ·
+eval đếm *chưa-đo* thành FAIL · `features/` rỗng ⇒ mọi tỉ lệ 100% · ba bộ đếm pack nói ngược
+nhau · `monthlyUsdCap` là field ma.
+
+Hai chiều gộp **không đối xứng**: gộp về FAIL sinh tiếng ồn, và tiếng ồn được điều tra. Gộp
+về PASS sinh một dấu tick xanh, và **không ai điều tra một dấu tick xanh**.
+
+### Hai ca bắt được ngay lúc promote
+
+1. **`undefined` lọt thành `ok`.** Mọi `check` trong `rituals.mjs` dùng `s.x === null` cho
+   "không đo được". Một state THIẾU KHOÁ (hình dạng của một `collect()` bị refactor làm rơi
+   một khoá) cho `undefined`, và `=== null` đưa nó thẳng xuống nhánh dễ chịu.
+   Đo: `evaluate({})` → **10/12 mục ra `ok`**, kèm những dòng như *"undefined/undefined skill"*.
+   Ca `MUTANT` sẵn có dùng `evaluate(null)` — cái đó NÉM LỖI nên bị bắt; ca object-thiếu-khoá
+   thì không ném, và nó giống thực tế hơn.
+
+2. **`/handoff` nói "không có gì để giao lại" khi nó KHÔNG BIẾT.** Nhánh không theo quy ước
+   `<type>/<issue>-<slug>` ⇒ `issue === null` ⇒ gộp chung với `issue === ''` (đang ở nhánh
+   tích hợp) ⇒ `ok`. Nhật ký `docs/progress/vong-hoc-2026-W32.md` đã ghi đúng ca này trong
+   bảng "BÀI HỌC ĐẮT NHẤT": *"/handoff OK — không có gì để giao lại | có 2 commit chưa push
+   + người dùng sắp sang máy khác"*. Giờ nó là `?`, và `/verify-ui` tách tương tự.
+
+### Một chỗ KHÔNG được đổi — và eval mới bắt được
+
+`verify-ui` dùng `=== null` **cố ý**: ở mục đó `null` = không đọc được `features/`,
+`undefined` = đọc được nhưng không feature nào khai issue này. Đổi sang `== null` làm dòng
+xử lý `undefined` thành **mã chết**. Lần sửa hàng loạt đầu tiên đã làm đúng điều đó, và
+`evals/tasks/0006` bắt được trong lần chạy kế tiếp.
+
+### Repo đã áp harness cần làm gì
+
+Không gì bắt buộc. Bảng `rituals.mjs --all` của bạn có thể hiện thêm mục `?` — **đó là trạng
+thái thật, chỉ chưa được nói ra**. Một nhánh không theo quy ước đặt tên giờ làm `/handoff` và
+`/verify-ui` báo `?` thay vì `ok`.
+
+---
+
 ## 2.28.1 — 2026-08-07
 
 **patch.** `harness-doctor` thôi tố nhật ký `docs/progress/` là tham chiếu chết.
