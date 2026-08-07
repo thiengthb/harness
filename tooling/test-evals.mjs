@@ -20,7 +20,7 @@
  * HỘP ĐEN, không import: gọi `evals/run.mjs` qua CLI với `HARNESS_CONFIG` + `EVAL_TASKS_DIR`.
  * Như vậy suite đi qua cả đường đọc config thật, không chỉ một hàm bị bóc khỏi ngữ cảnh.
  */
-import { mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -275,6 +275,82 @@ ${assertions}
     fail.push('⑪ task hỏng-hạ-tầng vẫn nằm trong MẪU SỐ tỉ lệ — tỉ lệ đang tính trên một phép đo không xảy ra');
   } else {
     ok.push('⑪ agent hỏng vì hạ tầng (quota) ⇒ `?` kèm nguyên nhân, ra khỏi mẫu số — không phải FAIL');
+  }
+}
+
+// ── ⑫ POSIX-ism trong assertion — nó chỉ đỏ trên Windows (#102) ──────────────
+//
+// Assertion chạy qua `spawnSync(cmd, {shell:true})` (`run.mjs:139`). Trên Windows đó là
+// **cmd.exe** (`process.env.ComSpec`). Một assertion viết bằng cú pháp POSIX hỏng ở đó và
+// XANH trên Linux/macOS — nên nó đi qua CI của hầu hết mọi người mà không ai thấy.
+//
+// HAI NHÓM, VÀ CHỈ HAI. Đo trực tiếp trên cmd.exe 2026-08-08, chạy y hệt cách runner chạy:
+//
+//   FAIL  git rev-parse HEAD > /dev/null    "The system cannot find the path specified."
+//   FAIL  ... >/dev/null · ... 2>/dev/null
+//   PASS  ... 2>&1                    ← cmd.exe CÓ hỗ trợ
+//   PASS  test -f AGENTS.md           ← Git-for-Windows để test.exe trong PATH
+//   PASS  [ -f AGENTS.md ]            ← và [.exe
+//   PASS  echo ok && test -f ...      ← && chạy
+//
+// Ba nhóm cuối KHÔNG bị chặn: chặn thứ đang chạy được là dương tính giả, và
+// `knowledge/lessons/0002-guard-ban-nham.md` là bài học của repo này về đúng chuyện đó.
+//
+// `$(…)` bị chặn vì lý do KHÁC và tệ hơn: cmd.exe không có command substitution, nên nó so
+// **chuỗi literal**. Đo được:
+//
+//   test "$(echo hi)" = "hi"   → POSIX exit 0, cmd.exe exit 1   ← FAIL GIẢ
+//   test -n "$(git rev-parse HEAD)" → cmd.exe exit 0            ← PASS GIẢ (literal khác rỗng)
+//
+// Tức nó cho kết quả SAI TUỲ Ý, không phải sai một chiều. Một assertion pass giả tệ hơn một
+// assertion fail: nó báo an toàn ở nơi không có gì được kiểm.
+//
+// CHỈ QUÉT KHỐI ĐƯỢC CHẠY. `## Dựng cảnh` và văn xuôi được phép chứa POSIX — runner không
+// chạy chúng, chúng là ví dụ cho người đọc.
+{
+  const POSIX = [
+    [/\/dev\/null/, '`/dev/null` — cmd.exe chuyển hướng vào `\\dev\\null`, và assertion ĐỎ bất kể agent làm gì'],
+    [/\$\(/, '`$(…)` — cmd.exe không có command substitution, nó so CHUỖI LITERAL ⇒ kết quả sai tuỳ ý (đo được cả pass giả lẫn fail giả)'],
+  ];
+  const scan = (block) => POSIX.filter(([re]) => re.test(block)).map(([, why]) => why);
+
+  // ⑫a Bộ dò phải THẬT SỰ dò được. Ở template mọi task đều sạch, nên nếu không có ca dương
+  //     này thì check sẽ xanh vĩnh viễn và không ai biết nó đã chết. Đây là mẫu số của nó.
+  const POS = [
+    ['git rev-parse HEAD > /dev/null', 1], ['x >/dev/null', 1], ['x 2>/dev/null', 1],
+    ['test -n "$(git rev-parse HEAD)"', 1],
+    ['git rev-parse HEAD', 0], ['x 2>&1', 0], ['test -f AGENTS.md', 0], ['[ -f AGENTS.md ]', 0],
+    ['echo ok && test -f AGENTS.md', 0],
+  ];
+  const badDet = POS.filter(([s, n]) => scan(s).length !== n);
+  if (badDet.length) fail.push(`⑫a bộ dò POSIX-ism sai ${badDet.length}/${POS.length} ca: ${badDet.map(c => c[0]).join(' · ')}`);
+  else ok.push(`⑫a bộ dò POSIX-ism ${POS.length} ca — bắt \`/dev/null\` và \`$(…)\`; KHÔNG bắt \`2>&1\` · \`test -f\` · \`[ … ]\` · \`&&\` (đã đo: chúng chạy trên cmd.exe)`);
+
+  // ⑫b Quét task THẬT của repo này.
+  const TASKDIR = repoPath('evals', 'tasks');
+  const hits = [];
+  let scanned = 0;
+  try {
+    for (const f of readdirSync(TASKDIR).filter(n => n.endsWith('.md') && !n.startsWith('_'))) {
+      const body = readFileSync(join(TASKDIR, f), 'utf8');
+      const block = body.match(/## Chấm lớp 1[\s\S]*?```bash\n([\s\S]*?)```/)?.[1];
+      if (!block) continue;
+      scanned++;
+      for (const line of block.split('\n')) {
+        if (line.trim().startsWith('#') || !line.trim()) continue;
+        for (const why of scan(line)) hits.push(`${f}: \`${line.trim().slice(0, 60)}\` — ${why}`);
+      }
+    }
+  } catch { /* không có thư mục task ⇒ scanned = 0, xử lý ngay dưới */ }
+
+  if (!scanned) {
+    warn.push('⑫b KHÔNG có task nào để quét POSIX-ism — check này chưa nói được gì (n/a, KHÔNG phải pass)');
+  } else if (hits.length) {
+    fail.push(`⑫b ${hits.length} assertion dùng cú pháp POSIX — vi phạm Parity Contract, và chúng chỉ đỏ trên Windows:\n`
+      + hits.map(h => `         · ${h}`).join('\n')
+      + '\n         Sửa trong task, đừng nới check: một assertion sai IM LẶNG trên một OS thì mọi số nó góp vào đều đáng ngờ.');
+  } else {
+    ok.push(`⑫b ${scanned} task — không assertion nào dùng \`/dev/null\` hay \`$(…)\``);
   }
 }
 

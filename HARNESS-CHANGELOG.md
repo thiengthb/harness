@@ -11,6 +11,64 @@
 
 ---
 
+## 2.40.1 — 2026-08-08
+
+**patch.** Assertion eval dùng cú pháp POSIX giờ bị bắt — nó chỉ đỏ trên Windows, và im trên
+hai OS còn lại. Đóng #102.
+
+### Vấn đề: một lớp xác minh chỉ đúng trên 2/3 OS
+
+Assertion `## Chấm lớp 1` chạy qua `spawnSync(cmd, {shell: true})` (`run.mjs:139`). Trên
+Windows đó là **cmd.exe**. Một assertion POSIX hỏng ở đó và **xanh** trên Linux/macOS — nên nó
+đi qua CI của hầu hết mọi người mà không ai thấy. `AGENTS.md §Parity Contract` đòi cả ba OS;
+lớp eval chưa có gì cưỡng chế điều đó.
+
+### HAI nhóm bị chặn, và ba nhóm CỐ Ý không
+
+Đo trực tiếp trên cmd.exe 2026-08-08, chạy y hệt cách runner chạy:
+
+| assertion | cmd.exe |
+|---|---|
+| `... > /dev/null` · `>/dev/null` · `2>/dev/null` | **FAIL** — *"The system cannot find the path specified."* |
+| `... 2>&1` | PASS — cmd.exe **có** hỗ trợ |
+| `test -f AGENTS.md` | PASS — Git-for-Windows để `test.exe` trong PATH |
+| `[ -f AGENTS.md ]` | PASS — và `[.exe` |
+| `echo ok && test -f ...` | PASS |
+
+**Ba nhóm cuối không bị chặn.** Chặn thứ đang chạy được là dương tính giả, và
+`knowledge/lessons/0002-guard-ban-nham.md` là bài học của chính repo này về đúng chuyện đó.
+Bản đầu của bản vá này định chặn cả `2>&1` và `[ … ]` — **phép đo đã ngăn lại**.
+
+`$(…)` bị chặn vì lý do **khác và tệ hơn**: cmd.exe không có command substitution nên nó so
+**chuỗi literal**.
+
+```
+test "$(echo hi)" = "hi"          POSIX exit 0  ·  cmd.exe exit 1   ← FAIL GIẢ
+test -n "$(git rev-parse HEAD)"                 ·  cmd.exe exit 0   ← PASS GIẢ
+```
+
+Kết quả **sai tuỳ ý**, không sai một chiều. Một assertion pass giả tệ hơn một assertion fail:
+nó báo an toàn ở nơi không có gì được kiểm.
+
+### Vì sao một CHECK, không phải một bản vá cho consumer
+
+Template **đã sạch** — bỏ `> /dev/null` từ v2.24.0 (#64). Nhưng `evals/tasks/` là **SEED**:
+`upgrade.mjs` tạo một lần, **không bao giờ ghi đè** (phân loại đúng — task là nội dung của đội).
+
+Nên bản sửa đó **không bao giờ tới được consumer đã tồn tại**. Đo được: `sakubun-single-user` ở
+**v2.30.2** — sau bản sửa — vẫn mang `> /dev/null`.
+
+Một migration vá task của họ phải **đoán** họ chưa sửa tay, và nó chạm nội dung của đội. Một
+check thì không, và nó bắt cả task **do đội tự viết** — thứ migration không bao giờ chạm tới.
+
+### Phạm vi và mẫu số
+
+Chỉ quét khối `## Chấm lớp 1`. `## Dựng cảnh` và văn xuôi được phép chứa POSIX — runner không
+chạy chúng.
+
+Ở template mọi task đều sạch, nên một check chỉ quét task thật sẽ **xanh vĩnh viễn** và không
+ai biết nó đã chết. Ca ⑫a là mẫu số của nó: 9 ca khẳng định thẳng vào bộ dò, gồm cả 5 ca phải
+**KHÔNG** bắt. Kiểm: cắm hai POSIX-ism vào một task thật ⇒ `exit 1`, gỡ ra ⇒ `exit 0`.
 ## 2.40.0 — 2026-08-08
 
 **minor.** `wt-clean` thôi mù với squash-merge, và **"không hỏi được" thôi bị viết thành
