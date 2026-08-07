@@ -1,4 +1,4 @@
-<!-- version: 2026-08-07-j -->
+<!-- version: 2026-08-07-k -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,20 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-07 — `dcg` thôi chặn văn bản NHẮC tới lệnh (v2.36.0)
+
+Guard từng chặn cả `git commit -m "…git push --force…"`, cả heredoc viết fixture, và **cả
+lệnh `gh issue create` mở issue báo về chính nó**. Cùng lúc, 5/5 biến thể nguỵ trang bằng
+nháy (`git "push" --force`) thì **đi lọt**.
+
+Giờ nó khớp theo **lệnh**: bóc thân heredoc, cắt theo `; && || |`, bỏ nháy, và mỗi điều cấm
+khai nó nói về **chương trình** nào.
+
+**Việc bạn phải làm khác đi:** không gì. Nhưng đọc `.claude/rules/danger-zones.md` một lần —
+nó thôi nói *"cưỡng chế bằng máy"* chung chung và giờ nói rõ **hai tầng**: `permissions.deny`
+là tầng một (vendor cưỡng chế), hook là tầng hai (giải thích + telemetry, **best-effort**).
+`dcg` vẫn không bắt được biến shell, `eval`, hay `base64 -d | sh` — và điều đó được viết ra.
 
 ## 2026-08-07 — SỬA LẠI: hai field `budget` KHÔNG phải field ma (v2.35.0)
 
