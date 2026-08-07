@@ -1286,6 +1286,45 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   else ok.push(`teamSize/isSolo${L} ${TABLE.length} ca — chỉ số nguyên dương là câu trả lời, chỉ \`1\` bật solo, 6 dạng rác đều ra \`chưa khai\``);
 }
 
+// ─── telemetry của FIXTURE không được rơi vào sổ THẬT ────────────────────────
+//
+// Cột `N qua · M chặn` là thứ `/harness-retro` bước 1 dặn đọc TRƯỚC, và bước 4 dùng để
+// quyết định CẮT cái gì. Đo 2026-08-07: 2/6 mục `gate-fails.log` mang project id của
+// FIXTURE. Tổng 6 lần chặn thật ra là 1 cứu thật · 3 dương tính giả · 2 rác.
+//
+// Suite thì SẠCH (`TEST_ENV` có `HARNESS_TELEMETRY_DIR`, `mutate()` truyền xuống). Nguồn rò
+// là probe hook BẰNG TAY lúc phát triển. Nên phép kiểm phải chạy với biến môi trường đó
+// BỊ XOÁ — nếu không nó khẳng định đúng cái ca không hỏng.
+//
+// So NHÃN chứ không so đường dẫn: đường dẫn chứa `tmpdir()` và thư mục repo ⇒ khác nhau
+// theo máy và theo OS. Parity Contract.
+{
+  const L = ' '.repeat(13);
+  const probe = repoPath('tooling', 'fixtures', 'print-telemetry-dir.mjs');
+  const run = (cfg, extra = {}) => String(spawnSync(process.execPath, [probe], {
+    encoding: 'utf8', cwd: repoPath(''),
+    // `HARNESS_TELEMETRY_DIR: ''` — XOÁ cửa thoát của suite, tái hiện đúng ca probe tay.
+    env: { ...process.env, ...TEST_ENV, HARNESS_TELEMETRY_DIR: '', HARNESS_CONFIG: cfg, ...extra },
+  }).stdout || '').trim();
+
+  const FIXTURE_CFG = repoPath('tooling', 'fixtures', 'config-guard-paths.json');
+  const REAL_CFG = repoPath('harness.config.json');
+
+  //        nhãn ca                              config        env thêm                        mong đợi
+  const TABLE = [
+    ['fixture + không có env',                   FIXTURE_CFG, {},                              'TEST'],
+    ['config THẬT + không có env',               REAL_CFG,    {},                              'THẬT'],
+    ['env thắng tất cả, kể cả với config thật',  REAL_CFG,    { HARNESS_TELEMETRY_DIR: TEST_TELEMETRY_DIR }, 'TEST'],
+  ];
+  const bad = [];
+  for (const [name, cfg, extra, want] of TABLE) {
+    const got = run(cfg, extra);
+    if (got !== want) bad.push(`${name}: được \`${got}\`, cần \`${want}\``);
+  }
+  if (bad.length) fail.push(`telemetryDir${L} ${bad.length}/${TABLE.length} ca sai: ${bad.join(' | ')}`);
+  else ok.push(`telemetryDir${L} ${TABLE.length} ca — project id \`fixture-*\` chuyển hướng khỏi sổ THẬT kể cả khi không ai set biến môi trường`);
+}
+
 // ─── coordinationLayer: repo TEMPLATE không được bị đòi khai `teamSize` ──────
 //
 // Bug #56 đang mở là đúng lớp này: một advice đỏ VĨNH VIỄN trong repo template, về một việc
@@ -1716,7 +1755,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 140;
+const RATCHET = 141;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

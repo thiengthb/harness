@@ -11,6 +11,58 @@
 
 ---
 
+## 2.25.0 — 2026-08-07
+
+**minor.** Telemetry của FIXTURE thôi rơi vào sổ THẬT. Từ `/harness-retro` §3 (#66).
+
+### Bộ đếm mà retro đọc ĐẦU TIÊN đang bị nhiễu bởi chính việc phát triển hook
+
+`/harness-retro` bước 1 dặn: *"đọc cột `N qua · M chặn` TRƯỚC khi đọc bất cứ gì khác"*, và
+bước 4 dùng đúng cột đó để quyết định **CẮT** cái gì. Cột `project` của `gate-fails.log`:
+
+```
+04:41  CHANGEME-project-id   dcg                    ← thật (dương tính giả)
+04:42  CHANGEME-project-id   dcg                    ← thật (dương tính giả)
+04:53  CHANGEME-project-id   dcg                    ← thật (dương tính giả)
+09:21  CHANGEME-project-id   protect-tests          ← THẬT, và là lần cứu THẬT DUY NHẤT
+13:37  fixture-guard-paths   block-generated-edit   ← KHÔNG THẬT
+13:38  fixture-lint-fails    post-edit-lint         ← KHÔNG THẬT
+```
+
+Tổng **6 lần chặn** từ trước tới nay thật ra là: **1 cứu thật · 3 dương tính giả · 2 rác**.
+
+**Suite thì SẠCH** — đo trực tiếp: chạy `test-hooks` + `test-evals`, log thật giữ nguyên
+**6 → 6 dòng**. `TEST_ENV` có `HARNESS_TELEMETRY_DIR` từ v2.13.0 và `mutate()` truyền nó
+xuống. Nguồn rò là **probe hook BẰNG TAY lúc phát triển** — chạy hook với `HARNESS_CONFIG`
+trỏ fixture rồi quên chuyển đích. Suite có kỷ luật; probe tay thì không, và probe tay đúng
+là thứ người ta làm khi đang viết một hook.
+
+### Một mệnh đề ở PHỄU, không phải một lời nhắc
+
+`telemetryDir()` là chỗ **mọi** đường ghi đi qua. Giờ: `project.id` bắt đầu bằng `fixture-`
+⇒ **chuyển hướng** sang `TEST_TELEMETRY_DIR`. `HARNESS_TELEMETRY_DIR` vẫn thắng tất cả.
+
+**Chuyển hướng, KHÔNG vứt.** Dữ liệu vẫn được ghi, chỉ vào đúng chỗ. Vứt im lặng biến một
+cơ chế thành vô hình — đúng lớp lỗi `block()` đã đóng ở v2.17.0.
+
+Vì sao không phải một dòng tài liệu *"nhớ set `HARNESS_TELEMETRY_DIR` khi probe"*:
+`danger-zones.md` đã viết sẵn câu trả lời — *"mọi thứ chỉ tồn tại dưới dạng lời nhắc sẽ bị
+bỏ qua bởi người đang gấp, và người đang gấp luôn tồn tại."*
+
+**Đánh đổi, nói rõ:** một project THẬT tên `fixture-…` sẽ bị chuyển hướng nhầm (`setup.mjs`
+suy `project.id` từ tên thư mục). Chấp nhận vì hai chiều hỏng không cân nhau: chiều này
+thấy ngay khi `harness-doctor` báo 0 bằng chứng; chiều ngược lại thì bộ đếm nói dối âm thầm.
+
+### Không có gì phải làm khi nâng cấp
+
+Sổ telemetry cũ **không bị đụng** — telemetry là bằng chứng, và xoá bằng chứng để làm đẹp số
+là đúng thứ `evals/tasks/0003-khong-tu-khen` tồn tại để bắt. Hai dòng rác cũ vẫn nằm đó;
+`.claude/telemetry/` là gitignore nên chúng chỉ ở máy đã sinh ra chúng.
+
+Sàn test: **140 → 141**.
+
+---
+
 ## 2.24.0 — 2026-08-07
 
 **minor.** `evals/run.mjs` — công cụ DUY NHẤT có quyền nói *"KHÔNG promote thay đổi này"* —
