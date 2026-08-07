@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, rmSync, readdirSync, cpSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial } from './lib/harness.mjs';
 
 const BLOCK = 2, OK = 0;
 
@@ -1392,6 +1392,99 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   else ok.push(`coordinationLayer${L} ${TABLE.length} ca — template KHÔNG bị đòi khai teamSize (bug #56 không tái tạo), vai lạ thì vẫn bị đòi`);
 }
 
+// ─── pack.json: MỌI field được ghi phải có bên ĐỌC ───────────────────────────
+//
+// Đây là bất biến GIỮA HAI FILE — không lint rule nào biểu diễn được, và một comment
+// "nhớ cập nhật cả hai đầu" là đúng thứ đã thất bại: `upstream.mjs:150` ghi rõ tác giả
+// BIẾT fixlog mới là payload có giá trị, rồi vẫn xây đúng một nửa kênh.
+//
+// Đo 2026-08-07 trước bản vá: `direction` · `evals` · `artifacts` · `mechanismDiffs` được
+// GHI mà không nơi nào ĐỌC, cộng cả file `fixlog.md` và thư mục `mechanism-diffs/`.
+// Chiều LÊN là chiều dễ tắt nhất của vòng học vì im lặng là trạng thái bình thường của nó.
+{
+  const L = ' '.repeat(9);
+  const src = readFileSync(repoPath('tooling', 'knowledge', 'upstream.mjs'), 'utf8');
+  // Cắt đúng object literal ghi vào pack.json, rồi lấy key ở cấp một.
+  const m = src.match(/writeFileSync\(join\(DEST, 'pack\.json'\), JSON\.stringify\(\{([\s\S]*?)\n\}, null, 2\)/);
+  if (!m) {
+    fail.push(`pack.json ↔ PACK_SCHEMA${L} không tìm thấy chỗ upstream.mjs ghi pack.json — test này đã mất neo, sửa regex`);
+  } else {
+    // `key: value` VÀ shorthand `key,` — bỏ sót dạng shorthand thì `sourceCommit`, cái neo
+    // của toàn bộ phép đếm "đã quyết", lọt lưới đúng cái hợp đồng này sinh ra để giữ.
+    const written = [...m[1].matchAll(/^ {2}(\w+)\s*[:,]/gm)].map(x => x[1]);
+    const declared = Object.keys(PACK_SCHEMA);
+    const orphan = written.filter(k => !declared.includes(k));
+    const ghost = declared.filter(k => !written.includes(k));
+    const empty = declared.filter(k => !PACK_SCHEMA[k]);
+    const bad = [
+      ...orphan.map(k => `\`${k}\` được GHI mà không khai bên đọc`),
+      ...ghost.map(k => `\`${k}\` khai ở PACK_SCHEMA mà upstream không còn ghi`),
+      ...empty.map(k => `\`${k}\` khai bên đọc rỗng — bảng này KHÔNG nhận ô trống`),
+    ];
+    if (!written.length) bad.push('không bóc được key nào — regex hỏng, không phải "pack rỗng"');
+    if (bad.length) fail.push(`pack.json ↔ PACK_SCHEMA${L} ${bad.join(' · ')}`);
+    else ok.push(`pack.json ↔ PACK_SCHEMA${L} ${written.length} field, field nào cũng khai được BÊN ĐỌC`);
+  }
+}
+
+// ─── packPending / packMaterial: một pack 0 bài học KHÔNG phải pack rỗng ──────
+//
+// Ba công cụ từng trả lời "có việc gì đang chờ?" bằng ba định nghĩa (issue #61):
+//   doctor = có THƯ MỤC `lessons/` · accept = có FILE `.md` trong đó · rituals = `sourceCommit`
+//   chưa vào `DECISIONS.log`. Pack `lessons: []` ⇒ doctor nói "1 pack — quyết đi", accept nói
+//   "Không có gì". Người tin cái nói không-có-gì, và 20 mục fixlog nằm đó mãi.
+{
+  const L = ' '.repeat(11);
+  const P = (o) => ({ sourceCommit: 'abc123', ...o });
+  const bad = [];
+  const eq = (name, got, want) => { if (got !== want) bad.push(`${name}: ${got} ≠ ${want}`); };
+
+  // ① pack KHÔNG bài học mà CÓ fixlog vẫn là pack có nguyên liệu — ca thật của #61
+  eq('fixlog-only.total', packMaterial({ lessons: [], fixlogEntries: 20 }).total, 20);
+  // ② diff cơ chế cũng là nguyên liệu — phần issue #61 bỏ sót
+  eq('diff-only.total', packMaterial({ mechanismDiffs: [{ rel: 'a' }, { rel: 'b' }] }).total, 2);
+  // ③ pack thật sự rỗng
+  eq('empty.total', packMaterial({ lessons: [], fixlogEntries: 0 }).total, 0);
+  // ④ rác không được cộng vào (chuỗi, số âm, null)
+  eq('rác.total', packMaterial({ lessons: 'nhiều', fixlogEntries: -3, evals: null }).total, 0);
+  // ⑤ commit đã vào sổ ⇒ ĐÃ quyết. Pack là snapshot, đếm sự TỒN TẠI thì đỏ vĩnh viễn.
+  eq('đã-quyết', packPending([P()], 'ACCEPT\tx\tp@abc123\tok').count, 0);
+  // ⑥ commit chưa vào sổ ⇒ chờ
+  eq('chưa-quyết', packPending([P()], '').count, 1);
+  // ⑦ KHÔNG đọc được commit ⇒ coi là CHƯA quyết, thà nhắc thừa còn hơn im lặng bỏ qua
+  eq('không-commit', packPending([{ name: 'x' }], 'abc123').count, 1);
+  // ⑧ `material` cộng qua các pack CHỜ, không cộng pack đã quyết
+  eq('material', packPending([P({ fixlogEntries: 7 }), P({ sourceCommit: 'z9', lessons: [1, 2] })],
+    'ACCEPT\tx\tp@z9\tok').material, 7);
+
+  if (bad.length) fail.push(`packPending/packMaterial${L} ${bad.length}/8 ca sai: ${bad.join(' | ')}`);
+  else ok.push(`packPending/packMaterial${L} 8 ca — pack 0 bài học mà có fixlog/diff vẫn là pack CÓ nguyên liệu`);
+}
+
+// ─── Ba nơi hỏi "pack nào chờ?" phải gọi CÙNG một hàm ─────────────────────────
+//
+// Bảng thuần ở trên khoá phán đoán, nhưng không ngăn ai đó đếm lại bằng tay ở file thứ tư.
+// Đây là phần ngăn nó: ba file phải import `packPending`, và không file nào được tự lặp qua
+// `knowledge/incoming/` để đếm nữa.
+{
+  const L = ' '.repeat(6);
+  const bad = [];
+  for (const rel of [['tooling', 'harness-doctor.mjs'], ['tooling', 'rituals.mjs'], ['tooling', 'knowledge', 'accept.mjs']]) {
+    const name = rel[rel.length - 1];
+    const s = readFileSync(repoPath(...rel), 'utf8');
+    // `packPending\(` chứ không phải `\bpackPending\b`: bản đầu chỉ đòi cái TÊN xuất hiện,
+    // và một dòng `import { packPending }` bỏ không dùng thoả mãn nó. Đo bằng mutant
+    // 2026-08-07: thay lời gọi trong doctor bằng `packs.length` mà test vẫn XANH.
+    if (!/packPending\s*\(/.test(s)) bad.push(`${name} không GỌI packPending()`);
+    // `readdirSync(...incoming...)` = đang tự đếm lại. `readPacks()` mới là đường đúng.
+    if (/readdirSync\([^)]*incoming/i.test(s) || /'incoming'\s*\)[\s\S]{0,80}readdirSync/.test(s)) {
+      bad.push(`${name} vẫn tự lặp qua knowledge/incoming/ — dùng readPacks()`);
+    }
+  }
+  if (bad.length) fail.push(`một định nghĩa "chờ quyết"${L} ${bad.join(' · ')}`);
+  else ok.push(`một định nghĩa "chờ quyết"${L} doctor · rituals · accept đều đi qua packPending()`);
+}
+
 // ─── /claim khi solo: cùng phép kiểm, khác NGƯỜI ĐỌC ─────────────────────────
 //
 // Solo KHÔNG tắt `/claim` — nhật ký vẫn cần, chỉ đổi người đọc. Nhưng lý do phải đổi theo:
@@ -1790,7 +1883,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 142;
+const RATCHET = 145;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

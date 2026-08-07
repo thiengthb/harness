@@ -6,6 +6,7 @@
  *   node tooling/knowledge/accept.mjs <pack>/<file.md>                  nhận thành bài học mới
  *   node tooling/knowledge/accept.mjs <pack>/<file.md> --merge L0001    gộp vào bài học đã có
  *   node tooling/knowledge/accept.mjs <pack>/<file.md> --reject "lý do"
+ *   node tooling/knowledge/accept.mjs <pack> --reviewed "kết luận"      đóng pack không có bài học
  *
  * VÌ SAO CẦN LỆNH NÀY
  *
@@ -30,23 +31,25 @@
 import { readdirSync, readFileSync, writeFileSync, appendFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { parseFrontmatter, stringifyFrontmatter } from '../lib/frontmatter.mjs';
-import { repoPath, report, exists, config, run } from '../lib/harness.mjs';
+import { repoPath, report, exists, config, run, readPacks, packPending, packMaterial } from '../lib/harness.mjs';
 
 const args = process.argv.slice(2);
 const LIST = args.includes('--list');
 const flag = (n) => { const i = args.indexOf(n); return i > -1 ? args[i + 1] : null; };
 const MERGE = flag('--merge');
 const REJECT = flag('--reject');
-const targetArg = args.find(a => !a.startsWith('--') && a !== MERGE && a !== REJECT);
+const REVIEWED = flag('--reviewed');
+const targetArg = args.find(a => !a.startsWith('--') && a !== MERGE && a !== REJECT && a !== REVIEWED);
 
 const INCOMING = repoPath('knowledge', 'incoming');
 const LESSONS = repoPath('knowledge', 'lessons');
 
 // ── --list ───────────────────────────────────────────────────────────────────
 function incomingLessons() {
-  if (!exists(INCOMING)) return [];
   const out = [];
-  for (const pack of readdirSync(INCOMING)) {
+  // Liệt kê pack qua `readPacks()`, KHÔNG tự `readdirSync` — một enumerator cho một thư mục.
+  // Hai vòng lặp riêng trên cùng thư mục là cách hai lệnh nói khác nhau về nó (issue #61).
+  for (const { name: pack } of readPacks(INCOMING) || []) {
     const dir = join(INCOMING, pack, 'lessons');
     if (!exists(dir)) continue;
     for (const f of readdirSync(dir).filter(f => f.endsWith('.md'))) {
@@ -58,27 +61,104 @@ function incomingLessons() {
   return out;
 }
 
-if (LIST || !targetArg) {
+function decisionsText() {
+  try { return readFileSync(repoPath('knowledge', 'DECISIONS.log'), 'utf8'); } catch { return ''; }
+}
+
+if (LIST || (!targetArg && !REVIEWED)) {
   const items = incomingLessons();
-  if (!items.length) {
-    console.log('\nKhông có gì trong knowledge/incoming/.');
+  const packs = readPacks(INCOMING);
+
+  // `null` = không đọc được thư mục. KHÔNG gộp với `[]`. Một lệnh in "không có gì" khi thật
+  // ra nó không nhìn được là cách chiều LÊN tắt mà không ai biết.
+  if (packs === null) {
+    console.error('\nKhông đọc được knowledge/incoming/ — KHÔNG phải "không có gì". Kiểm quyền thư mục.\n');
+    process.exit(1);
+  }
+  if (!packs.length) {
+    console.log('\nChưa pack nào trong knowledge/incoming/.');
     console.log('Nạp pack: node tooling/knowledge/import.mjs <đường-dẫn|git-url> --ref <tag>\n');
     process.exit(0);
   }
-  console.log(`\n=== ${items.length} BÀI HỌC CHỜ DUYỆT ===\n`);
-  for (const i of items) {
-    const age = Math.round((Date.now() - statSync(i.abs).mtimeMs) / 86400000);
-    console.log(`  ${i.ref}`);
-    console.log(`     ${i.data.title}`);
-    console.log(`     scope: ${i.data.scope} · dạng: ${i.data.representation} · lần: ${i.data.occurrences ?? '?'} · chờ ${age} ngày`);
+
+  const { pending } = packPending(packs, decisionsText());
+  if (!pending.length) {
+    console.log(`\n${packs.length} pack trong knowledge/incoming/, TẤT CẢ đã được quyết.`);
+    console.log('Lịch sử: knowledge/DECISIONS.log (được commit — dữ liệu của đội, không của một máy).\n');
+    process.exit(0);
   }
-  console.log(`
-  Nhận mới:   node tooling/knowledge/accept.mjs <ref>
+
+  console.log(`\n=== ${pending.length} PACK CHỜ QUYẾT ===\n`);
+  for (const p of pending) {
+    const m = packMaterial(p);
+    const arrow = p.direction === 'upstream' ? '↑ đi lên' : p.direction === 'downstream' ? '↓ đi xuống' : '·';
+    const days = p.exportedAt ? Math.round((Date.now() - Date.parse(p.exportedAt)) / 86400000) : null;
+    console.log(`  ${p.name}  ${arrow}  @${String(p.sourceCommit || '?').slice(0, 8)}`
+      + `  · harness v${p.sourceHarnessVersion ?? '?'}${days === null ? '' : ` · gửi ${days} ngày trước`}`);
+    console.log(`     ${m.lessons} bài học · ${m.fixlogEntries} mục fixlog · ${m.mechanismDiffs} diff cơ chế`
+      + ` · ${m.evals} eval · ${m.artifacts} artifact`);
+
+    // NGUYÊN LIỆU KHÔNG PHẢI BÀI HỌC. Đây là phần bản trước bỏ rơi hoàn toàn: một pack
+    // 0 bài học + 20 mục fixlog đọc ra là "Không có gì", nên nó nằm đó mãi. Nguyên liệu
+    // thô CHÍNH LÀ payload có giá trị nhất của chiều LÊN — bài học đã distill ở repo kia
+    // thường mang theo đặc thù repo kia, còn fixlog thô thì so được giữa các repo.
+    if (m.fixlogEntries) {
+      console.log(`     → fixlog THÔ:  knowledge/incoming/${p.name}/fixlog.md`);
+      console.log('       Đọc với ĐÚNG một câu hỏi: mục nào cũng thấy ở repo khác? Đó là ứng viên promote.');
+    }
+    if (m.mechanismDiffs) {
+      console.log(`     → diff cơ chế: knowledge/incoming/${p.name}/mechanism-diffs/`);
+      console.log('       Repo đó đã SỬA cơ chế của harness. Diff, không phải file — xem chính xác cái gì đổi.');
+    }
+    console.log('');
+  }
+
+  if (items.length) {
+    console.log(`--- ${items.length} bài học có thể nhận ngay ---\n`);
+    for (const i of items) {
+      const age = Math.round((Date.now() - statSync(i.abs).mtimeMs) / 86400000);
+      console.log(`  ${i.ref}`);
+      console.log(`     ${i.data.title}`);
+      console.log(`     scope: ${i.data.scope} · dạng: ${i.data.representation} · lần: ${i.data.occurrences ?? '?'} · chờ ${age} ngày`);
+    }
+    console.log('');
+  }
+
+  console.log(`  Nhận mới:   node tooling/knowledge/accept.mjs <ref>
   Gộp:        node tooling/knowledge/accept.mjs <ref> --merge <id-bài-học-có-sẵn>
               ↑ dùng khi bài học NÀY đã có ở repo bạn. Cộng bằng chứng từ repo khác
                 vào bài học sẵn có — đó là cách một bài học universal đủ ngưỡng 2 lần.
   Bỏ:         node tooling/knowledge/accept.mjs <ref> --reject "lý do"
+  ĐÃ ĐỌC:     node tooling/knowledge/accept.mjs <pack> --reviewed "kết luận"
+              ↑ cho pack KHÔNG có bài học nào để nhận. Không có lệnh này thì một pack
+                toàn nguyên liệu thô không bao giờ đóng được, và nghi thức đỏ vĩnh viễn.
 `);
+  process.exit(0);
+}
+
+// ── --reviewed: đóng một pack không có bài học nào để nhận ────────────────────
+//
+// Cái này tồn tại vì mọi lệnh khác đều thao tác trên MỘT BÀI HỌC. Một pack 20 mục fixlog
+// và 0 bài học không có đường nào đi qua chúng — nó ở lại "chờ quyết" mãi. Một mục đỏ
+// vĩnh viễn dạy người ta bỏ qua mục đỏ, và đó là cách vòng học chết mà không ai thấy.
+if (REVIEWED) {
+  const packName = targetArg;
+  if (!packName) { console.error('Thiếu tên pack: accept.mjs <pack> --reviewed "kết luận"'); process.exit(1); }
+  const pack = (readPacks(INCOMING) || []).find(p => p.name === packName);
+  if (!pack) { console.error(`Không có pack "${packName}" trong knowledge/incoming/. Chạy --list.`); process.exit(1); }
+  if (!pack.sourceCommit) {
+    console.error(`pack.json của "${packName}" không có sourceCommit — không neo được quyết định. Chạy lại upstream ở repo nguồn.`);
+    process.exit(1);
+  }
+  const m = packMaterial(pack);
+  const line = [new Date().toISOString(), 'REVIEWED', packName,
+    `${pack.sourceProject || packName}@${pack.sourceCommit}`,
+    `${m.total} mục nguyên liệu — ${REVIEWED}`].join('\t') + '\n';
+  try { appendFileSync(repoPath('knowledge', 'DECISIONS.log'), line, 'utf8'); }
+  catch (e) { console.error(`không ghi được knowledge/DECISIONS.log: ${e.message}`); process.exit(1); }
+  console.log(`\n✓ đã đóng pack "${packName}" (@${pack.sourceCommit.slice(0, 8)}, ${m.total} mục nguyên liệu)`);
+  console.log(`  ${REVIEWED}`);
+  console.log('  Ghi vào knowledge/DECISIONS.log — được commit, nên đây là dữ liệu của đội.\n');
   process.exit(0);
 }
 

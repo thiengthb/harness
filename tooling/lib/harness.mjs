@@ -10,7 +10,7 @@
  * trên Ubuntu / macOS / Windows, kể cả trước khi `install` chạy.
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, relative, resolve, sep, dirname } from 'node:path';
 import { tmpdir, platform, homedir } from 'node:os';
@@ -235,6 +235,116 @@ export function coordinationLayer({ teamSize: ts, role } = {}) {
     advice: '`project.teamSize` chưa khai — harness không biết đây là solo hay đội, nên giữ đủ '
       + 'lớp phối hợp liên-người (đặt chỗ, CODEOWNERS, "hỏi người"). Solo thì `node tooling/setup.mjs` tắt phần thừa.',
   };
+}
+
+/**
+ * ═══ HAI ĐẦU MỘT KÊNH, MỘT DANH SÁCH ════════════════════════════════════════
+ *
+ * Mọi field `upstream.mjs` ghi vào `pack.json` phải khai ở đây KÈM BÊN ĐỌC.
+ * `test-hooks.mjs` đọc mã nguồn `upstream.mjs`, lấy tập key nó ghi, và bắt buộc
+ * bằng đúng tập key ở đây — thêm field mà không nói ai đọc thì test ĐỎ.
+ *
+ * VÌ SAO PHẢI LÀ TEST, KHÔNG PHẢI TÀI LIỆU. Đây là bất biến GIỮA HAI FILE, không
+ * phải tính chất của một file — không lint rule nào biểu diễn được. Và "nhớ cập nhật
+ * cả hai đầu" dưới dạng comment là đúng thứ ĐÃ THẤT BẠI: comment ở `upstream.mjs:150`
+ * ghi rõ tác giả BIẾT fixlog mới là payload có giá trị, rồi vẫn xây đúng một nửa kênh.
+ *
+ * ĐO 2026-08-07 trên `main` — trước bản vá này, BỐN field không có bên đọc nào,
+ * cộng hai payload trên đĩa:
+ *
+ *     direction · evals · artifacts · mechanismDiffs   +  fixlog.md  +  mechanism-diffs/
+ *
+ * (Issue #61 nói `fixlogEntries` không ai đọc — SAI: `consumers.mjs:56` đọc nó. Và nó bỏ
+ * sót `mechanismDiffs`, cái nặng hơn. Cả hai nhầm lẫn đến từ cùng một chỗ: grep một tên
+ * field rồi đọc con số, thay vì đối chiếu HAI ĐẦU. Đó chính là việc bảng này làm thay.)
+ *
+ * `fixlog.md` là nặng nhất: retro đo 20 mục fixlog thô qua 3 repo, và
+ * `accept.mjs --list` đọc ra là *"Không có gì trong knowledge/incoming/"* — vì nó chỉ
+ * nhìn `lessons/`. `mechanism-diffs/` cũng vậy: `upstream.mjs` sinh file `.diff` thật
+ * rồi không cơ chế nào mở chúng ra.
+ *
+ * KHÔNG cho phép giá trị `null` ở bảng này — cố ý. Một ô "chưa ai đọc, sẽ tính sau"
+ * là chỗ orphan tiếp theo trốn vào, và nó sẽ trốn được vô hạn vì test vẫn xanh.
+ */
+export const PACK_SCHEMA = {
+  pack: 'accept.mjs — tên thư mục trong knowledge/incoming/, dùng làm `ref`',
+  direction: 'accept.mjs --list — nhãn ↑ đi lên / ↓ đi xuống',
+  sourceProject: 'consumers.mjs (sổ) · accept.mjs (provenance `seen-in`)',
+  sourcePath: 'upstream.mjs:208 — hai repo KHÁC nhau cùng `project.id` sẽ ghi đè pack của nhau',
+  sourceCommit: 'packPending() — neo "đã quyết" · accept.mjs originTag · consumers.mjs',
+  sourceHarnessVersion: 'consumers.mjs — độ lệch version so với template',
+  exportedAt: 'consumers.mjs — bao lâu rồi repo đó không gửi lên',
+  fixlogEntries: 'accept.mjs --list · consumers.mjs',
+  lessons: 'accept.mjs --list · consumers.mjs',
+  evals: 'accept.mjs --list',
+  artifacts: 'accept.mjs --list',
+  mechanismDiffs: 'accept.mjs --list',
+};
+
+/**
+ * Pack này MANG GÌ — đếm mọi loại nguyên liệu, không chỉ bài học.
+ *
+ * Hàm THUẦN. `total` là thứ trả lời câu *"mở pack này ra có gì để đọc không?"*, và nó
+ * phải khác `lessons.length` — nếu không thì một pack 20 mục fixlog vẫn đọc ra là rỗng.
+ */
+export function packMaterial(pack = {}) {
+  const n = (v) => (Array.isArray(v) ? v.length : Number.isInteger(v) && v > 0 ? v : 0);
+  const parts = {
+    lessons: n(pack.lessons),
+    fixlogEntries: n(pack.fixlogEntries),
+    mechanismDiffs: n(pack.mechanismDiffs),
+    evals: n(pack.evals),
+    artifacts: n(pack.artifacts),
+  };
+  return { ...parts, total: Object.values(parts).reduce((a, b) => a + b, 0) };
+}
+
+/**
+ * MỘT định nghĩa "pack đang chờ quyết", cho cả ba nơi hỏi câu đó.
+ *
+ * Trước bản vá này có BA mẫu số cho một câu hỏi:
+ *   · `harness-doctor`  — pack có THƯ MỤC `lessons/` tồn tại
+ *   · `accept.mjs`      — có FILE `.md` bên trong `lessons/`
+ *   · `rituals.mjs`     — `sourceCommit` chưa nằm trong `DECISIONS.log`
+ *
+ * Một pack có `lessons/` RỖNG (đúng cấu hình retro đo được: `"lessons": []` ở cả ba pack)
+ * ⇒ doctor đếm 1, accept đếm 0. Đó là lý do doctor nói *"3 pack chờ duyệt — quyết đi"*
+ * trong khi `accept.mjs --list` nói *"Không có gì"*, và người tin cái nói không-có-gì.
+ *
+ * Neo thắng cuộc là `sourceCommit`: pack là SNAPSHOT (`upstream --apply` sinh lại mỗi lần
+ * chạy), nên đếm sự TỒN TẠI thì mục đỏ lại vĩnh viễn sau khi đã quyết. Commit của repo gửi
+ * không đổi thì "đã quyết" là trạng thái bền; repo đó có nguyên liệu mới ⇒ commit mới ⇒
+ * đỏ lại, và lần đó thì ĐÚNG.
+ *
+ * Hàm THUẦN: nhận danh sách pack đã đọc + nội dung sổ, không chạm đĩa.
+ */
+export function packPending(packs = [], decisionsLog = '') {
+  const log = String(decisionsLog || '');
+  // Không đọc được commit ⇒ coi là CHƯA quyết. Thà nhắc thừa còn hơn im lặng bỏ qua
+  // nguyên liệu đi lên — chiều LÊN là chiều dễ tắt nhất của vòng học, vì im lặng là
+  // trạng thái bình thường của nó và không ai đi điều tra một mục không kêu.
+  const pending = packs.filter(p => !p?.sourceCommit || !log.includes(p.sourceCommit));
+  return {
+    pending,
+    count: pending.length,
+    material: pending.reduce((t, p) => t + packMaterial(p).total, 0),
+  };
+}
+
+/**
+ * ĐỌC mọi pack trong `knowledge/incoming/` — phần IO của `packPending`, tách ra để phán
+ * đoán ở trên vẫn test được mà không cần dựng thư mục thật.
+ *
+ * Trả `null` (KHÔNG phải `[]`) khi không đọc được thư mục: "không đo được" và "không có
+ * pack nào" là hai trạng thái khác nhau, và gộp chúng là cách một mục tới hạn thật biến
+ * thành một dòng xanh.
+ */
+export function readPacks(dir = repoPath('knowledge', 'incoming')) {
+  if (!exists(dir)) return [];
+  let names;
+  try { names = readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name); }
+  catch { return null; }
+  return names.map(name => ({ name, ...(readJson(join(dir, name, 'pack.json')) || {}) }));
 }
 
 /**
