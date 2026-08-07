@@ -3,11 +3,11 @@
   "consumers": {
     "sakubun": {
       "id": "sakubun",
-      "harnessVersion": "2.11.0",
-      "lastUpstream": "2026-08-05T08:03:38.486Z",
-      "lastCommit": "46c3a3c",
+      "harnessVersion": "2.29.0",
+      "lastUpstream": "2026-08-07T08:55:28.298Z",
+      "lastCommit": "0655730",
       "lessons": 0,
-      "fixlogEntries": 7,
+      "fixlogEntries": 0,
       "firstSeen": "2026-08-04T19:41:51.498Z"
     },
     "sakubun-test": {

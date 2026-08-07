@@ -1700,7 +1700,12 @@ for (const [env, expect, label, msg] of GATE_CASES) {
     encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, ...TEST_ENV },
   });
   const out = `${r.stdout || ''}${r.stderr || ''}`;
-  const leaked = present.filter(n => out.includes(n));
+  // So `.claude/rules/<tên>:` chứ KHÔNG so tên trần. Cảnh báo mà ca này canh luôn in dưới
+  // dạng `rel(f) + ':'`, còn tên trần thì đụng mọi chỗ khác trong output — đo 2026-08-07:
+  // §9b in file NGUỒN của một đường dẫn chết (`README.md`), và ca này đỏ vì một lý do không
+  // liên quan gì tới allowlist. Một khẳng định so chuỗi quá rộng thì đo cả những thứ nó
+  // không định đo, và nó sẽ đỏ mỗi lần ai đó thêm một dòng output ở chỗ khác.
+  const leaked = present.filter(n => out.includes(`.claude/rules/${n}:`));
 
   if (!listed.length) {
     fail.push(`entropy-scan.mjs${' '.repeat(12)} không rút được \`GLOBAL_OK\` — neo của check này đã trôi, sửa neo thay vì xoá check`);
@@ -1710,6 +1715,95 @@ for (const [env, expect, label, msg] of GATE_CASES) {
     fail.push(`entropy-scan.mjs${' '.repeat(12)} ${leaked.length}/${present.length} file trong GLOBAL_OK VẪN bị cảnh báo: ${leaked.join(' · ')}`
       + ` — allowlist không khớp. Gần như luôn là so tên file bằng \`split('/')\` trên đường dẫn do \`join()\` dựng (Parity Contract)`);
   } else ok.push(`entropy-scan.mjs${' '.repeat(12)} allowlist GLOBAL_OK khớp thật trên OS này (${present.length} file được miễn, 0 rò)`);
+}
+
+// ─── §9b đường dẫn chết: KHÔNG có, và phép kiểm CÒN PHẠM VI ──────────────────
+//
+// Nhận từ pack `sakubun` @0655730. Ca nguy hiểm không phải "có đường dẫn chết" — mà là phép
+// kiểm mất phạm vi rồi xanh mãi. Hai loại trừ cấu trúc của nó (`harness-manifest.json`,
+// `evals/tasks/**`) đều đúng, nhưng mỗi loại trừ là một chỗ để phạm vi rò ra ngoài.
+{
+  const L = ' '.repeat(12);
+  const esSrc = readFileSync(repoPath('tooling', 'entropy-scan.mjs'), 'utf8');
+  const r = spawnSync(process.execPath, [repoPath('tooling', 'entropy-scan.mjs')], {
+    encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, ...TEST_ENV },
+  });
+  const out = `${r.stdout || ''}${r.stderr || ''}`;
+  const bad = [];
+
+  if (!/9b\. Đường dẫn trỏ vào hư không/.test(esSrc)) bad.push('phép kiểm §9b đã biến mất khỏi entropy-scan');
+  // PHẠM VI: nó phải quét qua `git ls-files`, không phải một danh sách thư mục cứng. Bản của
+  // `sakubun` dùng `['app','components','lib','e2e','tooling']` — đúng ở đó, mục ở đây.
+  if (!/git\(\['ls-files'\]\)/.test(esSrc)) bad.push('§9b không còn quét theo `git ls-files` — danh sách thư mục cứng sẽ mục');
+  if (/KHÔNG TỒN TẠI/.test(out)) bad.push(`repo có đường dẫn chết: ${out.split('\n').find(l => l.includes('KHÔNG TỒN TẠI'))?.trim().slice(0, 90)}`);
+
+  // Mỗi loại trừ phải CÒN LÝ DO tồn tại. Loại trừ không còn ca nào là loại trừ đã thành
+  // cửa thoát trống — nó không miễn gì cả, nhưng nó vẫn nới phạm vi cho ca tương lai.
+  const tracked = git(['ls-files']).stdout.split('\n').filter(Boolean);
+  const manifestRef = tracked.some(f => f.endsWith('.md') && (() => {
+    try { return readFileSync(repoPath(f), 'utf8').includes('`.claude/harness-manifest.json`'); } catch { return false; }
+  })());
+  if (!manifestRef) bad.push('không tài liệu nào còn nhắc `.claude/harness-manifest.json` ⇒ loại trừ đó thành cửa thoát trống, bỏ nó đi');
+  if (!tracked.some(f => f.startsWith('evals/tasks/'))) bad.push('không còn `evals/tasks/**` ⇒ loại trừ đó thành cửa thoát trống');
+
+  // GITIGNORE LÀ NGUỒN, KHÔNG PHẢI DANH SÁCH VIẾT TAY. Bản đầu liệt tay 4 tiền tố và vẫn
+  // thiếu `.claude/settings.local.json` — nó XANH trên máy tôi (file có thật ở đó) và ĐỎ trên
+  // cả ba OS của CI. Một allowlist viết tay chỉ đúng với trạng thái cục bộ của người viết nó.
+  //
+  // Ca này khẳng định vào chính cơ chế thay thế: `git check-ignore --stdin` phải PHÂN BIỆT
+  // được hai loại trên OS đang chạy. Nếu nó không phân biệt (git quá cũ, `--stdin` đổi hành
+  // vi), §9b sẽ im lặng bỏ qua mọi thứ hoặc không bỏ qua gì — cả hai đều hỏng không tiếng động.
+  if (!/check-ignore/.test(esSrc)) {
+    bad.push('§9b không còn hỏi `git check-ignore` — quay lại danh sách viết tay là quay lại lỗi chỉ CI thấy');
+  } else {
+    const probe = git(['check-ignore', '--stdin'], { input: '.claude/telemetry/x.log\nAGENTS.md\n' });
+    const said = probe.stdout.split('\n').map(s => s.trim()).filter(Boolean);
+    if (!said.includes('.claude/telemetry/x.log')) bad.push('`git check-ignore` KHÔNG nhận ra file gitignore trên OS này — §9b sẽ báo nhầm mọi artifact lúc chạy');
+    if (said.includes('AGENTS.md')) bad.push('`git check-ignore` nhận nhầm file ĐƯỢC TRACK là ignore — §9b sẽ im lặng bỏ qua đường dẫn chết thật');
+
+    // THƯ MỤC IGNORE CHƯA TỒN TẠI — ca duy nhất chỉ CI thấy, và nó đã thấy thật.
+    // Pattern thư mục trong `.gitignore` có `/` cuối; `check-ignore` trên một đường dẫn KHÔNG
+    // tồn tại không biết nó là thư mục ⇒ dạng KHÔNG có `/` không khớp. Trên máy có thư mục đó
+    // thì cả hai dạng khớp, nên bug này vô hình ở local và đỏ ở cả ba OS của CI.
+    if (!/cand\.map\(p => p \+ '\/'\)/.test(esSrc)) {
+      bad.push("§9b không còn hỏi check-ignore ở CẢ HAI dạng (`p` và `p + '/'`) — thư mục ignore chưa tồn tại sẽ bị báo là đường dẫn chết, chỉ trên máy sạch");
+    }
+    const dirPat = readFileSync(repoPath('.gitignore'), 'utf8').split('\n')
+      .map(s => s.trim()).filter(s => s.endsWith('/') && !s.startsWith('#') && !s.startsWith('!'))
+      .find(s => !exists(repoPath(s.replace(/\/$/, ''))));
+    if (dirPat) {
+      const noSlash = git(['check-ignore', '--stdin'], { input: dirPat.replace(/\/$/, '') + '\n' }).stdout.trim();
+      const withSlash = git(['check-ignore', '--stdin'], { input: dirPat + '\n' }).stdout.trim();
+      if (!withSlash) bad.push(`\`check-ignore\` không nhận ra thư mục ignore CHƯA TỒN TẠI (${dirPat}) kể cả khi có dấu / — §9b sẽ báo nhầm nó`);
+      else if (noSlash) bad.push(`\`check-ignore\` khớp cả dạng không có / cho ${dirPat} — ca này MẤT PHẠM VI trên OS này, nó không còn kiểm gì`);
+    }
+  }
+
+  if (bad.length) fail.push(`entropy-scan §9b${L} ${bad.join(' · ')}`);
+  else ok.push(`entropy-scan §9b${L} 0 đường dẫn chết, quét theo git ls-files, 2 loại trừ đều còn lý do`);
+}
+
+// ─── _index.json: cổng KHÔNG được im khi danh sách feature nói dối ────────────
+//
+// Nhận từ pack `sakubun` @0655730 — ca thứ BẢY của L0005, từ một repo ĐỘC LẬP.
+// Đo ở đó: `features/` chỉ có `_index.json` + `_TEMPLATE.json`, phần dưới của gate cố ý bỏ
+// qua file `_`-prefix ⇒ in "(không có gì để báo cáo)" rồi exit 0 — đọc như một cổng đang
+// canh, thực ra là cổng không canh gì, trong khi `_index.json` liệt một entry trỏ vào hư không.
+{
+  const L = ' '.repeat(6);
+  const r = spawnSync(process.execPath, [repoPath('tooling', 'check-feature-integrity.mjs')], {
+    encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, ...TEST_ENV },
+  });
+  const out = `${r.stdout || ''}${r.stderr || ''}`;
+  const bad = [];
+  if (!exists(repoPath('features', '_index.json'))) {
+    bad.push('không có features/_index.json ⇒ ca này MẤT PHẠM VI, nó sẽ xanh mãi mà không kiểm gì');
+  } else {
+    if (!/_index\.json/.test(out)) bad.push('gate KHÔNG nói gì về `_index.json` dù file đó tồn tại — đúng ca im lặng mà `sakubun` bắt được');
+    if (/không có gì để báo cáo/.test(out)) bad.push('gate in "(không có gì để báo cáo)" trong khi `_index.json` có mặt — mẫu số 0 lại thành 100%');
+  }
+  if (bad.length) fail.push(`check-feature-integrity${L} ${bad.join(' · ')}`);
+  else ok.push(`check-feature-integrity${L} danh sách feature được đối chiếu với ĐĨA, gate không im khi index nói dối`);
 }
 
 // ─── ③④ MUTANT ───────────────────────────────────────────────────────────────
@@ -2008,7 +2102,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 154;
+const RATCHET = 156;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

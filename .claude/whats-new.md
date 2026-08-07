@@ -1,4 +1,4 @@
-<!-- version: 2026-08-07-d -->
+<!-- version: 2026-08-07-e -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,18 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-07 — Hai phép kiểm ĐI LÊN từ repo con (v2.30.0)
+
+`entropy-scan` giờ bắt **đường dẫn trỏ vào hư không**: với agent, một đường dẫn chết không
+báo lỗi — nó gửi người đọc tới chỗ trống, và người đọc TỰ NGHĨ RA nội dung đáng lẽ ở đó.
+Và `check-feature-integrity` đối chiếu `features/_index.json` với ĐĨA — trước đó một index
+liệt entry trỏ vào hư không vẫn cho gate in *"(không có gì để báo cáo)"*.
+
+Cả hai đến TỪ `sakubun` qua `upstream.mjs` — lần đầu chiều LÊN chuyển được một cơ chế.
+
+**Việc bạn phải làm khác đi:** entropy-scan có thể báo thêm đường dẫn chết. Sửa đường dẫn,
+tạo file, hoặc bỏ lời nhắc — **đừng nới loại trừ**.
 
 ## 2026-08-07 — `/handoff` thôi nói "không có gì" khi nó KHÔNG BIẾT (v2.29.0)
 
