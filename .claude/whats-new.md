@@ -1,4 +1,4 @@
-<!-- version: 2026-08-07-m -->
+<!-- version: 2026-08-08-a -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,22 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-08 — Ngân sách biết VAI của repo (v2.39.0)
+
+`setup.mjs` **từ chối** ghi cấu hình ở repo template — đúng, vì một cap ghi ở đó chảy xuống
+mọi consumer. Nhưng doctor vẫn in `? chưa khai trần chi tiêu`. **Harness đòi một thứ chính
+harness cấm cung cấp**, và không đường nào làm mục đó xanh.
+
+Ở template, hai chuyện giờ tách ra: **trần** là `n/a` (không khai được, đúng thiết kế), còn
+**CAPO** là việc làm được và chưa làm:
+
+```
+node tooling/capo-report.mjs --days 7 --usd <số từ dashboard billing>
+```
+
+**Việc bạn phải làm khác đi:** ở repo template, đừng chạy `setup.mjs --apply` nữa — nó sẽ từ
+chối, và giờ doctor cũng thôi đòi. Ở repo consumer: **không đổi gì.**
 
 ## 2026-08-07 — Tập sự kiện hook được ĐO, không nhớ (v2.38.0)
 

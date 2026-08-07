@@ -41,7 +41,7 @@
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, readJson, readPacks, packPending, budgetStatus, latestCapoEntry } from './lib/harness.mjs';
+import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, readJson, readPacks, packPending, budgetStatus, latestCapoEntry, repoRole } from './lib/harness.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHẦN THUẦN — không đọc đĩa, không gọi git. Test khẳng định trực tiếp vào đây.
@@ -266,6 +266,15 @@ export const RITUALS = [
     what: 'đối chiếu chi tiêu THẬT với trần tháng (số lấy từ dashboard billing, harness không đọc được hoá đơn)',
     check: (s) => {
       const b = s.budget;
+      // TEMPLATE (#92): trần không khai được ở đây — `setup.mjs:55` từ chối, và đúng. Nhưng
+      // `capo-report.mjs` KHÔNG đọc trần (nó ghi vào `stateDir()`), nên CAPO đo được. Gộp hai
+      // cái thành một `?` làm mất việc LÀM ĐƯỢC sau lưng việc KHÔNG làm được.
+      if (b.mode === 'template-na') {
+        return b.measured
+          ? { state: 'ok', why: `CAPO đo ${b.ageDays} ngày trước · trần n/a ở repo template (nó là SEED — cap ở đây chảy xuống mọi consumer)` }
+          : { state: 'due', why: b.advice };
+      }
+      if (b.mode === 'template-cap') return { state: 'due', why: b.advice };
       if (b.mode === 'off') return { state: '?', why: 'budget.monthlyUsdCap = 0 — chưa khai trần, nên không có gì để đối chiếu. Đây KHÔNG phải "ổn"' };
       if (b.mode === 'unmeasured') return { state: 'due', why: b.advice };
       if (b.mode === 'stale') return { state: 'due', why: b.advice };
@@ -546,6 +555,7 @@ export function collect() {
       cap: cfg.budget?.monthlyUsdCap,
       alertAtPercent: cfg.budget?.alertAtPercent,
       latest: latestCapoEntry(),
+      role: repoRole(),
     }),
 
     // Version Claude Code ĐANG chạy, và version đã được RÀ. Cả hai đều có thể là null, và

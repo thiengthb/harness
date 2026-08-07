@@ -11,6 +11,55 @@
 
 ---
 
+## 2.39.0 — 2026-08-08
+
+**minor.** Ngân sách biết **VAI** của repo. `budgetStatus()` nhận `role`, và `harness-doctor`
++ `rituals` truyền nó vào. Đóng #92.
+
+### Harness đòi một thứ chính harness cấm cung cấp
+
+`setup.mjs:55` TỪ CHỐI `--apply` ở repo template, và từ chối đó **đúng**: một cap ghi ở đây
+chảy xuống MỌI consumer áp template sau này. Nhưng `budgetStatus` không biết vai, nên nó trả
+`off` — *"chưa khai trần, KHÔNG phải ổn"* — ở **đúng nơi harness cấm khai**. Không đường nào
+làm mục đó xanh trừ khi sửa tay `harness.config.json`, tức đúng việc `setup.mjs` chặn.
+
+`harness-doctor.mjs:68` đã tính `ROLE` và áp ở **bốn** chỗ (`placeholder()`,
+`verificationCoverage`, `coordinationLayer`, khối CẤU HÌNH). Khối NGÂN SÁCH là chỗ thứ năm và
+nó không nhận `role` — cùng hình dạng với nhóm 1 của retro W32 lần ba (#90): một bài học được
+áp ở vài chỗ và không tổng quát hoá.
+
+### Tách hai trạng thái đang bị gộp
+
+`?` cũ trộn hai chuyện khác hẳn nhau:
+
+| | trạng thái đúng | vì sao |
+|---|---|---|
+| **Trần tháng** | `n/a` | không khai được ở template, và đó là đúng thiết kế |
+| **Phép đo CAPO** | `due` | `capo-report.mjs` KHÔNG đọc trần — nó ghi vào `stateDir()` — nên nó **chạy được** ở template, và chưa lần nào chạy |
+
+Gộp hai cái làm mất mục thứ hai — thứ thật sự **làm được** — sau lưng mục thứ nhất.
+
+**Chiều ngược cũng kêu:** `cap > 0` ở template nghĩa là con số đó vào bằng tay, và nó sẽ thừa
+kế **im lặng** xuống mọi consumer, nơi nó đọc như một trần đã cân nhắc cho project họ.
+
+### Ảnh hưởng tới project đã áp: KHÔNG có
+
+Ở repo consumer mọi mode giữ nguyên hành vi cũ (`off` · `unmeasured` · `stale` · `ok` ·
+`alert` · `over`). Hai mode mới chỉ bật khi `repoRole()` trả `template`, và consumer luôn có
+`.claude/harness-manifest.json` nên không bao giờ rơi vào nhánh đó.
+
+### Hợp đồng mới
+
+`measured` dùng **chung** phép kiểm với mode `unmeasured` (đã hoisted). Hai bản sao sẽ lệch,
+và lúc lệch thì template báo *"đã đo"* trong khi repo có cap báo *"chưa đo"* trên **cùng một
+entry**.
+
+`test-hooks.mjs` thêm một hợp đồng hai đầu: `rituals.mjs` phải phân nhánh cho **mọi** mode.
+Mode chưa xử lý rơi xuống `return` cuối hàm với `state: ok` — tức **chưa xử lý đọc thành
+xanh**, và đó là ca mà phép kiểm bảng-tra của `harness-doctor` không bắt được.
+
+---
+
 ## 2.38.1 — 2026-08-07
 
 **patch.** `native-surface` thôi giết tiến trình khi bị `import`, và phần TRÍCH XUẤT có test.

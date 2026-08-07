@@ -1684,12 +1684,55 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   // Doctor in bằng một bảng tra `mode → dòng`. Thiếu một mode ⇒ nó in `undefined` — và đó là
   // ca KHÔNG bảng thuần nào ở trên bắt được, vì lỗi nằm ở chỗ HIỂN THỊ. Không dựng repo có
   // `cap > 0` được (`harness.config.json` là vùng cấm), nên đối chiếu bằng mã nguồn.
-  const MODES = ['off', 'unmeasured', 'stale', 'ok', 'alert', 'over'];
+  const MODES = ['off', 'unmeasured', 'stale', 'ok', 'alert', 'over', 'template-na', 'template-cap'];
   const doc = readFileSync(repoPath('tooling', 'harness-doctor.mjs'), 'utf8');
   const budgetBlock = doc.slice(doc.indexOf('── NGÂN SÁCH ──'));
-  const missing = MODES.filter(m => !new RegExp(`^\\s{4}${m}:`, 'm').test(budgetBlock));
+  // Hai dạng khoá: `off:` và `'template-na':` — mode có gạch ngang phải viết trong nháy.
+  const missing = MODES.filter(m => !new RegExp(`^\\s{4}'?${m}'?:`, 'm').test(budgetBlock));
   if (missing.length) fail.push(`budgetStatus${L} harness-doctor thiếu dòng cho mode: ${missing.join(' · ')} — sẽ in \`undefined\``);
   else ok.push(`budgetStatus${L} harness-doctor có dòng cho cả ${MODES.length} mode (không mode nào in \`undefined\`)`);
+
+  // ── VAI CỦA REPO (#92) ────────────────────────────────────────────────────
+  //
+  // `setup.mjs:55` TỪ CHỐI ghi cấu hình ở repo template. Trước #92, `budgetStatus` không nhận
+  // `role` nên nó trả `off` — *"chưa khai trần, KHÔNG phải ổn"* — ở đúng nơi harness cấm khai.
+  // Ca phải khoá chặt nhất là hàng thứ ba: cap > 0 Ở TEMPLATE là con số ghi tay sẽ CHẢY XUỐNG
+  // mọi consumer. Nếu ca đó đọc thành `ok`/`n/a` thì bản vá này còn tệ hơn bug: nó dạy người
+  // ta rằng một cap trong template là bình thường.
+  const ROLE_TABLE = [
+    //  role         cap  latest                          mode            measured  advice?
+    ['template',   0,   null,                          'template-na',  false,   true ],
+    ['template',   0,   { usd: 43, days: 7, at: at(2) }, 'template-na',  true,    false],
+    ['template',   50,  null,                          'template-cap', false,   true ],  // ← rò rỉ
+    ['consumer',   0,   null,                          'off',          false,   true ],
+    ['consumer',   50,  null,                          'unmeasured',   false,   true ],
+    ['unknown',    0,   null,                          'off',          false,   true ],
+    [null,         0,   null,                          'off',          false,   true ],  // không khai vai
+  ];
+  const badRole = [];
+  for (const [role, cap, latest, wantMode, wantMeasured, wantAdvice] of ROLE_TABLE) {
+    const r = budgetStatus({ cap, latest, role, now: NOW });
+    const got = `${r.mode}/${r.measured}/${Boolean(r.advice)}`;
+    const want = `${wantMode}/${wantMeasured}/${wantAdvice}`;
+    if (got !== want) badRole.push(`role=${role} cap=${cap}: ${got} ≠ ${want}`);
+  }
+  // `measured` phải là ĐÚNG phép kiểm mà `unmeasured` dùng — không phải một phép kiểm lỏng
+  // hơn. Entry có `usd` hợp lệ mà `days: 0` là số đo KHÔNG dùng được (chia cho 0), nên
+  // template phải đọc nó là "chưa đo", không phải "đã đo".
+  const div0 = budgetStatus({ cap: 0, role: 'template', latest: { usd: 43, days: 0, at: at(2) }, now: NOW });
+  if (div0.measured !== false) badRole.push(`days=0 ở template: measured=${div0.measured} ≠ false (mẫu số 0 KHÔNG phải một phép đo)`);
+
+  if (badRole.length) fail.push(`budgetStatus${L} ${badRole.length}/${ROLE_TABLE.length + 1} ca VAI sai: ${badRole.join(' | ')}`);
+  else ok.push(`budgetStatus${L} ${ROLE_TABLE.length + 1} ca vai — template KHÔNG bị đòi khai trần (setup.mjs cấm), và cap>0 ở template thì KÊU`);
+
+  // HAI ĐẦU MỘT HỢP ĐỒNG: `rituals.mjs` cũng phân nhánh theo `mode`. Doctor có đủ dòng mà
+  // rituals thiếu một nhánh thì mode đó rơi xuống `return { state: 'ok' }` cuối hàm — tức một
+  // trạng thái CHƯA XỬ LÝ đọc thành XANH. Đây là ca `harness-doctor` ở trên không bắt được.
+  const rit = readFileSync(repoPath('tooling', 'rituals.mjs'), 'utf8');
+  const capoBlock = rit.slice(rit.indexOf("id: 'capo-report'"), rit.indexOf("id: 'claude-code-drift'"));
+  const ritMissing = MODES.filter(m => m !== 'ok' && !capoBlock.includes(`'${m}'`));
+  if (ritMissing.length) fail.push(`budgetStatus${L} rituals capo-report không phân nhánh cho mode: ${ritMissing.join(' · ')} — rơi xuống \`ok\` cuối hàm, tức CHƯA XỬ LÝ đọc thành XANH`);
+  else ok.push(`budgetStatus${L} rituals capo-report phân nhánh đủ ${MODES.length - 1} mode (không mode nào rơi nhầm xuống \`ok\`)`);
 }
 
 // ─── pack.json: MỌI field được ghi phải có bên ĐỌC ───────────────────────────
