@@ -2,7 +2,8 @@
 
 > Hợp đồng làm việc trong repo này, cho **cả người và agent**.
 > Đây là file duy nhất bạn phải đọc ngày đầu. Mọi thứ khác tự kích hoạt khi cần.
-> Đổi file này = PR + 1 approve. Chủ: xem `.github/CODEOWNERS`.
+> Đổi file này: PR + 1 approve nếu có đội (chủ: `.github/CODEOWNERS`); solo thì
+> `HARNESS_DRI=1`, và mọi lần ghi vùng cấm tự vào sổ `.claude/telemetry/harness-edits.log`.
 >
 > **Giữ dưới ~150 dòng.** Dài hơn nghĩa là có thứ thuộc về `.claude/rules/` (theo path),
 > một skill (kiến thức thỉnh thoảng cần), hoặc một hook (luật bắt buộc).
@@ -13,6 +14,7 @@
 CHANGEME.
 
 Cấu hình harness: `harness.config.json` — mọi lệnh, ngưỡng, vùng nóng khai ở đó.
+Trong đó `project.teamSize` quyết định lớp phối hợp liên-người bật hay tắt: `1` = solo.
 
 ## Lệnh
 
@@ -43,22 +45,25 @@ Cấu hình harness: `harness.config.json` — mọi lệnh, ngưỡng, vùng n�
 - CHANGEME — ví dụ: `pnpm dev` không chạy được nếu chưa `pnpm db:up`; lỗi hiện ra là ECONNREFUSED ở port 5432, không phải lỗi code.
 - CHANGEME — ví dụ: số tiền là integer cents ở mọi nơi. Float ở boundary API là bug, không phải style.
 
-## Làm việc trong repo dùng chung (bắt buộc)
+## Làm việc trong một repo (bắt buộc)
 
 - Bắt đầu mọi session: `pwd`, `git branch --show-current`, `git log --oneline -10 origin/main`.
   SessionStart hook in sẵn — **đọc nó**.
 - **Một issue = một nhánh = một worktree.** Không làm 2 issue trong một worktree.
-- Trước khi sửa file trong **vùng nóng** (xem `harness.config.json → paths.hot`):
-  kiểm `gh pr list --state open`. Có chồng lấn → **báo người, đừng tự quyết**.
-  (Reservation thì KHÔNG cần nhớ: SessionStart in ra, pre-commit chặn.)
 - **KHÔNG sửa**: `.claude/settings.json`, `.claude/hooks/**`, `.claude/rules/**`, `.mcp.json`,
   `CLAUDE.md`, `AGENTS.md`, `harness.config.json`, `.github/CODEOWNERS`.
   Dùng `/harness-propose`. (Hook chặn — cố ý. `harness-doctor` đối chiếu danh sách này với guard.)
 - **KHÔNG sửa** file feature của issue khác. **KHÔNG sửa** `features/_index.json`.
-- **KHÔNG** push lên nhánh người khác. **KHÔNG** force push. **KHÔNG** rebase nhánh chung.
+- **KHÔNG** force push. **KHÔNG** rebase nhánh đã chia sẻ.
 - Nhật ký vào `docs/progress/<issue>.md`, **không** vào một file chung.
 - Bài học vào `.claude/learnings/<năm>-W<tuần>-<tên>.md` — một file của riêng bạn, không bao giờ conflict.
-- Số session song song tối đa mỗi người: xem `harness.config.json → limits.maxSessionsPerPerson`.
+
+**Chỉ khi `project.teamSize ≥ 2`** — ba điều dưới đây không có nghĩa với solo:
+
+- Sửa file trong **vùng nóng** (`paths.hot`): kiểm `gh pr list --state open` trước.
+  Có chồng lấn → **báo người, đừng tự quyết**.
+- **KHÔNG** push lên nhánh người khác.
+- Trần session song song mỗi người: `limits.maxSessionsPerPerson`.
 
 ## Verification (không thương lượng)
 
@@ -129,18 +134,6 @@ Mọi thứ trong harness của team **phải** chạy trên Ubuntu 22+, macOS 1
 | Nhiều repo cùng lúc | `docs/MULTI-PROJECT.md` |
 | Có gì đó sai mà chưa gọi tên được | `docs/ANTI-PATTERNS.md` |
 | Mang trí tuệ sang project khác | `knowledge/README.md` |
-
-## Nghi thức: đừng nhớ, hãy đọc
-
-Bạn **không cần nhớ** nghi thức nào. SessionStart in ra việc nào ĐANG tới hạn kèm số đo, và
-`node tooling/rituals.mjs --all` liệt kê **mọi** năng lực của harness cùng trạng thái
-(`tới hạn` / `ổn` / `?` = chưa đo được).
-
-Phần máy làm được thì máy đã làm: sự có mặt của phiên được ghi tự động, nên chồng lấn giữa hai
-phiên trên cùng máy được **phát hiện mà không ai phải gõ `/claim`**. `/claim` giữ lại đúng phần
-cần phán đoán — đọc nhật ký cũ, đặt chỗ vùng nóng cho cả đội, quyết phạm vi.
-
-> Đo 2026-08-05: `/claim` và `/handoff` **chưa chạy lần nào** dù được nhắc mỗi phiên — một nhắc nhở nói mọi thứ ở mọi lúc thì không nói gì ở lúc nào. (Số đo: header `tooling/rituals.mjs`.)
 
 ## Khi bạn học được điều gì
 
