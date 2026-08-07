@@ -11,6 +11,70 @@
 
 ---
 
+## 2.38.1 — 2026-08-07
+
+**patch.** `native-surface` thôi giết tiến trình khi bị `import`, và phần TRÍCH XUẤT có test.
+Đóng #88.
+
+### Lỗi thật, tìm được bằng cách viết test cho v2.38.0
+
+Thân CLI của `native-surface.mjs` chạy ở **top-level** và kết bằng `process.exit(0)`. Không
+có chốt điểm vào, nên `import` nó ở bất kỳ đâu sẽ in một báo cáo rồi **giết tiến trình đang
+gọi, với mã thoát 0**.
+
+Đo 2026-08-07: thêm một dòng `import { pickEventArray } from './native-surface.mjs'` vào
+`test-hooks.mjs` làm **cả suite 180 ca thoát sau đúng MỘT dòng in — và thoát `0`**. Một suite
+"xanh" chưa chạy ca nào.
+
+Đây là đúng lớp lỗi mà ghi chú của #87 vừa kể một ngày trước (*"đặt trùng tên const ⇒ suite
+CRASH LÚC PARSE… hai lần chạy sau đó im lặng không in gì, và tôi suýt đọc 'im' thành 'xanh'"*),
+lặp lại qua một cơ chế khác trong **cùng một file**. `L0005` ở chiều tệ nhất: bộ đếm không đổ
+về phía dễ chịu — nó **biến mất**, và sự vắng mặt đọc như thành công.
+
+Bản vá: chốt `process.argv[1] === fileURLToPath(import.meta.url)`, thân CLI vào một hàm.
+
+### Phần TRÍCH XUẤT giờ có ca test
+
+v2.38.0 khoá **trạng thái nghi thức** (chưa đo · đo ở version cũ · đo đúng version). Nó không
+chạm `nativeHookEvents()` — chỗ thật sự rút dữ liệu ra khỏi binary, và là chỗ duy nhất có
+logic đáng sai.
+
+Tách hàm THUẦN `pickEventArray(text, prev)`, cùng khuôn `dangerousCommand` ở v2.36.0: một
+binary 285 MB không dựng được trong CI ba OS, còn phán đoán thì khoá được bằng bảng.
+
+| ca | giết bản hỏng nào |
+|---|---|
+| nhiều ứng viên ⇒ lấy mảng **dài nhất** (cả khi cái dài đứng trước) | *"lấy mảng ĐẦU TIÊN khớp"* — nó trả về một tập **CON**, và tập con đọc y hệt *"vendor vừa bỏ N sự kiện"*: đúng cảnh báo giả mà công cụ này ra đời để tránh |
+| nháy đơn vẫn parse được | |
+| mảng ≥7 phần tử nhưng **không** chứa `PreToolUse` ⇒ bỏ | |
+| mảng quá ngắn ⇒ bỏ | |
+| không có ứng viên ⇒ `null`, **không** phải mảng rỗng | phép gộp `?` vào `0` |
+
+### Biên chồng lấn thôi là một hằng số không ai canh
+
+`CHUNK`/`OVERLAP` là hằng số trong hàm ⇒ ca *mảng vắt qua ranh giới khối* — chỗ **duy nhất**
+phép quét sai **im lặng** — không dựng được. Giờ `nativeHookEvents(path, { chunk, overlap })`
+nhận tham số, và một fixture vài trăm byte dựng được ca đó ở cả ba OS.
+
+Thêm một ca **cảnh báo sớm**: mảng thật phải còn nhỏ hơn chồng lấn.
+
+```
+mảng thật 485B < chồng lấn 8192B — còn 7707B biên trước khi phép quét hỏng im lặng
+```
+
+`OVERLAP = 8192` an toàn **hôm nay**. Nó thôi an toàn khi vendor thêm sự kiện tới lúc mảng
+vượt 8 KB — lúc đó phép đo trả `null`, đọc y hệt *"bundle đổi hình dạng"*. Ca này đỏ **trước**
+khi điều đó xảy ra, thay vì sau.
+
+### Một chi tiết kế toán nhỏ
+
+`na` gộp nhiều CA vào một DÒNG, nên `na.length` không phải số ca — đó là lý do `naCount` là
+hằng số. Ca n/a mới có điều kiện khác (`CLAUDE_CODE_EXECPATH` không đặt) nên nó tự đếm qua
+`naExtra`; nếu không, trên máy không đo được binary nó rơi khỏi tổng và **sàn báo nhầm "một
+case đã ngừng chạy"**.
+
+---
+
 ## 2.38.0 — 2026-08-07
 
 **minor.** Tập sự kiện hook native được **đo bằng máy**, không giao cho trí nhớ. Đóng #85.

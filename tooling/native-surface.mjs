@@ -37,6 +37,8 @@
  * công cụ ra đời để chống đúng phép gộp đó.
  */
 import { readSync, openSync, closeSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { repoPath, readJson, writeJson, report, exists } from './lib/harness.mjs';
 import { claudeCodeVersionMeasured } from './rituals.mjs';
 
@@ -54,29 +56,54 @@ const BASELINE = repoPath('.claude', 'claude-code-baseline.json');
  * Đọc theo khối có CHỒNG LẤN: mảng nằm vắt qua ranh giới khối thì không khớp, và một phép đo
  * im lặng bỏ sót còn tệ hơn không đo.
  */
-export function nativeHookEvents(execPath = process.env.CLAUDE_CODE_EXECPATH || '') {
+const EVENT_ARRAY_SRC = String.raw`\[(?:\s*["'][A-Z][A-Za-z]{3,30}["']\s*,){6,}\s*["'][A-Z][A-Za-z]{3,30}["']\s*\]`;
+
+/** Khối đọc mặc định. Xuất ra để test khẳng định được `OVERLAP > độ dài mảng thật`. */
+export const SCAN = { chunk: 8 * 1024 * 1024, overlap: 8192 };
+
+/**
+ * THUẦN — phần PHÁN ĐOÁN của phép rút, tách khỏi IO.
+ *
+ * Tách ra vì phần này là chỗ duy nhất có logic đáng sai, và test nó qua một binary 285 MB
+ * thì không dựng được ở CI ba OS. Cùng lý do bảng `dangerousCommand` khẳng định thẳng vào
+ * hàm thuần thay vì spawn hook (v2.36.0).
+ *
+ * `prev` để gọi được nhiều lần khi quét theo khối — mỗi khối góp ứng viên vào cùng một
+ * phép chọn.
+ */
+export function pickEventArray(text, prev = null) {
+  let best = prev;
+  // Regex MỚI mỗi lần: `matchAll` đòi cờ `g`, và một regex `g` dùng chung giữa nhiều lời gọi
+  // là một mẩu trạng thái ẩn không đáng có trong một hàm khai là THUẦN.
+  for (const m of String(text).matchAll(new RegExp(EVENT_ARRAY_SRC, 'g'))) {
+    if (!m[0].includes('PreToolUse')) continue;
+    try {
+      const arr = JSON.parse(m[0].replace(/'/g, '"'));
+      // Lấy mảng DÀI NHẤT: bundle có thể chứa nhiều tập con (ví dụ danh sách sự kiện của
+      // một tính năng con). Tập đầy đủ là tập bao trùm.
+      //
+      // Bản "lấy mảng ĐẦU TIÊN khớp" đi qua mọi phép đo thủ công và trả về một tập CON — và
+      // một tập con đọc y hệt "vendor vừa bỏ N sự kiện", tức đúng cảnh báo giả mà công cụ
+      // này ra đời để tránh. Ca test `chọn mảng DÀI NHẤT` khoá đúng bản đó.
+      if (!best || arr.length > best.length) best = arr;
+    } catch { /* không parse được thì bỏ qua ứng viên này */ }
+  }
+  return best;
+}
+
+export function nativeHookEvents(execPath = process.env.CLAUDE_CODE_EXECPATH || '', { chunk = SCAN.chunk, overlap = SCAN.overlap } = {}) {
   if (!execPath || !exists(execPath)) return null;
-  const CHUNK = 8 * 1024 * 1024, OVERLAP = 8192;
-  const RE = /\[(?:\s*["'][A-Z][A-Za-z]{3,30}["']\s*,){6,}\s*["'][A-Z][A-Za-z]{3,30}["']\s*\]/g;
   let fd;
   try { fd = openSync(execPath, 'r'); } catch { return null; }
-  const buf = Buffer.alloc(CHUNK);
+  const buf = Buffer.alloc(chunk);
   let pos = 0, tail = '', best = null;
   try {
     for (;;) {
-      const n = readSync(fd, buf, 0, CHUNK, pos);
+      const n = readSync(fd, buf, 0, chunk, pos);
       if (n <= 0) break;
       const s = tail + buf.toString('latin1', 0, n);
-      for (const m of s.matchAll(RE)) {
-        if (!m[0].includes('PreToolUse')) continue;
-        try {
-          const arr = JSON.parse(m[0].replace(/'/g, '"'));
-          // Lấy mảng DÀI NHẤT: bundle có thể chứa nhiều tập con (ví dụ danh sách sự kiện của
-          // một tính năng con). Tập đầy đủ là tập bao trùm.
-          if (!best || arr.length > best.length) best = arr;
-        } catch { /* không parse được thì bỏ qua ứng viên này */ }
-      }
-      tail = s.slice(-OVERLAP);
+      best = pickEventArray(s, best);
+      tail = s.slice(-overlap);
       pos += n;
     }
   } finally { closeSync(fd); }
@@ -90,6 +117,20 @@ function wiredEvents() {
 }
 
 // ── Chạy như CLI ─────────────────────────────────────────────────────────────
+//
+// CHỐT ĐIỂM VÀO — bắt buộc, không phải trang trí. Thân dưới đây kết bằng `process.exit(0)`.
+// Không có chốt này thì `import` file này ở BẤT KỲ đâu sẽ in một báo cáo rồi GIẾT tiến trình
+// đang gọi, với mã thoát 0.
+//
+// Đo 2026-08-07 (#88): thêm `import { pickEventArray } from './native-surface.mjs'` vào
+// `test-hooks.mjs` làm cả suite 177 ca thoát sau đúng MỘT dòng in — và thoát `0`. Suite "xanh"
+// mà không chạy ca nào. Đúng lớp lỗi mà mục ghi chú của #87 vừa kể (đặt trùng tên const ⇒ suite
+// im ⇒ suýt đọc "im" thành "xanh"), lặp lại ở một cơ chế khác trong cùng file, một ngày sau.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  runCli();
+}
+
+function runCli() {
 const version = claudeCodeVersionMeasured();
 const events = nativeHookEvents();
 const ok = [], warn = [], na = [], unknown = [];
@@ -139,3 +180,4 @@ if (!events) {
 report('BỀ MẶT NATIVE', { ok, warn, na, unknown });
 if (!RECORD && events) console.log('  Đặt mốc: node tooling/native-surface.mjs --record\n');
 process.exit(0);
+}
