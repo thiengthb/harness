@@ -1,4 +1,4 @@
-<!-- version: 2026-08-07-a -->
+<!-- version: 2026-08-07-b -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,17 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-07 — Pack 0 bài học không còn đọc ra là rỗng (v2.27.0)
+
+`accept.mjs --list` từng chỉ nhìn `lessons/`, nên một pack **20 mục fixlog thô + diff cơ
+chế** đọc ra là *"Không có gì trong knowledge/incoming/"* — trong khi `harness-doctor` cùng
+lúc nói *"pack chờ duyệt: 3"*. Ba công cụ, ba định nghĩa "chờ quyết". Giờ chỉ còn một
+(`packPending()`), và `--list` liệt kê cả nguyên liệu thô kèm đường dẫn.
+
+**Việc bạn phải làm khác đi:** pack không có bài học nào để nhận thì đóng bằng
+`node tooling/knowledge/accept.mjs <pack> --reviewed "kết luận"` — không có lệnh này thì nó
+chờ mãi. Bị chặn sai → mở issue label `harness`.
 
 ## 2026-08-07 — Bộ eval thôi gọi "chưa đo" là "hỏng" (v2.24.0)
 

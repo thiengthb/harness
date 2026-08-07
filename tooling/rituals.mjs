@@ -41,7 +41,7 @@
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, readJson } from './lib/harness.mjs';
+import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, readJson, readPacks, packPending } from './lib/harness.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHẦN THUẦN — không đọc đĩa, không gọi git. Test khẳng định trực tiếp vào đây.
@@ -222,7 +222,7 @@ export const RITUALS = [
     what: 'quyết định trên pack đi lên từ project khác (MERGE / ACCEPT / RETURN / REJECT)',
     check: (s) => {
       if (s.pendingPacks === null) return { state: '?', why: 'không đọc được knowledge/incoming/ — không đo được' };
-      if (s.pendingPacks > 0) return { state: 'due', why: `${s.pendingPacks} pack từ project khác đang chờ quyết ở knowledge/incoming/ — nguyên liệu đã tới, quyết định thì chưa` };
+      if (s.pendingPacks > 0) return { state: 'due', why: `${s.pendingPacks} pack từ project khác đang chờ quyết ở knowledge/incoming/ (${s.pendingMaterial} mục nguyên liệu: bài học + fixlog thô + diff cơ chế) — nguyên liệu đã tới, quyết định thì chưa` };
       return { state: 'ok', why: 'không có pack chờ quyết' };
     },
   },
@@ -447,29 +447,17 @@ export function collect() {
     maxSkills: limit('maxSkills', 12),
     worktrees: num(() => (git(['worktree', 'list', '--porcelain']).stdout.match(/^worktree /gm) || []).length),
     maxWorktrees: limit('maxWorktrees', 4),
-    // Đếm pack CHƯA ĐƯỢC QUYẾT, không đếm pack TỒN TẠI.
-    //
-    // Pack là SNAPSHOT: `upstream --apply` sinh lại nó mỗi lần chạy. Bản đầu đếm số thư mục,
-    // nên ngay sau khi quyết xong và dọn, lần chạy `upstream` kế tiếp lại dựng pack cũ và mục
-    // này ĐỎ LẠI — một mục đỏ vĩnh viễn dạy đúng thứ file này ra đời để diệt.
-    //
-    // Neo là `sourceCommit` của pack: nó là commit của repo GỬI. Repo đó không đổi thì commit
-    // không đổi, nên "đã quyết" là một trạng thái bền. Repo đó có fixlog mới ⇒ commit mới ⇒
-    // mục này đỏ lại, và lần đó thì nó ĐÚNG.
-    pendingPacks: num(() => {
-      const d = repoPath('knowledge', 'incoming');
-      if (!existsSync(d)) return 0;
+    // Đếm pack CHƯA ĐƯỢC QUYẾT, không đếm pack TỒN TẠI — phán đoán nằm ở `packPending`
+    // trong lib, và từ v2.27.0 `harness-doctor` cùng `accept.mjs --list` gọi CHÍNH nó.
+    // Ba định nghĩa cho một câu hỏi là cách hai công cụ nói ngược nhau về cùng một thư mục.
+    ...(() => {
+      const packs = readPacks();
+      if (packs === null) return { pendingPacks: null, pendingMaterial: null };
       let log = '';
       try { log = readFileSync(repoPath('knowledge', 'DECISIONS.log'), 'utf8'); } catch {}
-      const packs = readdirSync(d, { withFileTypes: true }).filter(x => x.isDirectory());
-      return packs.filter(x => {
-        let commit = null;
-        try { commit = JSON.parse(readFileSync(join(d, x.name, 'pack.json'), 'utf8')).sourceCommit; } catch {}
-        // Không đọc được commit ⇒ coi là CHƯA quyết. Thà nhắc thừa một lần còn hơn im lặng
-        // bỏ qua nguyên liệu đi lên — chiều LÊN là chiều dễ tắt nhất của vòng học.
-        return !commit || !log.includes(commit);
-      }).length;
-    }),
+      const p = packPending(packs, log);
+      return { pendingPacks: p.count, pendingMaterial: p.material };
+    })(),
 
     // Version Claude Code ĐANG chạy, và version đã được RÀ. Cả hai đều có thể là null, và
     // hai cái null đó nghĩa khác nhau: không đọc được version ⇒ `?` (không đo được); đọc

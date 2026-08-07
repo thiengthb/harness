@@ -17,7 +17,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, TEST_TELEMETRY_DIR, coordinationLayer, verificationCoverage } from './lib/harness.mjs';
+import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, TEST_TELEMETRY_DIR, coordinationLayer, verificationCoverage, readPacks, packPending } from './lib/harness.mjs';
 
 const QUICK = process.argv.includes('--quick');
 // PHẢI chụp TRƯỚC khi chạy các suite bên dưới: nó là mốc phân biệt "telemetry suite của lần
@@ -252,12 +252,18 @@ const lessonCount = readJson(repoPath('knowledge', 'index.json'), { count: 0 }).
 const evalCount = exists(repoPath('evals', 'tasks'))
   ? (await import('node:fs')).readdirSync(repoPath('evals', 'tasks')).filter(f => f.endsWith('.md') && !f.startsWith('_')).length : 0;
 
-const incDir = repoPath("knowledge", "incoming");
-const pending = exists(incDir)
-  ? (await import("node:fs")).readdirSync(incDir).filter(d => exists(repoPath("knowledge","incoming",d,"lessons"))).length : 0;
+// "pack chờ quyết" đếm bằng ĐÚNG hàm mà `rituals.mjs` và `accept.mjs --list` dùng.
+// Trước v2.27.0 mỗi nơi một định nghĩa: chỗ này đếm pack có THƯ MỤC `lessons/`, accept đếm
+// FILE `.md` bên trong. Pack `lessons/` rỗng ⇒ chỗ này nói "1 pack chờ duyệt — quyết đi",
+// accept nói "Không có gì", và người tin cái nói không-có-gì.
+const packs = readPacks();
+const decisions = (() => { try { return readFileSync(repoPath('knowledge', 'DECISIONS.log'), 'utf8'); } catch { return ''; } })();
+const pend = packs === null ? null : packPending(packs, decisions);
 
-console.log(`  fixlog: ${fixCount} mục  ·  bài học: ${lessonCount}  ·  eval task: ${evalCount}  ·  pack chờ duyệt: ${pending}`);
-if (pending) advice.push(`${pending} pack chờ duyệt ở knowledge/incoming/ — quyết đi: node tooling/knowledge/accept.mjs --list`);
+console.log(`  fixlog: ${fixCount} mục  ·  bài học: ${lessonCount}  ·  eval task: ${evalCount}`
+  + `  ·  pack chờ quyết: ${pend === null ? '?' : pend.count}`);
+if (pend === null) advice.push('không đọc được knowledge/incoming/ — đây là `?`, không phải "không có pack nào"');
+else if (pend.count) advice.push(`${pend.count} pack chờ quyết (${pend.material} mục nguyên liệu) ở knowledge/incoming/ — quyết đi: node tooling/knowledge/accept.mjs --list`);
 
 if (fixCount === 0) advice.push('fixlog trống — vòng học chưa có nguyên liệu. Đây là việc RẺ NHẤT và GIÁ TRỊ NHẤT: `node tooling/fixlog.mjs "..."` mỗi lần bạn phải sửa tay (3 giây)');
 if (evalCount === 0) advice.push('không có eval task — bạn đang TỐI ƯU MÙ: không có cách nào biết một thay đổi harness làm tốt lên hay tệ đi');

@@ -11,6 +11,67 @@
 
 ---
 
+## 2.27.0 — 2026-08-07
+
+**minor.** Chiều **ĐI LÊN** của vòng học có bên nhận, và ba phép đếm "pack chờ quyết" gộp
+thành một. Từ #61.
+
+### Đo được: kênh xây đúng một nửa
+
+`upstream.mjs` gửi lên `fixlog.md`, `mechanism-diffs/` và một `pack.json` 12 field. Đo trên
+`main` ngày 2026-08-07, **bốn field được GHI mà không nơi nào ĐỌC** — cộng cả hai payload
+trên đĩa:
+
+```
+direction · evals · artifacts · mechanismDiffs   +  fixlog.md  +  mechanism-diffs/
+```
+
+Nặng nhất là `fixlog.md`: `/harness-retro` đo **20 mục fixlog thô qua 3 repo**, và
+`accept.mjs --list` đọc ra là *"Không có gì trong knowledge/incoming/"* rồi `exit 0` — vì
+nó chỉ nhìn `lessons/`. Comment ở `upstream.mjs:150` ghi rõ tác giả **biết** fixlog thô mới
+là payload có giá trị (bài học đã distill thường mang theo đặc thù repo gửi), rồi vẫn xây
+đúng một nửa kênh.
+
+### Đo được: ba mẫu số cho một câu hỏi
+
+| công cụ | "chờ quyết" nghĩa là gì |
+|---|---|
+| `harness-doctor` | pack có **thư mục** `lessons/` |
+| `accept.mjs --list` | có **file `.md`** bên trong `lessons/` |
+| `rituals.mjs` | `sourceCommit` **chưa nằm trong** `DECISIONS.log` |
+
+Pack `"lessons": []` — đúng cấu hình cả ba pack retro đo được — làm doctor nói *"3 pack chờ
+duyệt, quyết đi"* trong khi `accept.mjs` nói *"Không có gì"*. Người tin cái nói không-có-gì.
+
+### Đổi gì
+
+- **`accept.mjs --list` báo cáo cả PACK**, không chỉ bài học: bao nhiêu mục fixlog, bao
+  nhiêu diff cơ chế, kèm đường dẫn tới chúng. Pack 0 bài học + 20 fixlog không còn đọc ra
+  là rỗng.
+- **`accept.mjs <pack> --reviewed "kết luận"`** — lệnh MỚI, đóng một pack không có bài học
+  nào để nhận. Trước đó mọi lệnh đều thao tác trên *một bài học*, nên pack toàn nguyên liệu
+  thô không có đường nào đi qua và ở lại "chờ quyết" mãi. Một mục đỏ vĩnh viễn dạy người ta
+  bỏ qua mục đỏ.
+- **Một định nghĩa "chờ quyết"** — `packPending()` + `packMaterial()` (hàm THUẦN) ở
+  `lib/harness.mjs`; doctor, rituals, accept đều gọi nó. Neo là `sourceCommit`, không phải
+  sự tồn tại của thư mục: pack là snapshot, `upstream --apply` sinh lại nó mỗi lần chạy.
+- **`PACK_SCHEMA`** — bảng field → **bên đọc**, không nhận ô trống. `test-hooks.mjs` đọc mã
+  nguồn `upstream.mjs`, bóc tập key nó ghi, và bắt bằng đúng tập key khai ở bảng.
+- `readPacks()` trả `null` khi không đọc được thư mục, `[]` khi không có pack. Cả ba công cụ
+  in `?` cho ca đầu — "không đo được" không phải "không có gì".
+
+### Repo đã áp harness cần làm gì
+
+Không gì bắt buộc. Nếu `knowledge/incoming/` của bạn có pack cũ, `accept.mjs --list` giờ sẽ
+liệt kê chúng kèm nguyên liệu thô — **đó là dữ liệu vẫn luôn ở đó, không phải hồi quy**.
+Đóng pack đã đọc bằng `--reviewed`.
+
+**Ngoài phạm vi:** `upstream.mjs` và `accept.mjs` vẫn có hai mô hình pack riêng, chỉ được
+nối bằng test. Điều kiện thoát của #61 là chúng đọc chung một schema — khi đó `PACK_SCHEMA`
+thành thừa.
+
+---
+
 ## 2.26.0 — 2026-08-07
 
 **minor.** `harness-doctor` nói ra khi lớp xác minh đang chạy trên **tập rỗng**.
