@@ -1,8 +1,13 @@
 {
   "$comment": "Bản rà Claude Code gần nhất. Nghi thức `claude-code-drift` so `reviewedVersion` với version đang chạy. Đừng sửa tay — dùng `node tooling/rituals.mjs --reviewed-claude-code \"<thấy gì>\"`.",
-  "reviewedVersion": "2.1.223",
-  "reviewedAt": "2026-08-06T04:43:13.397Z",
+  "reviewedVersion": "2.1.224",
+  "reviewedAt": "2026-08-07T10:00:30.504Z",
   "history": [
+    {
+      "version": "2.1.224",
+      "at": "2026-08-07T10:00:30.504Z",
+      "found": "2.1.224 ra 2026-08-07. Cau hoi cua nghi thuc — \"no vua ra san thu nao harness dang tu lam tay?\" — co BON muc cham, khong muc nao thay the duoc cai gi, va mot muc lam mot rang buoc san co NANG hon.\n\n(1) \"Removed 200-subagent-per-session spawn cap\" — LAM NANG THEM rang buoc san co, khong go bo.\nAGENTS.md dat tran <5s cho gate o SubagentStop voi ly do \"moi gate nhan voi toi da 16 agent song song\".\nBo tran 200 nghia la he so nhan gio khong con tran cua vendor chan giup. Ngan sach 5s do KHONG con la\nthu tu chon. Do: `node tooling/gates.mjs --list --timing` hien bao \"subagent: KHONG do duoc do tre —\n0/1 gate co lenh\", nghia la ta CHUA TUNG do lop nay. Do la mot `?`, khong phai mot dam bao.\n\n(2) \"Added cross-session SendMessage\" + \"crossSessionInbound\" — vendor buoc dau vao dung khong gian ma\nharness tu xay: session-start.mjs muc 8 ghi su co mat cua phien, overlap-scan.mjs + check-reservations.mjs\ndo chong lan. SendMessage la kenh NHAN TIN giua phien, khong phai so dang ky phien — chua thay the duoc\nphat hien chong lan. NHUNG day la primitive dau tien cua vendor o day: neu ban sau co so dang ky phien\nthat thi muc 8 cua session-start thanh thua. THEO DOI, chua lam gi.\n\n(3) \"Fixed sandbox filesystem deny entries with trailing slashes being bypassable\" — DO ROI, KHONG cham.\n11 entry trong permissions.deny, khong entry nao ket thuc bang \"/\", va settings.json khong co khoa\n`sandbox`. Lo do khong ap dung o day.\nDang ghi lai vi mot ly do khac: DUNG LOP LOI DO vua can harness trong cung ngay. entropy-scan §9b hoi\n`git check-ignore` cho mot thu muc CHUA TON TAI, va pattern thu muc trong .gitignore co \"/\" cuoi nen\ndang khong-co-\"/\" KHONG khop — bug xanh o local, do o ca ba OS cua CI (v2.30.0/2.30.2). Hai he thong\ndoc lap, cung mot bug xu ly dau \"/\" cuoi trong so khop duong dan, cung mot ngay. Do la bang chung cho\nmot bai hoc, khong phai mot bug cua harness.\n\n(4) \"Added archive plugin source: install from zip over HTTPS with optional SHA-256 pinning\" — gan nhat\nvoi lop phan phoi harness tu xay (apply-to.mjs, upgrade.mjs, harness-manifest.json co sha tung file,\nknowledge/export.mjs). Nhung vendor phan phoi PLUGIN vao sandbox cua no; harness phan phoi FILE vao repo\nma doi se sua tiep. Hai bai toan khac nhau — ghim sha khong giai duoc \"file nay project da sua chua\".\nKHONG thay the duoc.\n\nKET LUAN: khong cat duoc co che nao. Viec duy nhat sinh ra tu ban nay la do lop SubagentStop — no dang\nla \"?\" chu khong phai \"on\", va tran 200 tung che cho no thi khong con."
+    },
     {
       "version": "2.1.223",
       "at": "2026-08-06T04:43:13.397Z",

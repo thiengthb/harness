@@ -1,4 +1,4 @@
-<!-- version: 2026-08-07-e -->
+<!-- version: 2026-08-07-f -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,17 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-07 — Runner gate có chi phí SÀN, và giờ nó hiện ra (v2.31.0)
+
+Claude Code 2.1.224 **bỏ trần 200 subagent mỗi phiên**. Trần <5s ở `SubagentStop` mà
+`AGENTS.md` đặt ra giờ không còn cái gì của vendor che cho nữa.
+
+`gates --list --timing` từng nói `subagent: KHÔNG đo được`. Đúng về phần *việc* của gate, sai
+về *chi phí*: chính runner tốn **~104ms** mỗi lần gọi, nhân với số agent song song.
+
+**Việc bạn phải làm khác đi:** không gì bắt buộc. Nếu `gates.subagent` của bạn chưa có lệnh,
+bạn sẽ thấy dòng sàn lần đầu — đó là chi phí vẫn luôn trả, chỉ chưa được nói ra.
 
 ## 2026-08-07 — Hai phép kiểm ĐI LÊN từ repo con (v2.30.0)
 

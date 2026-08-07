@@ -1717,6 +1717,58 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   } else ok.push(`entropy-scan.mjs${' '.repeat(12)} allowlist GLOBAL_OK khớp thật trên OS này (${present.length} file được miễn, 0 rò)`);
 }
 
+// ─── Sàn runner ở stage KHÔNG gate nào có lệnh: ĐO ĐƯỢC, không phải `?` ──────
+//
+// Ra từ nghi thức `--reviewed-claude-code` cho Claude Code 2.1.224, mục *"Removed
+// 200-subagent-per-session spawn cap"*. Trần của vendor từng che cho ta; giờ không còn.
+//
+// `gates.mjs --list --timing` từng gọi cả cụm này là "KHÔNG đo được độ trễ". Đúng về phần
+// VIỆC của gate, sai về CHI PHÍ: chính runner chạy — một tiến trình Node + nạp config + ghi
+// telemetry, đo được 100ms trên máy này, trả đủ mỗi lần hook kích hoạt. Ở `subagent` con số
+// đó nhân với số agent song song.
+//
+// Hai vế, và ca này khoá cả hai — bỏ vế nào cũng là một nửa sự thật:
+//   · sàn phải HIỆN RA bằng số;
+//   · phần việc thật vẫn phải nói rõ là CHƯA đo được.
+{
+  const L = ' '.repeat(9);
+  const r = spawnSync(process.execPath, [repoPath('tooling', 'gates.mjs'), '--list', '--timing'], {
+    encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, ...TEST_ENV },
+  });
+  const out = `${r.stdout || ''}${r.stderr || ''}`;
+  const line = out.split('\n').find(l => /\bsubagent:/.test(l)) || '';
+  const bad = [];
+  const ms = Number(line.match(/sàn runner (\d+)ms/)?.[1] ?? NaN);
+
+  if (!line) bad.push('không thấy dòng tổng kết cho stage `subagent` — neo của ca này đã trôi');
+  else if (!Number.isFinite(ms)) bad.push(`stage không gate nào có lệnh vẫn KHÔNG báo sàn bằng số: "${line.trim().slice(0, 80)}"`);
+  else if (ms <= 0) bad.push(`sàn runner đo ra ${ms}ms — một tiến trình Node không tốn 0ms, phép đo hỏng`);
+  // Vế thứ hai: sàn KHÔNG được đọc thành "đã đo xong". Việc thật vẫn chưa đo.
+  if (line && !/CHƯA đo được/.test(line)) bad.push('dòng sàn không còn nói phần VIỆC của gate là CHƯA đo được — một nửa sự thật đọc như cả sự thật');
+
+  // Phép đo chạy runner 5 lần. Nếu nó ghi vào sổ THẬT thì công cụ đo tự làm nhiễu số của
+  // chính nó — đúng issue #66.
+  //
+  // CHẠY KHÔNG CÓ `TEST_ENV`, cố ý. Bản đầu của ca này chạy VỚI `TEST_ENV` — mà `TEST_ENV`
+  // đã đặt sẵn `HARNESS_TELEMETRY_DIR`, nên sổ thật KHÔNG THỂ mọc dù `floorMs` có chuyển
+  // hướng hay không. Một khẳng định luôn xanh là một khẳng định không tồn tại; nó chỉ khẳng
+  // định rằng chính nó đã được viết. Đúng lớp lỗi false-green ở `test-evals` ca ⑩ (v2.24.0).
+  //
+  // Ở đây chỉ `floorMs` mới ghi telemetry: `--list` gọi thẳng `runGate()`, không đi qua
+  // đường `--stage`. Nên nếu `floorMs` thôi chuyển hướng, sổ thật mọc đúng 5 dòng.
+  const realLog = repoPath('.claude', 'telemetry', 'gate-runs.log');
+  const lines = () => (exists(realLog) ? readFileSync(realLog, 'utf8').split('\n').length : 0);
+  const before = lines();
+  spawnSync(process.execPath, [repoPath('tooling', 'gates.mjs'), '--list', '--timing'], {
+    encoding: 'utf8', cwd: repoPath(''),
+  });
+  const after = lines();
+  if (after !== before) bad.push(`phép đo sàn ghi ${after - before} dòng vào gate-runs.log THẬT — công cụ đo đang làm nhiễu số của chính nó (#66)`);
+
+  if (bad.length) fail.push(`gates sàn runner${L} ${bad.join(' · ')}`);
+  else ok.push(`gates sàn runner${L} stage rỗng báo sàn ${ms}ms bằng SỐ, vẫn nói rõ việc thật chưa đo, và không ghi vào sổ thật`);
+}
+
 // ─── File ĐƯỢC SHIP không được trích đường dẫn KHÔNG được ship ───────────────
 //
 // Hợp đồng hai đầu, cùng khuôn với `PACK_SCHEMA`: `apply-to.mjs` quyết cái gì xuống repo con,
@@ -2147,7 +2199,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 157;
+const RATCHET = 158;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {
