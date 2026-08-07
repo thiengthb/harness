@@ -1700,7 +1700,12 @@ for (const [env, expect, label, msg] of GATE_CASES) {
     encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, ...TEST_ENV },
   });
   const out = `${r.stdout || ''}${r.stderr || ''}`;
-  const leaked = present.filter(n => out.includes(n));
+  // So `.claude/rules/<tên>:` chứ KHÔNG so tên trần. Cảnh báo mà ca này canh luôn in dưới
+  // dạng `rel(f) + ':'`, còn tên trần thì đụng mọi chỗ khác trong output — đo 2026-08-07:
+  // §9b in file NGUỒN của một đường dẫn chết (`README.md`), và ca này đỏ vì một lý do không
+  // liên quan gì tới allowlist. Một khẳng định so chuỗi quá rộng thì đo cả những thứ nó
+  // không định đo, và nó sẽ đỏ mỗi lần ai đó thêm một dòng output ở chỗ khác.
+  const leaked = present.filter(n => out.includes(`.claude/rules/${n}:`));
 
   if (!listed.length) {
     fail.push(`entropy-scan.mjs${' '.repeat(12)} không rút được \`GLOBAL_OK\` — neo của check này đã trôi, sửa neo thay vì xoá check`);
@@ -1755,6 +1760,23 @@ for (const [env, expect, label, msg] of GATE_CASES) {
     const said = probe.stdout.split('\n').map(s => s.trim()).filter(Boolean);
     if (!said.includes('.claude/telemetry/x.log')) bad.push('`git check-ignore` KHÔNG nhận ra file gitignore trên OS này — §9b sẽ báo nhầm mọi artifact lúc chạy');
     if (said.includes('AGENTS.md')) bad.push('`git check-ignore` nhận nhầm file ĐƯỢC TRACK là ignore — §9b sẽ im lặng bỏ qua đường dẫn chết thật');
+
+    // THƯ MỤC IGNORE CHƯA TỒN TẠI — ca duy nhất chỉ CI thấy, và nó đã thấy thật.
+    // Pattern thư mục trong `.gitignore` có `/` cuối; `check-ignore` trên một đường dẫn KHÔNG
+    // tồn tại không biết nó là thư mục ⇒ dạng KHÔNG có `/` không khớp. Trên máy có thư mục đó
+    // thì cả hai dạng khớp, nên bug này vô hình ở local và đỏ ở cả ba OS của CI.
+    if (!/cand\.map\(p => p \+ '\/'\)/.test(esSrc)) {
+      bad.push("§9b không còn hỏi check-ignore ở CẢ HAI dạng (`p` và `p + '/'`) — thư mục ignore chưa tồn tại sẽ bị báo là đường dẫn chết, chỉ trên máy sạch");
+    }
+    const dirPat = readFileSync(repoPath('.gitignore'), 'utf8').split('\n')
+      .map(s => s.trim()).filter(s => s.endsWith('/') && !s.startsWith('#') && !s.startsWith('!'))
+      .find(s => !exists(repoPath(s.replace(/\/$/, ''))));
+    if (dirPat) {
+      const noSlash = git(['check-ignore', '--stdin'], { input: dirPat.replace(/\/$/, '') + '\n' }).stdout.trim();
+      const withSlash = git(['check-ignore', '--stdin'], { input: dirPat + '\n' }).stdout.trim();
+      if (!withSlash) bad.push(`\`check-ignore\` không nhận ra thư mục ignore CHƯA TỒN TẠI (${dirPat}) kể cả khi có dấu / — §9b sẽ báo nhầm nó`);
+      else if (noSlash) bad.push(`\`check-ignore\` khớp cả dạng không có / cho ${dirPat} — ca này MẤT PHẠM VI trên OS này, nó không còn kiểm gì`);
+    }
   }
 
   if (bad.length) fail.push(`entropy-scan §9b${L} ${bad.join(' · ')}`);

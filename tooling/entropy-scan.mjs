@@ -315,8 +315,12 @@ if (touched.length) {
   // cho cả tập; và nó tự cập nhật khi `.gitignore` đổi.
   if (dangling.size) {
     const cand = [...dangling.keys()];
-    const ci = git(['check-ignore', '--stdin'], { input: cand.join('\n') });
-    for (const p of ci.stdout.split('\n').map(s => s.trim()).filter(Boolean)) dangling.delete(p);
+    // HỎI CẢ HAI DẠNG: `p` và `p + '/'`. Pattern thư mục trong `.gitignore` có dấu `/` cuối
+    // (`knowledge/incoming/`), và `check-ignore` trên một đường dẫn KHÔNG tồn tại thì không
+    // biết nó là thư mục ⇒ không khớp. Đo trên CI 2026-08-07: `knowledge/incoming` báo là
+    // đường dẫn chết ở cả ba OS, trong khi máy tôi im vì thư mục đó CÓ THẬT ở đây.
+    const ci = git(['check-ignore', '--stdin'], { input: [...cand, ...cand.map(p => p + '/')].join('\n') });
+    for (const p of ci.stdout.split('\n').map(s => s.trim().replace(/\/$/, '')).filter(Boolean)) dangling.delete(p);
   }
   if (dangling.size) {
     const rows = [...dangling.entries()].sort((a, b) => b[1].size - a[1].size);
