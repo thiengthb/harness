@@ -1,8 +1,8 @@
 {
   "generatedBy": "tooling/knowledge/lint.mjs",
-  "count": 4,
+  "count": 5,
   "byScope": {
-    "universal": 4
+    "universal": 5
   },
   "lessons": [
     {
@@ -76,6 +76,24 @@
         ".claude/hooks/protect-migrations.mjs — declareFailMode(2) fail-CLOSED",
         ".claude/hooks/protect-tests.mjs — declareFailMode(2) fail-CLOSED",
         ".claude/hooks/post-edit-lint.mjs — declareFailMode(1) fail-open nhưng HIỆN RA, không phải 0"
+      ]
+    },
+    {
+      "id": "L0005",
+      "file": "knowledge/lessons/0005-bo-dem-do-ve-phia-de-chiu.md",
+      "title": "Một bộ đếm không phân biệt được hai trạng thái sẽ đổ về phía DỄ CHỊU — và mẫu số bằng 0 làm mọi tỉ lệ thành 100%",
+      "scope": "universal",
+      "class": "verification",
+      "representation": "computational-control",
+      "status": "active",
+      "added": "2026-08-07",
+      "occurrences": 6,
+      "artifacts": [
+        "tooling/lib/harness.mjs — `verificationCoverage()` 5 trạng thái, `coordinationLayer()` 4, `budgetStatus()` 6, `packPending()`/`packMaterial()`, `readPacks()` trả `null` ≠ `[]`. Mọi phán đoán là hàm THUẦN, tách khỏi phần đọc đĩa, để test khẳng định thẳng vào nó",
+        "tooling/rituals.mjs — hợp đồng BA GIÁ TRỊ `due`/`ok`/`?`; bản ngắn NÊU TÊN mục `?` chứ không chỉ đếm",
+        "tooling/gates.mjs — `n/a KHÔNG có lệnh → gate này không tồn tại, dù nó nằm trong config`; `subagent: KHÔNG đo được độ trễ — 0ms ở đây là 'không có gì chạy', không phải 'nhanh'`",
+        "evals/run.mjs — cờ `measured`: task `n/a` ra khỏi MẪU SỐ thay vì tính 0 điểm; in `naCount` riêng",
+        "tooling/test-hooks.mjs — bảng ca cho từng hàm phán đoán, mỗi bảng bắt buộc có ít nhất một ca 'không đo được' và một ca miễn trừ theo vai"
       ]
     }
   ]

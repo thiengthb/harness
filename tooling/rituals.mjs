@@ -60,7 +60,7 @@ export const RITUALS = [
     cmd: '/claim',
     what: 'nhận việc: đọc nhật ký cũ, đặt chỗ vùng nóng, tạo docs/progress/<issue>.md',
     check: (s) => {
-      if (s.issue === null) return { state: '?', why: 'nhánh không theo quy ước `<type>/<issue>-<slug>` nên không suy ra được issue — không đo được' };
+      if (s.issue == null) return { state: '?', why: 'nhánh không theo quy ước `<type>/<issue>-<slug>` nên không suy ra được issue — không đo được' };
       if (!s.issue) return { state: 'ok', why: 'đang ở nhánh tích hợp, không có issue để nhận' };
       // Solo vẫn cần nhật ký — chỉ khác NGƯỜI ĐỌC. "người sau" là lời khuyên rỗng khi bạn
       // là người duy nhất, và một lý do rỗng làm cả nghi thức đọc như thủ tục. Người đọc
@@ -76,7 +76,12 @@ export const RITUALS = [
     cmd: '/handoff',
     what: 'kết phiên: ghi lại đã làm gì, đang dở gì, bước tiếp theo',
     check: (s) => {
-      if (s.issue === null || !s.issue) return { state: 'ok', why: 'không ở trong một issue — không có gì để giao lại' };
+      // TÁCH "không suy ra được issue" khỏi "đang ở nhánh tích hợp". Bản trước gộp hai cái
+      // vào một dòng `ok`, và nhật ký W32 đã bắt được đúng ca đó: *"/handoff OK — không có
+      // gì để giao lại"* trong khi có 2 commit chưa push và người dùng sắp sang máy khác.
+      // Nhánh không theo quy ước `<type>/<issue>-<slug>` là ca THƯỜNG GẶP, không phải ca lạ.
+      if (s.issue == null) return { state: '?', why: 'không suy ra được issue từ tên nhánh — không đo được. Có việc dở hay không thì bảng này KHÔNG biết' };
+      if (!s.issue) return { state: 'ok', why: 'đang ở nhánh tích hợp — không có gì để giao lại' };
       if (!s.progressExists) return { state: 'ok', why: '/claim đang tới hạn trước — nhật ký chưa tồn tại' };
       if (s.commitsSinceProgress > 0) {
         return { state: 'due', why: `${s.commitsSinceProgress} commit mới hơn lần sửa docs/progress/${s.issue}.md gần nhất — công việc đã đi trước nhật ký` };
@@ -89,7 +94,7 @@ export const RITUALS = [
     cmd: '/pre-merge',
     what: 'chạy đủ gate preMerge trước khi mở PR',
     check: (s) => {
-      if (s.ahead === null) return { state: '?', why: 'không resolve được nhánh tích hợp — không đo được. Kiểm `project.integrationBranch`' };
+      if (s.ahead == null) return { state: '?', why: 'không resolve được nhánh tích hợp — không đo được. Kiểm `project.integrationBranch`' };
       if (s.ahead === 0) return { state: 'ok', why: 'không có commit nào đi trước nhánh tích hợp' };
       // Bản trước in "chưa thấy dấu gate preMerge chạy" mà KHÔNG đi tìm dấu nào — `gates.mjs`
       // chỉ ghi telemetry khi HỎNG, nên dấu đó chưa từng tồn tại. Nghi thức đỏ theo `ahead > 0`
@@ -113,7 +118,7 @@ export const RITUALS = [
     cmd: '/harness-retro',
     what: 'chưng fixlog thành bài học — bước DISTILL của vòng học',
     check: (s) => {
-      if (s.fixlogTotal === null) return { state: '?', why: 'không đọc được fixlog — không đo được' };
+      if (s.fixlogTotal == null) return { state: '?', why: 'không đọc được fixlog — không đo được' };
       if (s.fixlogRepeated > 0) {
         return { state: 'due', why: `${s.fixlogRepeated} nhóm fixlog đã ≥2 lần (ngưỡng promote) trên tổng ${s.fixlogTotal} mục — mỗi nhóm là một ứng viên bài học ĐANG chờ` };
       }
@@ -129,7 +134,7 @@ export const RITUALS = [
     cmd: '/knowledge-promote',
     what: 'đưa bài học đã chín vào knowledge/lessons/ để nó đi theo bạn sang repo khác',
     check: (s) => {
-      if (s.learningsNewerThanLessons === null) return { state: '?', why: 'không đọc được .claude/learnings/ hoặc knowledge/lessons/ — không đo được' };
+      if (s.learningsNewerThanLessons == null) return { state: '?', why: 'không đọc được .claude/learnings/ hoặc knowledge/lessons/ — không đo được' };
       if (s.learningsNewerThanLessons > 0) {
         // "chỉ REPO này thấy", KHÔNG phải "chỉ máy này thấy" — `.claude/learnings/` được COMMIT
         // (`git ls-files` xác nhận 2026-08-06). Bản cũ nói sai về cái mất: nó doạ mất bài học
@@ -158,8 +163,13 @@ export const RITUALS = [
     cmd: '/verify-ui',
     what: 'chụp UI thật ở 2 viewport làm bằng chứng, rồi giao design-evaluator chấm',
     check: (s) => {
+      // `=== null` CỐ Ý, không phải `== null`: ở mục này `null` và `undefined` là HAI trạng
+      // thái khác nhau — `null` = không đọc được `features/`, `undefined` = đọc được nhưng
+      // không feature nào khai issue này (dòng dưới). Đổi thành `== null` làm dòng đó thành
+      // mã chết. Đã thử và bị chính eval `0006` bắt, 2026-08-07.
       if (s.ui === null) return { state: '?', why: 'không đọc được features/ — không đo được' };
-      if (s.issue === null || !s.issue) return { state: 'ok', why: 'không ở trong một issue — không có feature nào để chụp' };
+      if (s.issue == null) return { state: '?', why: 'không suy ra được issue từ tên nhánh — không biết có feature nào cần chụp không' };
+      if (!s.issue) return { state: 'ok', why: 'đang ở nhánh tích hợp — không có feature nào để chụp' };
       if (s.ui === undefined) return { state: 'ok', why: `không có features/*.json nào khai issue ${s.issue}` };
       if (s.ui.state === 'n/a') return { state: 'ok', why: `${s.ui.id}: web ngoài scope${s.ui.why ? ` (${s.ui.why})` : ''}` };
       if (s.ui.state === 'no-web') return { state: 'ok', why: `${s.ui.id}: không khai nền web` };
@@ -172,7 +182,7 @@ export const RITUALS = [
     cmd: '/entropy-sweep',
     what: 'cắt rule/skill/doc đã hết tác dụng',
     check: (s) => {
-      if (s.skillCount === null) return { state: '?', why: 'không đếm được skill — không đo được' };
+      if (s.skillCount == null) return { state: '?', why: 'không đếm được skill — không đo được' };
       if (s.skillCount > s.maxSkills) {
         return { state: 'due', why: `${s.skillCount} skill (trần ${s.maxSkills}) — tool/skill definition ăn context ở MỌI request` };
       }
@@ -195,7 +205,7 @@ export const RITUALS = [
     cmd: '/harness-propose',
     what: 'đổi vùng cấm bằng đường hợp pháp — hook, settings, AGENTS.md, harness.config.json',
     check: (s) => {
-      if (s.harnessBlocks === null) return { state: '?', why: 'không đọc được gate-fails.log — không đo được' };
+      if (s.harnessBlocks == null) return { state: '?', why: 'không đọc được gate-fails.log — không đo được' };
       if (s.harnessBlocks >= 2) {
         return { state: 'due', why: `${s.harnessBlocks} lần bị \`protect-harness\` chặn khi sửa vùng cấm (gate-fails.log) — `
           + 'hoặc harness đang cản một việc chính đáng, hoặc ai đó đang thử sửa tay thứ phải đi qua PR. Cả hai đều là lý do chạy skill này' };
@@ -208,7 +218,7 @@ export const RITUALS = [
     cmd: '/wt',
     what: 'dọn worktree đã merge',
     check: (s) => {
-      if (s.worktrees === null) return { state: '?', why: 'không liệt kê được worktree — không đo được' };
+      if (s.worktrees == null) return { state: '?', why: 'không liệt kê được worktree — không đo được' };
       if (s.worktrees > s.maxWorktrees) return { state: 'due', why: `${s.worktrees} worktree (trần ${s.maxWorktrees}) — ổ cứng và file-watcher sẽ cạn` };
       return { state: 'ok', why: `${s.worktrees}/${s.maxWorktrees} worktree` };
     },
@@ -221,7 +231,7 @@ export const RITUALS = [
     cmd: 'knowledge/accept.mjs --list',
     what: 'quyết định trên pack đi lên từ project khác (MERGE / ACCEPT / RETURN / REJECT)',
     check: (s) => {
-      if (s.pendingPacks === null) return { state: '?', why: 'không đọc được knowledge/incoming/ — không đo được' };
+      if (s.pendingPacks == null) return { state: '?', why: 'không đọc được knowledge/incoming/ — không đo được' };
       if (s.pendingPacks > 0) return { state: 'due', why: `${s.pendingPacks} pack từ project khác đang chờ quyết ở knowledge/incoming/ (${s.pendingMaterial} mục nguyên liệu: bài học + fixlog thô + diff cơ chế) — nguyên liệu đã tới, quyết định thì chưa` };
       return { state: 'ok', why: 'không có pack chờ quyết' };
     },
