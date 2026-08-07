@@ -15,8 +15,13 @@
  * Đọc kèm: nếu CAPO ĐI LÊN trong khi bạn "cải thiện harness" → harness của bạn
  * đang phình, không đang tốt lên.
  */
-import { git, report, readJson, writeJson, repoPath } from './lib/harness.mjs';
+import { git, report, readJson, writeJson, repoPath, stateDir } from './lib/harness.mjs';
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+// Cùng đường dẫn mà `latestCapoEntry()` đọc — qua `stateDir()` để HARNESS_STATE_DIR chuyển
+// được đích trong test. Ghi thẳng `.claude/state/` là cách một test ghi vào sổ THẬT của bạn.
+const CAPO_HISTORY = () => join(stateDir(), 'capo-history.json');
 
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > -1 ? process.argv[i + 1] : d; };
 const DAYS = Number(arg('--days', 7));
@@ -70,7 +75,7 @@ if (USD !== null) {
   if (capo === null) fail.push(`Chi tiêu $${USD} nhưng 0 kết quả được chấp nhận.`);
   else {
     ok.push(`CAPO = $${capo.toFixed(2)} / kết quả được chấp nhận`);
-    const prev = readJson(repoPath('.claude', 'state', 'capo-history.json'), { entries: [] });
+    const prev = readJson(CAPO_HISTORY(), { entries: [] });
     const last = prev.entries.at(-1);
     if (last) {
       const delta = capo - last.capo;
@@ -79,7 +84,7 @@ if (USD !== null) {
       if (pct > 20) warn.push('CAPO tăng >20%. Nếu bạn vừa "cải thiện harness": harness đang PHÌNH, không đang tốt lên. Chạy node tooling/harness-size.mjs.');
     }
     prev.entries.push({ at: new Date().toISOString(), days: DAYS, usd: Number(USD), accepted, capo: Number(capo.toFixed(2)), manualFixes });
-    writeJson(repoPath('.claude', 'state', 'capo-history.json'), prev);
+    writeJson(CAPO_HISTORY(), prev);
   }
 } else {
   warn.push('Không có --usd → không tính được CAPO. Lấy con số từ dashboard billing và chạy lại: node tooling/capo-report.mjs --usd 120');

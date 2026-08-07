@@ -41,7 +41,7 @@
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, readJson, readPacks, packPending } from './lib/harness.mjs';
+import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, readJson, readPacks, packPending, budgetStatus, latestCapoEntry } from './lib/harness.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHẦN THUẦN — không đọc đĩa, không gọi git. Test khẳng định trực tiếp vào đây.
@@ -224,6 +224,24 @@ export const RITUALS = [
       if (s.pendingPacks === null) return { state: '?', why: 'không đọc được knowledge/incoming/ — không đo được' };
       if (s.pendingPacks > 0) return { state: 'due', why: `${s.pendingPacks} pack từ project khác đang chờ quyết ở knowledge/incoming/ (${s.pendingMaterial} mục nguyên liệu: bài học + fixlog thô + diff cơ chế) — nguyên liệu đã tới, quyết định thì chưa` };
       return { state: 'ok', why: 'không có pack chờ quyết' };
+    },
+  },
+  {
+    // NĂNG LỰC DUY NHẤT CHẠM TIỀN THẬT — và cho tới v2.28.0 nó không có mặt ở bảng này,
+    // nên `budget.monthlyUsdCap` là một con số không ai đối chiếu. Đặt $50 vào config
+    // không làm gì cả, và chính điều đó khiến người ta TIN là có lớp bảo vệ.
+    //
+    // `?` ở đây KHÔNG phải "ổn": khai trần mà chưa lần nào đo thì trần chưa so với gì.
+    id: 'capo-report',
+    cmd: 'capo-report.mjs --usd <N>',
+    what: 'đối chiếu chi tiêu THẬT với trần tháng (số lấy từ dashboard billing, harness không đọc được hoá đơn)',
+    check: (s) => {
+      const b = s.budget;
+      if (b.mode === 'off') return { state: '?', why: 'budget.monthlyUsdCap = 0 — chưa khai trần, nên không có gì để đối chiếu. Đây KHÔNG phải "ổn"' };
+      if (b.mode === 'unmeasured') return { state: 'due', why: b.advice };
+      if (b.mode === 'stale') return { state: 'due', why: b.advice };
+      if (b.mode === 'over' || b.mode === 'alert') return { state: 'due', why: b.advice };
+      return { state: 'ok', why: `run-rate ${b.percent}% trần tháng (số nhập tay ${b.ageDays} ngày trước)` };
     },
   },
   {
@@ -458,6 +476,13 @@ export function collect() {
       const p = packPending(packs, log);
       return { pendingPacks: p.count, pendingMaterial: p.material };
     })(),
+
+    // Phán đoán ngân sách nằm ở `budgetStatus` (THUẦN). `collect` chỉ đọc đĩa.
+    budget: budgetStatus({
+      cap: cfg.budget?.monthlyUsdCap,
+      alertAtPercent: cfg.budget?.alertAtPercent,
+      latest: latestCapoEntry(),
+    }),
 
     // Version Claude Code ĐANG chạy, và version đã được RÀ. Cả hai đều có thể là null, và
     // hai cái null đó nghĩa khác nhau: không đọc được version ⇒ `?` (không đo được); đọc
