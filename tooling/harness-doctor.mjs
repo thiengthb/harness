@@ -139,10 +139,13 @@ if (mcpCount > mcpMax) advice.push(`${mcpCount} MCP server (ngưỡng ${mcpMax})
 // như `coordinationLayer`). Trước v2.28.0 chỗ này là nơi DUY NHẤT đọc `monthlyUsdCap`, và
 // chỉ để nói "= 0" — nghĩa là đặt số vào cũng không có gì xảy ra.
 {
+  // `role` (#92): bốn chỗ khác trong file này đã biết vai; chỗ này là chỗ thứ năm và nó
+  // KHÔNG biết, nên nó đòi khai trần ở đúng nơi `setup.mjs:55` từ chối ghi.
   const b = budgetStatus({
     cap: cfg.budget?.monthlyUsdCap,
     alertAtPercent: cfg.budget?.alertAtPercent,
     latest: latestCapoEntry(),
+    role: ROLE,
   });
   console.log('\n── NGÂN SÁCH ──');
   const cap = Number(cfg.budget?.monthlyUsdCap) || 0;
@@ -153,9 +156,12 @@ if (mcpCount > mcpMax) advice.push(`${mcpCount} MCP server (ngưỡng ${mcpMax})
     ok: `  ok   run-rate $${b.runRate?.toFixed(0)}/tháng = ${b.percent}% trần $${cap} (số NHẬP TAY ${b.ageDays} ngày trước)`,
     alert: `  ⚠️   run-rate $${b.runRate?.toFixed(0)}/tháng = ${b.percent}% trần $${cap} (số NHẬP TAY ${b.ageDays} ngày trước)`,
     over: `  ⚠️   run-rate $${b.runRate?.toFixed(0)}/tháng VƯỢT trần $${cap} (${b.percent}%, số NHẬP TAY ${b.ageDays} ngày trước)`,
+    'template-na': `  n/a  trần tháng KHÔNG khai được ở repo template (setup.mjs từ chối — cap ở đây chảy xuống mọi consumer)`
+      + `. CAPO thì đo được: ${b.measured ? `đã đo ${b.ageDays ?? '?'} ngày trước` : 'CHƯA lần nào'}`,
+    'template-cap': `  ⚠️   trần $${cap} nằm trong REPO TEMPLATE — nó sẽ chảy xuống MỌI consumer áp template sau này`,
   };
   console.log(LINE[b.mode]);
-  if (b.mode !== 'off') console.log('       harness KHÔNG đọc được hoá đơn — con số này do người chép từ dashboard billing.');
+  if (b.mode !== 'off' && b.mode !== 'template-na') console.log('       harness KHÔNG đọc được hoá đơn — con số này do người chép từ dashboard billing.');
   if (b.advice) advice.push(b.advice);
 }
 

@@ -254,31 +254,71 @@ export function coordinationLayer({ teamSize: ts, role } = {}) {
  * LÊN NHAU (chạy hàng tuần với `--days 30` ⇒ cộng vào là gấp bốn). Dùng entry MỚI NHẤT và
  * quy ra **run-rate** `usd / days * 30`. Nói rõ "run-rate", không nói "đã tiêu tháng này".
  *
- * SÁU trạng thái, và hai trong số đó là `?`:
+ * TÁM trạng thái, và hai trong số đó là `?`:
  *   · `off`        — cap = 0 ⇒ chưa khai trần. Không phải "ổn".
  *   · `unmeasured` — cap > 0 mà chưa lần nào đo ⇒ `?`. Đây là ca nguy hiểm nhất: một con số
  *                    trong config làm người ta TIN là có lớp bảo vệ. Nó phải kêu.
  *   · `stale`      — số đo cũ hơn 45 ngày ⇒ `?`. Một trần THÁNG neo vào phép đo từ hai tháng
  *                    trước không nói gì về tháng này.
  *   · `ok` / `alert` / `over`
+ *   · `template-na` / `template-cap` — xem ngay dưới.
+ *
+ * ── VAI CỦA REPO (issue #92)
+ *
+ * `setup.mjs:55` TỪ CHỐI `--apply` ở repo template, và từ chối đó đúng: một con số cap ghi ở
+ * đây sẽ chảy xuống MỌI consumer áp template sau này. Nhưng cho tới #92, hàm này không nhận
+ * `role`, nên nó trả `off` — *"chưa khai trần, KHÔNG phải ổn"* — ở đúng nơi harness cấm khai.
+ * **Harness đòi một thứ mà chính harness cấm cung cấp**, và không có đường nào làm mục đó xanh.
+ *
+ * Bốn chỗ khác trong `harness-doctor.mjs` đã biết vai (`placeholder()`, `verificationCoverage`,
+ * `coordinationLayer`, và khối CẤU HÌNH). Chỗ thứ năm thì không — cùng hình dạng với nhóm 1
+ * của retro W32 lần ba (#90): một bài học áp ở vài chỗ và không tổng quát hoá.
+ *
+ * TÁCH HAI TRẠNG THÁI ĐANG BỊ GỘP. Ở template, `?` cũ trộn hai chuyện khác hẳn nhau:
+ *   1. **Trần tháng** — không khai được, và đó là ĐÚNG THIẾT KẾ ⇒ `n/a`.
+ *   2. **Phép đo CAPO** — `capo-report.mjs` KHÔNG đọc `monthlyUsdCap` (nó ghi vào
+ *      `stateDir()/capo-history.json`), nên nó CHẠY ĐƯỢC ở template và chưa lần nào chạy
+ *      ⇒ `due`, việc làm được.
+ * Gộp hai cái làm mất mục (2) — thứ thật sự làm được — sau lưng mục (1). Cờ `measured` tồn
+ * tại để bên gọi tách lại được.
  */
-export function budgetStatus({ cap, alertAtPercent = 80, latest = null, now = Date.now() } = {}) {
+export function budgetStatus({ cap, alertAtPercent = 80, latest = null, now = Date.now(), role = null } = {}) {
   const c = Number(cap);
-  if (!Number.isFinite(c) || c <= 0) {
-    return { mode: 'off', percent: null, runRate: null,
-      advice: 'budget.monthlyUsdCap = 0 — chưa khai trần chi tiêu. Đây là lớp duy nhất gây thiệt hại tài chính TRỰC TIẾP. Khai: node tooling/setup.mjs · xem docs/ECONOMICS.md' };
-  }
+  // MỘT phép kiểm "số đo có dùng được không", dùng ở CẢ HAI chỗ cần nó: cờ `measured` (nhánh
+  // template) và mode `unmeasured` (nhánh có cap). Viết hai lần thì hai bản sẽ lệch, và lúc
+  // lệch thì template báo "đã đo" trong khi repo có cap báo "chưa đo" trên CÙNG một entry.
   const usd = Number(latest?.usd), days = Number(latest?.days);
   const at = Date.parse(latest?.at ?? '');
-  if (!Number.isFinite(usd) || !Number.isFinite(days) || days <= 0 || !Number.isFinite(at)) {
-    return { mode: 'unmeasured', percent: null, runRate: null,
+  const measured = Number.isFinite(usd) && Number.isFinite(days) && days > 0 && Number.isFinite(at);
+  if (!Number.isFinite(c) || c <= 0) {
+    if (role === 'template') {
+      return { mode: 'template-na', percent: null, runRate: null, measured,
+        ageDays: measured ? Math.round((now - at) / 86400000) : null,
+        advice: measured ? null
+          : 'CAPO chưa lần nào đo. TRẦN thì không khai được ở repo template (setup.mjs từ chối — cap ở đây sẽ chảy xuống mọi consumer), '
+            + 'nhưng CAPO thì đo được và không cần trần: node tooling/capo-report.mjs --days 7 --usd <số từ dashboard billing>' };
+    }
+    return { mode: 'off', percent: null, runRate: null, measured,
+      advice: 'budget.monthlyUsdCap = 0 — chưa khai trần chi tiêu. Đây là lớp duy nhất gây thiệt hại tài chính TRỰC TIẾP. Khai: node tooling/setup.mjs · xem docs/ECONOMICS.md' };
+  }
+  // CHIỀU NGƯỢC, và nó phải kêu to hơn. Cap > 0 ở template nghĩa là con số đó vào bằng tay —
+  // `setup.mjs` không ghi được ở đây. Nó sẽ theo `apply-to.mjs` xuống mọi consumer, và ở đó nó
+  // đọc như một trần đã được cân nhắc cho project ĐÓ. Một giá trị sai thừa kế im lặng nguy
+  // hiểm hơn một giá trị trống.
+  if (role === 'template') {
+    return { mode: 'template-cap', percent: null, runRate: null, measured,
+      advice: `budget.monthlyUsdCap = $${c} trong REPO TEMPLATE — con số này sẽ chảy xuống MỌI consumer áp template sau này, `
+        + 'và ở đó nó đọc như một trần đã cân nhắc cho project họ. `setup.mjs` từ chối ghi nó ở đây; nếu nó vào bằng tay thì đưa về 0.' };
+  }
+  if (!measured) {
+    return { mode: 'unmeasured', percent: null, runRate: null, measured,
       advice: `cap $${c} đã khai nhưng CHƯA LẦN NÀO đo chi tiêu — không có gì để so, nên cap này chưa bảo vệ bạn khỏi bất cứ điều gì. Lấy số từ dashboard billing: node tooling/capo-report.mjs --usd <N>` };
   }
   // 45 ngày: một trần THÁNG cần số đo trong hoặc sát tháng này. Nới hơn thì "stale" không
   // bao giờ bật; chặt hơn thì nó kêu ngay sau một kỳ đo bình thường và thành nhiễu.
   const ageDays = Math.round((now - at) / 86400000);
   if (ageDays > 45) {
-    return { mode: 'stale', percent: null, runRate: null, ageDays,
+    return { mode: 'stale', percent: null, runRate: null, ageDays, measured,
       advice: `số đo chi tiêu gần nhất đã ${ageDays} ngày — trần THÁNG neo vào đó không nói gì về tháng này. Đo lại: node tooling/capo-report.mjs --usd <N>` };
   }
   const runRate = (usd / days) * 30;
@@ -286,14 +326,14 @@ export function budgetStatus({ cap, alertAtPercent = 80, latest = null, now = Da
   const alert = Number.isFinite(Number(alertAtPercent)) && Number(alertAtPercent) > 0 ? Number(alertAtPercent) : 80;
   const how = `$${usd} / ${days} ngày, NHẬP TAY ${ageDays} ngày trước`;
   if (percent >= 100) {
-    return { mode: 'over', percent, runRate, ageDays,
+    return { mode: 'over', percent, runRate, ageDays, measured,
       advice: `run-rate $${runRate.toFixed(0)}/tháng VƯỢT trần $${c} (${percent}%) — nguồn: ${how}. Xem docs/ECONOMICS.md` };
   }
   if (percent >= alert) {
-    return { mode: 'alert', percent, runRate, ageDays,
+    return { mode: 'alert', percent, runRate, ageDays, measured,
       advice: `run-rate $${runRate.toFixed(0)}/tháng = ${percent}% trần $${c} (ngưỡng cảnh báo ${alert}%) — nguồn: ${how}` };
   }
-  return { mode: 'ok', percent, runRate, ageDays, advice: null };
+  return { mode: 'ok', percent, runRate, ageDays, measured, advice: null };
 }
 
 /**
