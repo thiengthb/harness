@@ -105,7 +105,7 @@
       "representation": "test",
       "status": "active",
       "added": "2026-08-08",
-      "occurrences": 3,
+      "occurrences": 4,
       "artifacts": [
         "tooling/lib/harness.mjs",
         "tooling/wt-clean.mjs",

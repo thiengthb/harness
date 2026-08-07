@@ -8,10 +8,11 @@ status: active
 owner: "@ai"
 added: 2026-08-08
 expires-review: 2026-11-08
-occurrences: 3
+occurrences: 4
 evidence:
   - "#97 — `wt-clean.mjs:31` hỏi `git branch --merged`; squash-merge tạo commit MỚI nên nhánh ĐÃ merge đọc y hệt nhánh chưa từng có PR. Đo 2026-08-07: PR #89 merge lúc 13:10:45Z, worktree sạch, `--apply` in *giữ (chưa merge)* và không xoá gì. Repo squash 100% số PR ⇒ bộ dò chưa từng đúng một lần nào."
   - "#92 — `budgetStatus` không nhận `role`, nên nó in *chưa khai trần chi tiêu, KHÔNG phải ổn* ở repo template, nơi `setup.mjs:55` TỪ CHỐI ghi cấu hình. Harness đòi một thứ chính harness cấm cung cấp; không đường nào làm mục đó xanh."
+  - "#105 — `rituals.mjs:478` đếm MỌI dòng từng có trong `gate-fails.log`, nên `/harness-propose` đỏ VĨNH VIỄN sau hai lần bị chặn. Ba lần chặn ngày 2026-08-07 đã xử lý xong qua PR #79-#101, và không lệnh nào làm mục đó xanh lại được. `fixlog` có `--close` từ v2.11.0; sổ CÙNG FILE cách 380 dòng thì không."
   - "#97 (phụ) — `git log @{u}..HEAD` khi upstream đã bị xoá thì git LỖI, `stdout` rỗng, và code cũ đọc thành *không có commit chưa push*. Cùng gốc rễ, khác cơ chế."
 artifacts:
   - "tooling/lib/harness.mjs"

@@ -41,7 +41,7 @@
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, readJson, readPacks, packPending, budgetStatus, latestCapoEntry, repoRole } from './lib/harness.mjs';
+import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, readJson, readPacks, packPending, budgetStatus, latestCapoEntry, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries } from './lib/harness.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHẦN THUẦN — không đọc đĩa, không gọi git. Test khẳng định trực tiếp vào đây.
@@ -226,10 +226,17 @@ export const RITUALS = [
     check: (s) => {
       if (s.harnessBlocks == null) return { state: '?', why: 'không đọc được gate-fails.log — không đo được' };
       if (s.harnessBlocks >= 2) {
+        // LỐI RA IN NGAY Ở CHỖ BÁO ĐỎ. Một cơ chế đóng mà người đọc không tìm thấy thì tương
+        // đương không có — và mục này đã đỏ vĩnh viễn suốt vì đúng lý do đó (#105).
         return { state: 'due', why: `${s.harnessBlocks} lần bị \`protect-harness\` chặn khi sửa vùng cấm (gate-fails.log) — `
-          + 'hoặc harness đang cản một việc chính đáng, hoặc ai đó đang thử sửa tay thứ phải đi qua PR. Cả hai đều là lý do chạy skill này' };
+          + 'hoặc harness đang cản một việc chính đáng, hoặc ai đó đang thử sửa tay thứ phải đi qua PR. Cả hai đều là lý do chạy skill này. '
+          + 'Xử lý xong rồi: `node tooling/rituals.mjs --close harness-propose "<đã làm gì>"` (lần chặn MỚI sẽ tự mở lại)' };
       }
-      return { state: 'ok', why: s.harnessBlocks ? `${s.harnessBlocks} lần bị chặn ở vùng cấm, chưa đạt ngưỡng 2` : 'chưa lần nào bị chặn ở vùng cấm' };
+      if (s.harnessBlocks) return { state: 'ok', why: `${s.harnessBlocks} lần bị chặn ở vùng cấm, chưa đạt ngưỡng 2` };
+      const closed = (s.harnessBlocksEver ?? 0) - s.harnessBlocks;
+      return { state: 'ok', why: closed > 0
+        ? `${closed} lần bị chặn ở vùng cấm, tất cả ĐÃ ĐÓNG (lý do trong gate-fails.log) — không phải "chưa từng xảy ra"`
+        : 'chưa lần nào bị chặn ở vùng cấm' };
     },
   },
   {
@@ -481,11 +488,16 @@ export function collect() {
     // Số lần `protect-harness` CHẶN một lần sửa vùng cấm. Đọc từ cùng log mà hook ghi vào,
     // nên không có cờ mới nào phải nhớ bật. `null` = không đọc được ⇒ `?`, KHÔNG phải 0:
     // "chưa có log" và "chưa lần nào bị chặn" là hai chuyện khác nhau.
+    // ĐI QUA `openTelemetryEntries`, KHÔNG tự `readFileSync` (#105). Bản trước đếm mọi dòng
+    // từng có, nên mục này đỏ VĨNH VIỄN sau hai lần bị chặn — kể cả khi cả hai đã xử lý xong.
     harnessBlocks: num(() => {
-      const f = join(telemetryDir(), 'gate-fails.log');
-      if (!existsSync(f)) return 0;              // log tồn tại được nhưng rỗng là 0 THẬT
-      return readFileSync(f, 'utf8').split('\n').filter(l => l.split('|')[2] === 'protect-harness').length;
+      const open = openTelemetryEntries('gate-fails', 'protect-harness');
+      return open === null ? null : open.length;
     }, null),
+    // TỔNG (kể cả đã đóng). Không có nó, mục `ok` in *"chưa lần nào bị chặn"* cho một repo đã
+    // bị chặn ba lần và xử lý xong — tức đóng sổ xong thì LỊCH SỬ BIẾN MẤT. Đó đúng là lớp lỗi
+    // mà cơ chế đóng sinh ra để tránh, xuất hiện lại trong chính thông báo của nó.
+    harnessBlocksEver: num(() => telemetryEntries('gate-fails')?.filter(e => e.selector === 'protect-harness').length ?? null, null),
 
     // GUARD NHÁNH TÍCH HỢP: cửa thoát so với nhánh chặn.
     //
@@ -497,22 +509,17 @@ export function collect() {
     // ⇒ guard sai, CẮT nó — đừng nới nó.** Đây là mục hiếm hoi trong bảng này đề xuất bỏ một
     // cơ chế thay vì làm một việc, và nó cố ý như vậy.
     ...(() => {
-      const count = (file, col2) => {
-        const f = join(telemetryDir(), file);
-        if (!existsSync(f)) return 0;
-        try { return readFileSync(f, 'utf8').split('\n').filter(Boolean).filter(l => !col2 || l.split('|')[2] === col2).length; }
-        catch { return null; }
-      };
-      return { mainEditEscapes: count('main-edits.log'), mainEditBlocks: count('gate-fails.log', 'protect-integration-branch') };
+      // Qua `openTelemetryEntries` như mọi bên đọc khác (#105). Ở ĐÂY nó còn quan trọng hơn
+      // chỗ khác: đây là một TỈ LỆ (cửa thoát / lần chặn), nên nếu một vế đóng được mà vế kia
+      // không thì tỉ lệ méo đúng theo hướng làm guard trông sai.
+      const count = (kind, selector) => openTelemetryEntries(kind, selector)?.length ?? null;
+      return { mainEditEscapes: count('main-edits'), mainEditBlocks: count('gate-fails', 'protect-integration-branch') };
     })(),
 
     preMergeRanAt: num(() => {
-      const f = join(telemetryDir(), 'gate-runs.log');
-      if (!existsSync(f)) return null;
-      const times = readFileSync(f, 'utf8').split('\n')
-        .filter(l => l.split('|')[2] === 'gates:preMerge')
-        .map(l => Date.parse(l.split('|')[0]))
-        .filter(Number.isFinite);
+      const runs = openTelemetryEntries('gate-runs', 'gates:preMerge');
+      if (!runs?.length) return null;
+      const times = runs.map(e => Date.parse(e.at)).filter(Number.isFinite);
       return times.length ? Math.max(...times) : null;
     }, null),
     lastCommitAt: num(() => {
@@ -628,6 +635,34 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   // trùng thứ harness tự viết"* là một kết luận kiểm được, còn một file baseline bị bump
   // lặng lẽ thì không phân biệt được với việc chưa ai đọc. Cùng lý do `fixlog --close` đòi
   // lý do: một mục bị đóng mà không ghi vì sao thì lần sau không ai dựng lại được quyết định.
+  // ── Đóng một nghi thức mà nguyên liệu của nó là một SỔ tích luỹ (#105).
+  //
+  // Không phải nút tắt: dòng đóng ghi vào CHÍNH cái sổ đang audit, lý do là bắt buộc, và mọi
+  // occurrence MỚI tự mở lại. Nó chỉ nói *"mọi thứ tới đây đã xử lý"* — thứ mà một bộ đếm
+  // tích luỹ suốt đời không có cách nào diễn đạt.
+  const CLOSABLE = { 'harness-propose': { kind: 'gate-fails', selector: 'protect-harness' } };
+  const ci = process.argv.indexOf('--close');
+  if (ci > -1) {
+    const id = process.argv[ci + 1];
+    const reason = process.argv.slice(ci + 2).filter(a => !a.startsWith('--')).join(' ').trim();
+    const spec = CLOSABLE[id];
+    if (!spec || !reason) {
+      console.error(`Cách dùng: node tooling/rituals.mjs --close <nghi-thức> "<đã làm gì>"`);
+      console.error(`  Đóng được: ${Object.keys(CLOSABLE).join(' · ')}`);
+      console.error(`  Lý do là BẮT BUỘC — đóng không lý do là tắt đèn, không phải xử lý.`);
+      process.exit(1);
+    }
+    const before = openTelemetryEntries(spec.kind, spec.selector)?.length ?? 0;
+    if (!closeTelemetry(spec.kind, spec.selector, reason)) {
+      console.error(`Không ghi được vào ${spec.kind}.log — kiểm quyền ghi ở ${telemetryDir()}`);
+      process.exit(1);
+    }
+    console.log(`✓ đã đóng ${before} mục \`${spec.selector}\` trong ${spec.kind}.log`);
+    console.log(`  lý do: ${reason}`);
+    console.log(`  Mục fixlog/telemetry vẫn GIỮ NGUYÊN làm bằng chứng. Lần chặn MỚI sẽ tự mở lại nghi thức này.\n`);
+    process.exit(0);
+  }
+
   const ri = process.argv.indexOf('--reviewed-claude-code');
   if (ri > -1) {
     const found = process.argv.slice(ri + 1).filter(a => !a.startsWith('--')).join(' ').trim();

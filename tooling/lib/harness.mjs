@@ -347,16 +347,43 @@ export function budgetStatus({ cap, alertAtPercent = 80, latest = null, now = Da
  * Lần thứ tư là lúc nó thôi là giai thoại và thành một hàm. Mọi phép kiểm dạng *"file X có
  * thật sự GỌI Y không"* phải đi qua đây trước.
  *
- * PHẠM VI CÓ CHỦ Ý HẸP: bỏ khối `/* *\/` và phần sau `//` tới hết dòng. `//` đứng sau `:`
- * được giữ (URL trong chuỗi). Nó KHÔNG phải parser JS, và không cần là parser: một chuỗi bị
- * cắt nhầm chỉ làm phép kiểm chặt hơn ở chỗ nó vốn đã không nên tin chuỗi.
+ * PHẢI BIẾT CHUỖI, và bản đầu thì không — nó đã bắn oan ngay lần dùng thứ hai. Trong
+ * `rituals.mjs` có một template literal chứa `features/*.json`; cặp regex ngây thơ đọc đó là
+ * MỞ block comment, rồi nuốt từ dòng 173 tới `*\/` thật ở dòng 349 — **176 dòng code biến
+ * mất**, và một assertion dựng trên nó báo thiếu một thứ đang nằm ngay trong file.
+ *
+ * Đó đúng là câu mà `harness.mjs` đã tự viết ở chỗ khác: *"một check trả lời 'thiếu' cho thứ
+ * đang có thì tệ hơn không có check, vì output của nó trông như một phát hiện."*
+ *
+ * Nên đây là một máy quét trạng thái, không phải hai cái regex: đi từng ký tự, biết mình đang
+ * ở trong chuỗi `'` `"` hay template `` ` `` hay không. **Nội dung chuỗi được GIỮ** — có chủ ý:
+ * lệnh mà một thông báo in ra sống trong chuỗi, và đó chính là thứ hợp đồng hai đầu cần soi.
+ *
+ * CÒN HỞ, ghi ra để không ai tưởng nó kín: **regex literal** chứa `//` hoặc `/*`
+ * (ví dụ một pattern khớp chính cú pháp comment) vẫn đánh lừa được nó. Chưa gặp trong repo
+ * này; gặp thì thêm ca test trước, đừng thêm nhánh trước.
  */
 export function codeOnly(src) {
-  return String(src)
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .split('\n')
-    .map(line => line.replace(/(^|[^:])\/\/.*$/, '$1'))
-    .join('\n');
+  const s = String(src);
+  let out = '', i = 0;
+  const n = s.length;
+  while (i < n) {
+    const c = s[i], d = s[i + 1];
+    if (c === '/' && d === '*') { const e = s.indexOf('*/', i + 2); i = e < 0 ? n : e + 2; out += ' '; continue; }
+    if (c === '/' && d === '/') { const e = s.indexOf('\n', i); i = e < 0 ? n : e; continue; }
+    if (c === '"' || c === "'" || c === '`') {
+      out += c; i++;
+      while (i < n) {
+        if (s[i] === '\\') { out += s[i] + (s[i + 1] ?? ''); i += 2; continue; }
+        out += s[i];
+        if (s[i] === c) { i++; break; }
+        i++;
+      }
+      continue;
+    }
+    out += c; i++;
+  }
+  return out;
 }
 
 /**
@@ -1537,6 +1564,9 @@ export function tallyLines(text, { field = 2, sinceMs = 0 } = {}) {
   for (const line of String(text).split('\n')) {
     const p = line.split('|');
     if (p.length < field + 2) continue;
+    // Dòng ĐÓNG là siêu dữ liệu về cái sổ, không phải một lần hook chạy. Đếm nó vào danh mục
+    // hook sẽ đẻ ra một "hook" tên `__CLOSED__` chưa từng tồn tại.
+    if (p[2] === TELEMETRY_CLOSED) continue;
     if (sinceMs) {
       const t = Date.parse(p[0]);
       if (!Number.isFinite(t) || t < sinceMs) continue;
@@ -1571,6 +1601,77 @@ export function telemetry(kind, fields) {
 /** Chỗ gọi đã tự ghi `gate-fails` trong tiến trình này chưa. Một tiến trình = một hook = một
  *  lần chặn (hook exit ngay ở `block()`), nên một cờ boolean là đủ và không mất thông tin. */
 let gateFailLogged = false;
+
+/**
+ * ═══ SỔ GHI ĐƯỢC THÌ PHẢI ĐÓNG ĐƯỢC ═════════════════════════════════════════
+ *
+ * `rituals.mjs` lái tín hiệu *"tới hạn"* của `/harness-propose` bằng một phép đếm **mọi dòng
+ * từng có** trong `gate-fails.log`. Không cửa sổ thời gian, không trạng thái đóng.
+ *
+ * Đo 2026-08-07 (issue #105): ba lần chặn lúc `12:00:44` · `12:26:00` · `12:26:01` — **cả ba
+ * đã xử lý xong** (mở `HARNESS_DRI`, rồi mọi thay đổi vùng cấm đi qua PR #79–#101). Việc đã
+ * xong, nghi thức vẫn đỏ, và **không lệnh nào làm nó xanh lại được**.
+ *
+ * `fixlog` có `--close` từ **v2.11.0**. Bài học đó được giải ở đúng một chỗ và không tổng quát
+ * hoá cho cái sổ **cùng file, cách 380 dòng**.
+ *
+ * VÌ SAO NÓ TỆ HƠN VẺ NGOÀI: một tín hiệu không bao giờ xanh lại được thì **thôi là tín hiệu**.
+ * Người đọc học được rằng mục đó không đáng phản ứng, và lần nó đỏ THẬT cũng không ai phản ứng.
+ * `rituals.mjs` đã tự viết ra đúng câu đó về một mục khác — rồi không áp cho mục này.
+ *
+ * ── ĐÂY KHÔNG PHẢI NÚT TẮT, VÀ BA THỨ GIỮ NÓ TRUNG THỰC
+ *
+ *   1. **Lý do bắt buộc.** Không có lý do thì không đóng được.
+ *   2. **Dòng đóng nằm trong CHÍNH cái sổ đang audit** — nó không xoá gì, nó chỉ nói *"mọi
+ *      thứ tới đây đã xử lý"*, và người review sau vẫn đọc được cả hai.
+ *   3. **Occurrence mới TỰ MỞ LẠI.** Đóng lúc `T` chỉ vô hiệu các dòng TRƯỚC `T`. Một lần
+ *      chặn mới ngày mai làm nghi thức đỏ lại mà không ai phải nhớ gì.
+ *
+ * So sánh ISO string bằng `>` là đúng ở đây: mọi dòng do `telemetry()` ghi đều là
+ * `new Date().toISOString()` — cùng định dạng, cùng UTC, nên thứ tự từ vựng = thứ tự thời gian.
+ */
+export const TELEMETRY_CLOSED = '__CLOSED__';
+
+/**
+ * Mọi dòng trong một sổ, đã tách cột. `null` = KHÔNG ĐỌC ĐƯỢC ⇒ `?` ở bên gọi, **không phải
+ * 0**: "chưa có log" và "chưa lần nào xảy ra" là hai chuyện khác nhau.
+ */
+export function telemetryEntries(kind, { dir = null } = {}) {
+  const f = join(dir ?? telemetryDir(), `${kind}.log`);
+  if (!existsSync(f)) return [];                 // log chưa tồn tại là 0 THẬT
+  try {
+    return readFileSync(f, 'utf8').split('\n').filter(Boolean).map(line => {
+      const p = line.split('|');
+      return { at: p[0], project: p[1], selector: p[2], detail: p.slice(3).join('|'), raw: line };
+    });
+  } catch { return null; }
+}
+
+/** Dòng CÒN MỞ: bỏ dòng đóng, và bỏ mọi dòng khớp nằm TRƯỚC lần đóng gần nhất. */
+export function openTelemetryEntries(kind, selector = null, opts = {}) {
+  const all = telemetryEntries(kind, opts);
+  if (all === null) return null;
+  let closedAt = '';
+  for (const e of all) {
+    if (e.selector !== TELEMETRY_CLOSED) continue;
+    const sel = e.detail.split('|')[0];
+    if (sel === '*' || sel === selector) { if (e.at > closedAt) closedAt = e.at; }
+  }
+  return all.filter(e => e.selector !== TELEMETRY_CLOSED
+    && (selector == null || e.selector === selector)
+    && e.at > closedAt);
+}
+
+/** Ghi một dòng ĐÓNG. Trả `false` khi thiếu lý do — đóng không lý do là tắt đèn, không phải xử lý. */
+export function closeTelemetry(kind, selector, reason, { dir = null } = {}) {
+  if (!selector || !String(reason || '').trim()) return false;
+  try {
+    const line = [new Date().toISOString(), config().project?.id ?? '-', TELEMETRY_CLOSED,
+      String(selector).replace(/[|\n\r]/g, ' '), String(reason).replace(/[|\n\r]/g, ' ')].join('|');
+    appendFileSync(join(dir ?? telemetryDir(), `${kind}.log`), line + '\n', 'utf8');
+    return true;
+  } catch { return false; }
+}
 
 /**
  * Ghi "hook này ĐÃ CHẠY" — kể cả khi nó cho qua.
