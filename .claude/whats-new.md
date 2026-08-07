@@ -1,4 +1,4 @@
-<!-- version: 2026-08-07-g -->
+<!-- version: 2026-08-07-h -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,16 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-07 — Hook `PostToolUse` thôi bị bắt nói câu sai sự thật (v2.33.0)
+
+Hợp đồng output cũ đòi mọi nhánh từ chối in `BỊ CHẶN`. Nhưng `post-edit-lint` là
+`PostToolUse` — **file đã ghi xong rồi**, nên câu đó sai. Giờ hợp đồng biết sự kiện:
+`PreToolUse` → `BỊ CHẶN`, `PostToolUse` → `⛔`, và **cả hai** bắt buộc có dòng gợi ý `→ `.
+
+**Việc bạn phải làm khác đi:** viết hook `PostToolUse` mới thì đừng in `BỊ CHẶN` — in `⛔` kèm
+một dòng `→ ` nói phải làm gì. Sự kiện của hook đọc từ `.claude/settings.json`, nên chuyển hook
+sang sự kiện khác là hợp đồng tự đổi theo.
 
 ## 2026-08-07 — Banner đầu phiên biết vai, và gọi tên thay vì đếm (v2.32.0)
 
