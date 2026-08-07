@@ -10,10 +10,26 @@
  */
 import { readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, git, readJson, matchGlob, report, config } from './lib/harness.mjs';
+import { repoPath, git, readJson, matchGlob, report, config, isSolo } from './lib/harness.mjs';
 
 const me = process.env.DEV_ID || process.env.USER || process.env.USERNAME || '';
 const dir = repoPath('reservations');
+
+// ── SOLO: guard này KHÔNG CÓ VIỆC, và tệ hơn — nó chặn NHẦM ─────────────────
+//
+// Bậc 2 của Coordination Ladder là "file NGƯỜI KHÁC đã đặt chỗ". Một người thì không có
+// người khác, nên nhánh chặn không bao giờ đúng.
+//
+// Nhưng nó chặn được: phép so là `r.owner === me` với `me = DEV_ID || USER || USERNAME`.
+// Cùng một người trên hai máy thường có `USERNAME` khác nhau (và `DEV_ID` thì phải nhớ set
+// ở `settings.local.json`, tức là máy-cục-bộ, tức là hay quên). Lúc đó reservation của
+// CHÍNH BẠN đọc ra là của người khác, và pre-commit từ chối commit của bạn với lời khuyên
+// "nhắn chủ reservation" — chủ là bạn.
+//
+// Chưa khai `teamSize` thì KHÔNG tắt: xem `isSolo()` trong lib/harness.mjs.
+if (isSolo()) {
+  process.exit(0);
+}
 
 if (!existsSync(dir)) process.exit(0);
 if (!me) {

@@ -25,6 +25,19 @@ và `cmd.exe` đọc `>` trong `=>` là chuyển hướng ⇒ nó **tạo file r
 đỏ `apply-to --audit` ở task kế tiếp. Đã sửa, và có lưới riêng: assertion nào làm bẩn cây thì
 FAIL kèm tên file.
 
+## 2026-08-06 — Harness hỏi bạn làm một mình hay có đội (v2.23.0)
+
+`node tooling/setup.mjs` có câu hỏi mới, **ngay sau mã project**: bao nhiêu người làm project
+này. Trả lời `1` sẽ TẮT ba thứ chỉ có nghĩa khi có người thứ hai — guard đặt chỗ ở pre-commit,
+dò reservation của người khác, và lời khuyên *"KHÔNG tự quyết, hỏi người"*.
+
+**Việc bạn phải làm khác đi:** chạy lại `setup.mjs` nếu project bạn là solo. **Không khai thì
+không đổi gì** — `chưa khai` giữ nguyên lớp phối hợp, nó KHÔNG được đọc thành `solo`.
+
+Một trong ba thứ bị tắt là lỗi chặn nhầm thật: reservation so theo `DEV_ID || USER ||
+USERNAME`, nên cùng một người trên hai máy có thể bị **chính reservation của mình** chặn
+commit. `node tooling/harness-doctor.mjs` → mục **LỚP PHỐI HỢP** nói rõ cơ chế nào đang tắt.
+
 ## 2026-08-06 — Vòng học W32 đã lên `main`; việc còn lại nằm ở issue, không nằm ở nhánh
 
 Nhánh `chore/vong-hoc-2026-W32` dừng ngay trước `gh pr create` khi phiên hết quota

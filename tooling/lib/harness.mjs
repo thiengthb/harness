@@ -149,6 +149,81 @@ export function limit(key, fallback) {
   return typeof v === 'number' ? v : fallback;
 }
 
+/**
+ * Số người làm project này — `project.teamSize`. Trả về `null` khi CHƯA KHAI.
+ *
+ * BA GIÁ TRỊ, KHÔNG PHẢI HAI. `null` (chưa hỏi) **không** được gộp vào `1` (solo):
+ * gộp như vậy là mọi repo chưa chạy `setup.mjs` tự nhiên mất lớp phối hợp mà không ai
+ * quyết định điều đó — đúng chiều dễ chịu, đúng lớp lỗi mà cả repo này đi sửa suốt W32.
+ *
+ * Chỉ có `isSolo()` mới tắt được thứ gì, và nó đòi một con số NGƯỜI đã trả lời.
+ */
+export function teamSize() {
+  const v = config().project?.teamSize;
+  return Number.isInteger(v) && v > 0 ? v : null;
+}
+
+/**
+ * `true` CHỈ KHI người đã khai đúng 1. Chưa khai ⇒ `false` ⇒ giữ nguyên lớp phối hợp.
+ *
+ * Vì sao mặc định nghiêng về "có đội": bỏ sót một guard phối hợp thì hỏng im lặng và chỉ
+ * lộ ra khi hai người đã giẫm chân nhau; bật thừa một guard thì tốn vài giây và NHÌN THẤY
+ * được. Hai chế độ hỏng không cân nhau, nên mặc định không được ở giữa.
+ */
+export function isSolo() {
+  return teamSize() === 1;
+}
+
+/**
+ * PHÁN ĐOÁN của mục "LỚP PHỐI HỢP" trong `harness-doctor` — hàm THUẦN, test khẳng định
+ * thẳng vào đây. Cùng lý do với `governanceDrift`: `harness-doctor` CHẠY `test-hooks.mjs`,
+ * nên một test spawn doctor sẽ đệ quy lẫn nhau (đã đo, suite treo >120 giây).
+ *
+ * BỐN trạng thái, không ba. `template` là trạng thái riêng và nó KHÔNG sinh advice:
+ * `harness.config.json` là SEED, nên một con số ở repo template ship sang MỌI consumer như
+ * câu trả lời của họ. "Chưa khai" là trạng thái ĐÚNG ở đó — advice đòi sửa nó là advice
+ * không ai được phép làm theo, đúng bug #56 (`session-start.mjs:203`).
+ */
+export function coordinationLayer({ teamSize: ts, role } = {}) {
+  if (ts === 1) return { mode: 'solo', advice: null };
+  if (Number.isInteger(ts) && ts > 1) return { mode: 'team', advice: null };
+  if (role === 'template') return { mode: 'template-na', advice: null };
+  return {
+    mode: 'unknown',
+    advice: '`project.teamSize` chưa khai — harness không biết đây là solo hay đội, nên giữ đủ '
+      + 'lớp phối hợp liên-người (đặt chỗ, CODEOWNERS, "hỏi người"). Solo thì `node tooling/setup.mjs` tắt phần thừa.',
+  };
+}
+
+/**
+ * ĐO email tác giả DISTINCT — bằng chứng cho câu hỏi `teamSize` của `setup.mjs`.
+ *
+ * ĐÂY LÀ CẬN TRÊN, KHÔNG PHẢI SỐ NGƯỜI. Nói rõ vì đây là chỗ dễ tự lừa mình nhất: một
+ * người dùng hai email đếm ra HAI. Đo trên chính repo này 2026-08-06 — 2 email, 1 người:
+ *
+ *     136480142+thiengthb@users.noreply.github.com   ← commit merge qua web GitHub
+ *     tranngocthien628@gmail.com                     ← commit từ máy
+ *
+ * Không cố gộp bằng heuristic. Không có phép nối nào đúng giữa `thiengthb` và một địa chỉ
+ * gmail, và một phép đoán sai ở đây ghi thẳng vào `harness.config.json`. Hàm này TRẢ VỀ
+ * DANH SÁCH để người nhìn thấy và tự sửa số — `setup.mjs` in nguyên nó ra.
+ *
+ * KHÔNG lọc `users.noreply.github.com`: đó là địa chỉ của NGƯỜI THẬT giấu email. Chỉ lọc
+ * bot thật (`*[bot]@*`, `actions@github.com`, `noreply@<vendor>`) — Co-Authored-By của
+ * agent không phải một đồng đội, và nó không nằm ở `%ae` nên cũng không lọt vào đây.
+ *
+ * Trả về `null` khi không đọc được lịch sử. `null` ≠ 1: repo chưa có commit nào KHÔNG phải
+ * bằng chứng của solo, nó là KHÔNG CÓ bằng chứng.
+ */
+const BOT_AUTHOR = /\[bot\]@|^actions@github\.com$|^noreply@/;
+export function commitAuthors(maxCommits = 500) {
+  const r = git(['log', `-${maxCommits}`, '--format=%ae']);
+  if (r.status !== 0) return null;
+  const emails = r.stdout.split('\n').map(s => s.trim().toLowerCase()).filter(Boolean)
+    .filter(e => !BOT_AUTHOR.test(e));
+  return emails.length ? [...new Set(emails)] : null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Chạy lệnh
 // ─────────────────────────────────────────────────────────────────────────────

@@ -32,7 +32,18 @@
  */
 import { readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, git, run, readJson, matchGlob, matchAny, pathsFor, config, report, toRepoRel } from './lib/harness.mjs';
+import { repoPath, git, run, readJson, matchGlob, matchAny, pathsFor, config, report, toRepoRel, isSolo, teamSize } from './lib/harness.mjs';
+
+// ── SOLO KHÔNG PHẢI "KHÔNG CÓ CHỒNG LẤN" ─────────────────────────────────────
+//
+// Một người vẫn giẫm chân chính mình: hai phiên song song, hai worktree, một nhánh bỏ dở
+// tuần trước. Đo được ở chính repo template 2026-08-06 — một nhánh 3 commit chưa có PR,
+// suýt bị dọn nhầm vì `git branch -r --merged` không phân biệt nó với tàn dư squash-merge.
+//
+// Nên solo TẮT đúng một thứ: nhánh ② (reservation của NGƯỜI KHÁC — không có người khác).
+// Nhánh ③ (PR đang mở) GIỮ NGUYÊN, chỉ đổi cách gọi tên: không phải "PR của ai đó cần
+// thương lượng", mà là "nhánh khác của chính bạn". Cùng dữ liệu, khác việc phải làm.
+const SOLO = isSolo();
 
 const JSON_OUT = process.argv.includes('--json');
 const wanted = process.argv.slice(2).filter(a => !a.startsWith('--'));
@@ -76,11 +87,14 @@ if (!hotGlobs.length) {
 // Cùng phép đọc với `check-reservations.mjs`: hết hạn ⇒ bỏ qua, không cần ai dọn.
 const me = process.env.DEV_ID || process.env.USER || process.env.USERNAME || '';
 const resDir = repoPath('reservations');
-if (!me) {
+if (SOLO) {
+  ok.push('SOLO (`project.teamSize` = 1) ⇒ bỏ qua reservation: không có người khác để đặt chỗ trước bạn. '
+    + 'Guard đặt chỗ ở pre-commit cũng tắt — xem `check-reservations.mjs`');
+} else if (!me) {
   unknown.push('chưa set DEV_ID ⇒ không phân biệt được reservation nào là CỦA BẠN. '
     + 'Set trong .claude/settings.local.json → env.DEV_ID');
 }
-if (existsSync(resDir)) {
+if (!SOLO && existsSync(resDir)) {
   const now = Date.now();
   for (const f of readdirSync(resDir).filter(x => x.endsWith('.json'))) {
     const r = readJson(join(resDir, f));
@@ -116,7 +130,10 @@ if (ghv.status !== 0) {
       const hits = scope.filter(s => theirs.includes(s));
       if (hits.length) {
         found.prs.push({ number: p.number, title: p.title, author: p.author?.login, files: hits });
-        fail.push(`${hits.length} file chồng với PR #${p.number} của ${p.author?.login ?? '?'} ("${String(p.title).slice(0, 50)}"): ${hits.slice(0, 4).join(' · ')}`);
+        // Solo: cùng dữ liệu, khác việc phải làm. "PR của @bạn" đọc như một người thứ hai
+        // cần thương lượng, trong khi việc thật là "bạn đang mở hai mặt trận trên cùng file".
+        const whose = SOLO ? `nhánh khác CỦA BẠN \`${p.headRefName}\`` : `PR #${p.number} của ${p.author?.login ?? '?'}`;
+        fail.push(`${hits.length} file chồng với ${whose} (PR #${p.number}, "${String(p.title).slice(0, 50)}"): ${hits.slice(0, 4).join(' · ')}`);
       }
     }
     if (!found.prs.length) ok.push(`${list.length} PR đang mở, không cái nào chạm file của bạn`);
@@ -133,12 +150,28 @@ if (JSON_OUT) {
 console.log(`\nPhạm vi đối chiếu: ${scopeWhy}`);
 report('OVERLAP SCAN', { ok, warn, fail, unknown });
 
-if (fail.length) {
+if (fail.length && SOLO) {
+  // "Hỏi người" là lời khuyên SAI khi bạn là người duy nhất — nó gửi người ta đi tìm một
+  // cái cổng không tồn tại, và lời khuyên sai thì tệ hơn im lặng.
+  console.log('\n  CÓ CHỒNG LẤN VỚI CHÍNH BẠN. Quyết định là của bạn, không có ai để hỏi:');
+  console.log('     a) merge nhánh kia trước rồi rebase       nhánh kia đã xong');
+  console.log('     b) gộp hai việc vào một nhánh             chồng nhiều, cùng mục đích');
+  console.log('     c) tách phần chung ra commit riêng        chồng ở một vùng xác định được');
+  console.log('\n  Chồng lấn giữa hai nhánh của một người là chuyện THƯỜNG, không phải sự cố.');
+  console.log('  Cái đắt là phát hiện ra nó lúc merge, chứ không phải bây giờ.');
+} else if (fail.length) {
   console.log('\n  CÓ CHỒNG LẤN. Ba lựa chọn — KHÔNG tự quyết, hỏi người:');
   console.log('     a) chọn issue khác        chồng nhiều, PR kia sắp merge');
   console.log('     b) đợi PR kia merge       chồng ở vùng nhỏ, PR kia < 1 ngày tuổi');
   console.log('     c) đặt chỗ + chỉ chạm phần không chồng');
 }
 console.log('\n  Script này KHÔNG chặn gì và KHÔNG quyết gì — nó chỉ đi tìm.');
-console.log('  Phần quyết định thuộc `/claim` (skill NGƯỜI gọi), và đó là cố ý.\n');
+if (!SOLO) console.log('  Phần quyết định thuộc `/claim` (skill NGƯỜI gọi), và đó là cố ý.');
+// KHÔNG phải `else`: `SOLO` là false cả khi teamSize = 3 lẫn khi CHƯA KHAI, và hai ca đó
+// cần hai câu khác nhau. Gộp chúng là đúng cái lỗi ba-giá-trị mà field này sinh ra để tránh.
+if (teamSize() === null) {
+  console.log('  `project.teamSize` CHƯA KHAI ⇒ đang giữ nguyên lớp phối hợp như có đội.');
+  console.log('  Solo thì chạy `node tooling/setup.mjs` — nó tắt phần không dùng tới.');
+}
+console.log('');
 process.exit(0);

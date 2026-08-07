@@ -17,7 +17,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, TEST_TELEMETRY_DIR } from './lib/harness.mjs';
+import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, TEST_TELEMETRY_DIR, coordinationLayer } from './lib/harness.mjs';
 
 const QUICK = process.argv.includes('--quick');
 // PHẢI chụp TRƯỚC khi chạy các suite bên dưới: nó là mốc phân biệt "telemetry suite của lần
@@ -190,6 +190,29 @@ const attrTxt = exists(repoPath('.gitattributes')) ? readFileSync(repoPath('.git
 const attrMissing = missingLines(attrTxt, REQUIRED_ATTRIBUTES);
 if (attrMissing.length) advice.push(`.gitattributes thiếu \`${attrMissing.join('`, `')}\` — đây là điều số 8 trong "mười hai điều": `
   + `năm dòng xoá một lớp conflict GIẢ cho mọi PR trong team đa OS. Sửa: chạy lại apply-to.`);
+
+// ── Lớp phối hợp: bao nhiêu người, và cơ chế nào đang TẮT vì thế ─────────────
+//
+// `check-reservations.mjs` thoát 0 im lặng khi solo — đúng cho một hook pre-commit chạy ở
+// mọi commit, nhưng nó làm cơ chế đó VÔ HÌNH. Một guard tắt mà không ai nhìn thấy thì lần
+// sau người ta debug "vì sao đặt chỗ không có tác dụng" bằng cách đọc code. Đây là kênh
+// thấy được, và nó là chỗ duy nhất hai ca `1` và `chưa khai` được kể tách nhau.
+// Chỉ phần THU THẬP + IN ở đây; phán đoán nằm ở `coordinationLayer` trong lib (hàm THUẦN).
+console.log('\n── LỚP PHỐI HỢP ──');
+const ts = cfg.project?.teamSize;
+const coord = coordinationLayer({ teamSize: ts, role: repoRole() });
+if (coord.mode === 'solo') {
+  console.log('  solo (project.teamSize = 1)');
+  console.log('    TẮT: guard đặt chỗ ở pre-commit · dò reservation của người khác · "hỏi người" trong overlap-scan');
+  console.log('    GIỮ: mọi guard an toàn, và dò chồng lấn giữa các NHÁNH của chính bạn');
+} else if (coord.mode === 'team') {
+  console.log(`  đội ${ts} người (project.teamSize) — toàn bộ lớp phối hợp đang bật`);
+} else if (coord.mode === 'template-na') {
+  console.log('  n/a  repo template không khai teamSize (nó là SEED) — consumer được hỏi lúc `setup.mjs`');
+} else {
+  console.log('  ?  project.teamSize CHƯA KHAI — đang giữ nguyên lớp phối hợp như có đội');
+}
+if (coord.advice) advice.push(coord.advice);
 
 // ── Vòng học có đang chạy không ──────────────────────────────────────────────
 console.log('\n── VÒNG HỌC ──');
