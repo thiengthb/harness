@@ -313,7 +313,23 @@ export const RITUALS = [
       if (s.reviewedClaudeCode !== s.claudeCodeVersion) {
         return { state: 'due', why: `Claude Code đã đổi ${s.reviewedClaudeCode} → ${s.claudeCodeVersion}: đọc changelog bản mới với ĐÚNG một câu hỏi "nó vừa ra sẵn thứ nào harness đang tự làm tay?", rồi ghi lại bằng \`node tooling/rituals.mjs --reviewed-claude-code "<thấy gì>"\`` };
       }
-      return { state: 'ok', why: `đã rà Claude Code ${s.claudeCodeVersion}${s.reviewedClaudeCodeAt ? ` ngày ${s.reviewedClaudeCodeAt.slice(0, 10)}` : ''}` };
+      // MÁY TRỪ ĐƯỢC THÌ ĐỪNG HỎI NGƯỜI. Phần "vendor ra sẵn thứ gì" là câu hỏi khó, đúng
+      // là việc của người. Nhưng "tập sự kiện hook có đổi không" là một PHÉP TRỪ TẬP HỢP —
+      // và tới 2.38.0 nó vẫn đang được giao cho trí nhớ. Đo 2026-08-07 (issue #85): bản rà
+      // 2.1.222 ghi "13 tên", binary 2.1.224 có 31, và bản rà 2.1.224 không nhắc tập nào.
+      //
+      // Chỉ SO Ở ĐÂY, không quét: binary 285 MB, quét mất ~0,5 giây và mục này chạy ở mọi
+      // SessionStart. `native-surface.mjs --record` là chỗ trả chi phí đó, một lần mỗi version.
+      if (!s.nativeEventsVersion) {
+        return { state: 'due', why: `đã rà changelog ${s.claudeCodeVersion} nhưng CHƯA đo tập sự kiện hook lần nào — `
+          + 'con số duy nhất trong bề mặt đó kiểm được bằng máy đang không ai tính. `node tooling/native-surface.mjs --record`' };
+      }
+      if (s.nativeEventsVersion !== s.claudeCodeVersion) {
+        return { state: 'due', why: `tập sự kiện hook mới đo ở ${s.nativeEventsVersion}, đang chạy ${s.claudeCodeVersion} — `
+          + 'phép trừ tập hợp này máy làm được, đừng để nó cho trí nhớ. `node tooling/native-surface.mjs --record`' };
+      }
+      return { state: 'ok', why: `đã rà Claude Code ${s.claudeCodeVersion}${s.reviewedClaudeCodeAt ? ` ngày ${s.reviewedClaudeCodeAt.slice(0, 10)}` : ''}`
+        + `, và tập sự kiện hook đã đo ở đúng version đó (${s.nativeEventsCount} sự kiện)` };
     },
   },
 ];
@@ -544,8 +560,14 @@ export function collect() {
     ...(() => {
       try {
         const b = JSON.parse(readFileSync(repoPath('.claude', 'claude-code-baseline.json'), 'utf8'));
-        return { reviewedClaudeCode: b.reviewedVersion || null, reviewedClaudeCodeAt: b.reviewedAt || null };
-      } catch { return { reviewedClaudeCode: null, reviewedClaudeCodeAt: null }; }
+        return {
+          reviewedClaudeCode: b.reviewedVersion || null,
+          reviewedClaudeCodeAt: b.reviewedAt || null,
+          // Chỉ ĐỌC cache, không quét binary — xem lý do ở `check` của `claude-code-drift`.
+          nativeEventsVersion: b.nativeEvents?.version || null,
+          nativeEventsCount: Array.isArray(b.nativeEvents?.events) ? b.nativeEvents.events.length : null,
+        };
+      } catch { return { reviewedClaudeCode: null, reviewedClaudeCodeAt: null, nativeEventsVersion: null, nativeEventsCount: null }; }
     })(),
   };
 }

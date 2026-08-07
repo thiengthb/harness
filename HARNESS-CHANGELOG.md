@@ -11,6 +11,60 @@
 
 ---
 
+## 2.38.0 — 2026-08-07
+
+**minor.** Tập sự kiện hook native được **đo bằng máy**, không giao cho trí nhớ. Đóng #85.
+
+### Đo được: con số duy nhất kiểm được bằng máy đi từ 13 lên 31, không ai tính
+
+Nghi thức `claude-code-drift` **kích hoạt bằng máy** (so version) nhưng **trả lời bằng người**
+(văn xuôi tự do). Nó chạy đúng và được trả lời đúng hạn — 5 mục trong
+`.claude/claude-code-baseline.json`, mục gần nhất chất lượng cao. Nhưng:
+
+| | |
+|---|---|
+| bản rà `2.1.222` ghi | *"tập sự kiện hook trong binary … **13 tên**"* |
+| binary `2.1.224` đang chạy, đo 07/08 | **31 tên** |
+| bản rà `2.1.224`, viết **cùng ngày** | không nhắc tập sự kiện |
+
+`AGENTS.md §Verification`: *"Mỗi lần định nhờ LLM chấm, hỏi trước: có biến thành check tất
+định được không?"* — *"vendor ra sẵn thứ gì"* là câu hỏi khó, đúng là việc của người. Nhưng
+*"tập sự kiện có đổi không"* là một **phép trừ tập hợp**.
+
+### `tooling/native-surface.mjs`
+
+```
+node tooling/native-surface.mjs            đo và in: có gì · đang cắm gì · trống gì
+node tooling/native-surface.mjs --record   đặt mốc vào .claude/claude-code-baseline.json
+```
+
+Đo hôm nay: **31 sự kiện · 9 đang cắm · 22 để trống · 0 cắm-mà-binary-không-có**.
+
+**Neo là một MẢNG trong binary, không phải danh sách ứng viên viết tay.** Khác biệt đó quyết
+định: một danh sách ứng viên chỉ tìm được thứ mình đã biết, nên nó **không bao giờ phát hiện
+được sự kiện MỚI** — mà đó là toàn bộ mục đích. (Giả thuyết hàng đầu cho con số "13": nó đã
+làm đúng như vậy.)
+
+Cũng báo chiều ngược: sự kiện **đang cắm mà binary không có** — hook đó không bao giờ chạy,
+và nó im lặng.
+
+### Không chạy mỗi phiên
+
+Binary **285 MB**; một lần quét đầy đủ đo được **501 · 533 · 615 ms**. Chấp nhận được cho một
+lệnh người gõ, không chấp nhận được ở `SessionStart`. Kết quả **cache theo version**, và
+`rituals.mjs` chỉ so version — một phép so chuỗi.
+
+Nghi thức `claude-code-drift` giờ đòi **cả hai**: changelog đã rà **và** tập sự kiện đã đo ở
+đúng version đang chạy. Rà changelog mà chưa đo tập ⇒ vẫn `due`.
+
+### Không đụng `NATIVE_SLOTS`
+
+Comment trên nó đã nói đúng: *"chỉ liệt kê 5 sự kiện harness CÓ sẵn việc cho chúng làm —
+không liệt kê cả 31, đó sẽ là nhiễu"*. Mẫu số 5 giữ nguyên. Đây là hai câu hỏi khác nhau:
+*"bề mặt vendor rộng bao nhiêu"* và *"harness có việc cho chỗ nào"*.
+
+---
+
 ## 2.37.1 — 2026-08-07
 
 **patch.** `protect-integration-branch` chỉ gác file **trong repo**.

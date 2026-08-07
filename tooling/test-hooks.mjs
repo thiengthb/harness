@@ -969,6 +969,9 @@ for (const [env, expect, label, msg] of GATE_CASES) {
     // rỗng, L0005), và ca ③ bên dưới khoá đúng điều đó.
     mainEditEscapes: 0, mainEditBlocks: 1,
     claudeCodeVersion: '2.1.221', reviewedClaudeCode: '2.1.221', reviewedClaudeCodeAt: '2026-08-05T00:00:00.000Z',
+    // "Trạng thái ĐỦ" cho `claude-code-drift` giờ gồm cả PHÉP TRỪ TẬP HỢP, không chỉ phép so
+    // version: tập sự kiện hook phải đã được đo ở đúng version đang chạy (issue #85).
+    nativeEventsVersion: '2.1.221', nativeEventsCount: 31,
     // "Trạng thái ĐỦ" cho ngân sách = đã khai trần VÀ đã đo. Chỉ khai trần thôi là `?` —
     // ca ③ bên dưới khoá đúng điều đó.
     budget: { mode: 'ok', percent: 14, ageDays: 3, advice: null },
@@ -1087,6 +1090,26 @@ for (const [env, expect, label, msg] of GATE_CASES) {
     if (r?.state !== want) fail.push(`rituals.mjs${' '.repeat(17)} harness-propose: ${label} → state=${r?.state}, mong đợi ${want}`);
     else if (!msg.test(r.why)) fail.push(`rituals.mjs${' '.repeat(17)} harness-propose: ${label} → \`why\` không khớp ${msg}`);
     else ok.push(`rituals.mjs${' '.repeat(17)} harness-propose: ${label}`);
+  }
+
+  // ④b-quinquies `claude-code-drift`: phép so VERSION là chưa đủ, còn một PHÉP TRỪ TẬP HỢP.
+  //     Đo 2026-08-07 (#85): bản rà `2.1.222` ghi "13 tên"; binary `2.1.224` có **31**; bản rà
+  //     `2.1.224` — viết cùng ngày — không nhắc tập nào. Nghi thức kích hoạt bằng MÁY nhưng
+  //     trả lời bằng NGƯỜI, nên con số duy nhất kiểm được bằng máy trong cả bề mặt đó đi từ
+  //     13 lên 31 mà không cơ chế nào tính.
+  //
+  //     Ba ca: chưa đo lần nào · đo ở version CŨ · đo đúng version. Hai ca đầu phải `due`
+  //     KỂ CẢ khi changelog đã được rà — rà changelog và đo tập sự kiện là hai việc khác nhau.
+  const DRIFT_SET = [
+    [{ nativeEventsVersion: null }, 'due', /CHƯA đo tập sự kiện/, 'chưa đo lần nào ⇒ tới hạn, dù changelog đã rà'],
+    [{ nativeEventsVersion: '2.1.200' }, 'due', /mới đo ở 2\.1\.200/, 'đo ở version CŨ ⇒ tới hạn'],
+    [{}, 'ok', /31 sự kiện/, 'đo đúng version ⇒ im, và NÓI RA con số'],
+  ];
+  for (const [state, want, msg, label] of DRIFT_SET) {
+    const r = get(state, 'claude-code-drift');
+    if (r?.state !== want) fail.push(`rituals.mjs${' '.repeat(17)} claude-code-drift/tập sự kiện: ${label} → state=${r?.state}, mong đợi ${want}`);
+    else if (!msg.test(r.why)) fail.push(`rituals.mjs${' '.repeat(17)} claude-code-drift/tập sự kiện: ${label} → \`why\` không khớp ${msg}: "${r.why}"`);
+    else ok.push(`rituals.mjs${' '.repeat(17)} claude-code-drift/tập sự kiện: ${label}`);
   }
 
   // ④b-quater `guard-nhanh-tich-hop`: một cửa thoát không ai đếm là cửa thoát mở vĩnh viễn.
@@ -1716,6 +1739,9 @@ for (const [env, expect, label, msg] of GATE_CASES) {
     fixlogTotal: 0, fixlogRepeated: 0, learningsNewerThanLessons: 0,
     skillCount: 5, maxSkills: 12, worktrees: 1, maxWorktrees: 4, pendingPacks: 0,
     claudeCodeVersion: '2.1.221', reviewedClaudeCode: '2.1.221', reviewedClaudeCodeAt: '2026-08-05T00:00:00.000Z',
+    // "Trạng thái ĐỦ" cho `claude-code-drift` giờ gồm cả PHÉP TRỪ TẬP HỢP, không chỉ phép so
+    // version: tập sự kiện hook phải đã được đo ở đúng version đang chạy (issue #85).
+    nativeEventsVersion: '2.1.221', nativeEventsCount: 31,
   };
   const claimOf = (solo) => evaluate({ ...st, solo }).find(r => r.id === 'claim');
   const soloR = claimOf(true), teamR = claimOf(false);
@@ -2490,7 +2516,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 174;
+const RATCHET = 177;
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa
