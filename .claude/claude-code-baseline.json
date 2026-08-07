@@ -28,5 +28,42 @@
       "at": "2026-08-05T07:31:47.073Z",
       "found": "2.1.221 rà 2026-08-04 bằng schema nhúng trong binary (mạnh hơn tài liệu): 7 sự kiện native tồn tại thật, 4 được nhận vai ở v2.0.0 (SubagentStop/StopFailure/InstructionsLoaded/ConfigChange). Ba chỗ tài liệu SAI: WorktreeCreate+WorktreeRemove là provisioner chứ không phải observer (cắm advisory vào là vỡ claude --worktree / rò rỉ worktree) nên bỏ hai cờ; StopFailure fire-and-forget nên phải ghi file cho phiên sau. Không có mục nào Claude Code ra sẵn làm thứ harness tự viết thành thừa. Hồ sơ: docs/adr/0002, .claude/learnings/2026-W32-tai-phan-vai-native.md"
     }
-  ]
+  ],
+  "nativeEvents": {
+    "version": "2.1.224",
+    "at": "2026-08-07T12:39:57.119Z",
+    "events": [
+      "PreToolUse",
+      "PostToolUse",
+      "PostToolUseFailure",
+      "PostToolBatch",
+      "Notification",
+      "UserPromptSubmit",
+      "UserPromptExpansion",
+      "SessionStart",
+      "SessionEnd",
+      "Stop",
+      "StopFailure",
+      "SubagentStart",
+      "SubagentStop",
+      "PreCompact",
+      "PostCompact",
+      "PermissionRequest",
+      "PermissionDenied",
+      "Setup",
+      "TeammateIdle",
+      "TaskCreated",
+      "TaskCompleted",
+      "Elicitation",
+      "ElicitationResult",
+      "ConfigChange",
+      "WorktreeCreate",
+      "WorktreeRemove",
+      "InstructionsLoaded",
+      "CwdChanged",
+      "FileChanged",
+      "DirectoryAdded",
+      "MessageDisplay"
+    ]
+  }
 }

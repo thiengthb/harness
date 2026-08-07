@@ -1236,6 +1236,7 @@ export const MECHANISM_PATHS = [
   'tooling/entropy-scan.mjs', 'tooling/rituals.mjs',
   'tooling/check-reservations.mjs', 'tooling/check-feature-integrity.mjs', 'tooling/overlap-scan.mjs',
   'tooling/wt-clean.mjs', 'tooling/statusline.mjs', 'tooling/precommit-scan.mjs',
+  'tooling/native-surface.mjs',
   '.githooks', 'evals/run.mjs', 'evals/fixtures',
   'tooling/test-evals.mjs',
   // `harness.version` Ở LẠI: repo con ĐỌC nó (`harness-doctor` in version; `upgrade` so

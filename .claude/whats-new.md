@@ -1,4 +1,4 @@
-<!-- version: 2026-08-07-l -->
+<!-- version: 2026-08-07-m -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,23 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-07 — Tập sự kiện hook được ĐO, không nhớ (v2.38.0)
+
+Bản rà `2.1.222` ghi *"13 tên"*; binary `2.1.224` có **31**; bản rà `2.1.224` — viết cùng
+ngày — không nhắc tập nào. Nghi thức kích hoạt bằng máy nhưng trả lời bằng người, nên **con
+số duy nhất kiểm được bằng máy trong cả bề mặt đó không ai tính**.
+
+```
+node tooling/native-surface.mjs --record
+```
+
+Đo hôm nay: **31 sự kiện · 9 đang cắm · 22 để trống**. Nó cũng báo chiều ngược — sự kiện
+*đang cắm mà binary không có*, tức hook không bao giờ chạy và im lặng.
+
+**Việc bạn phải làm khác đi:** mỗi lần Claude Code lên version, chạy thêm lệnh trên sau khi
+rà changelog. Nghi thức `claude-code-drift` giờ đòi **cả hai**, và rà changelog mà chưa đo
+tập vẫn là `due`.
 
 ## 2026-08-07 — Sửa file khi đang đứng trên `main` giờ bị CHẶN (v2.37.0)
 
