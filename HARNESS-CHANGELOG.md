@@ -11,6 +11,76 @@
 
 ---
 
+## 2.23.0 — 2026-08-06
+
+**minor.** Harness hỏi **bao nhiêu người làm project này**, và câu trả lời TẮT ĐƯỢC ba cơ
+chế phối hợp liên-người. Trước bản này, một project solo mang đủ bộ máy của một đội.
+
+
+### ① Câu hỏi mới trong `setup.mjs`, đặt NGAY SAU `projectId`
+
+Nửa lớp phối hợp của harness (đặt chỗ · dò PR người khác · CODEOWNERS · *"hỏi người, đừng
+tự quyết"*) chỉ có nghĩa khi có người thứ hai. Hỏi muộn thì người trả lời đã đọc xong một
+loạt câu hỏi giả định có đội.
+
+Bằng chứng đi kèm, theo luật 4 của `setup.mjs`: `commitAuthors()` đếm email tác giả distinct
+trong 500 commit gần nhất và in nguyên danh sách. Nó là **CẬN TRÊN, không phải số người** —
+đo trên chính repo này ra **2 email của 1 người** (`…@users.noreply.github.com` từ merge qua
+web + email từ máy). Không gộp bằng heuristic: không có phép nối nào đúng giữa một username
+GitHub và một địa chỉ gmail, và đoán sai ở đây ghi thẳng vào `harness.config.json`.
+
+### ② `project.teamSize` — BA giá trị, không hai
+
+| giá trị | nghĩa |
+|---|---|
+| `1` | solo |
+| `2+` | đội |
+| **không có khoá** | **CHƯA KHAI** — giữ nguyên toàn bộ lớp phối hợp |
+
+`chưa khai` **không** gộp vào `solo`. Gộp là mọi repo chưa chạy `setup.mjs` lặng lẽ mất guard
+đặt chỗ mà không ai quyết định điều đó. Hai chế độ hỏng không cân nhau: thiếu một guard phối
+hợp thì hỏng im lặng và chỉ lộ khi hai người đã giẫm chân nhau; thừa một guard thì tốn vài
+giây và **nhìn thấy được**. Rác (`0` · `"1"` · `1.5` · `-1` · `null`) đều đọc thành `chưa khai`.
+
+### ③ Solo tắt ba thứ — và một trong ba là lỗi CHẶN NHẦM thật
+
+- **`check-reservations.mjs`** (pre-commit) → bỏ qua. Không chỉ vì thừa: phép so là
+  `r.owner === me` với `me = DEV_ID || USER || USERNAME`. Cùng một người trên hai máy thường
+  có `USERNAME` khác nhau, và `DEV_ID` nằm ở `settings.local.json` (máy-cục-bộ, hay quên).
+  Lúc đó reservation của **chính bạn** đọc ra là của người khác, và pre-commit từ chối commit
+  với lời khuyên *"nhắn chủ reservation"* — chủ là bạn.
+- **`overlap-scan.mjs` ②** (reservation của người khác) → bỏ qua, và **NÓI RA** ở output.
+- **Lời khuyên *"KHÔNG tự quyết, hỏi người"*** → thay bằng ba lựa chọn của một người. Gửi
+  người ta đi tìm một cái cổng không tồn tại thì tệ hơn im lặng.
+
+**GIỮ NGUYÊN:** mọi guard an toàn (secret · migration · lịch sử chung · vùng cấm harness),
+nghi thức `/claim` + nhật ký `docs/progress/`, và **dò chồng lấn giữa các nhánh của chính
+bạn** — `overlap-scan` ③ chỉ đổi cách gọi tên: không phải *"PR của ai đó cần thương lượng"*
+mà *"nhánh khác CỦA BẠN"*. Cùng dữ liệu, khác việc phải làm.
+
+Solo vẫn giẫm chân chính mình: hai phiên song song, hai worktree, một nhánh bỏ dở tuần trước.
+Đo được ở chính repo này 2026-08-06 — một nhánh 3 commit chưa có PR, suýt bị dọn nhầm.
+
+### ④ `harness-doctor` → mục **LỚP PHỐI HỢP**, và nó KHÔNG lặp lại bug #56
+
+`check-reservations` thoát 0 im lặng khi solo (đúng cho hook chạy ở mọi commit), nên cơ chế
+đó cần một kênh **nhìn thấy được**. Doctor là kênh đó.
+
+Phán đoán tách sang `coordinationLayer()` — hàm THUẦN ở `lib/harness.mjs`, cùng lý do với
+`governanceDrift`: doctor CHẠY `test-hooks.mjs`, nên test spawn doctor sẽ đệ quy.
+
+**BỐN** trạng thái, không ba: `template` là trạng thái riêng và **không sinh advice**.
+`harness.config.json` là SEED ⇒ một con số ở repo template ship sang MỌI consumer như câu trả
+lời của họ. "Chưa khai" là trạng thái ĐÚNG ở đó. Bản đầu của chính mục này đã tái tạo #56
+(advice đỏ vĩnh viễn trong template về việc template không được làm) — test 8 ca khoá lại.
+
+### Không có gì phải làm khi nâng cấp
+
+Không khai `teamSize` ⇒ hành xử **y hệt trước**. `setup.mjs` mới hỏi thêm một câu.
+Sàn test: **137 → 140**.
+
+---
+
 ## 2.22.0 — 2026-08-06
 
 **minor.** Bài học **L0004** và gate **`evals/tasks/0005`** đi được sang project đích. Và

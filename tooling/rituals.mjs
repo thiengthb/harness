@@ -62,7 +62,12 @@ export const RITUALS = [
     check: (s) => {
       if (s.issue === null) return { state: '?', why: 'nhánh không theo quy ước `<type>/<issue>-<slug>` nên không suy ra được issue — không đo được' };
       if (!s.issue) return { state: 'ok', why: 'đang ở nhánh tích hợp, không có issue để nhận' };
-      if (!s.progressExists) return { state: 'due', why: `đang ở issue ${s.issue} mà chưa có docs/progress/${s.issue}.md — phiên sau (và người sau) không có gì để đọc` };
+      // Solo vẫn cần nhật ký — chỉ khác NGƯỜI ĐỌC. "người sau" là lời khuyên rỗng khi bạn
+      // là người duy nhất, và một lý do rỗng làm cả nghi thức đọc như thủ tục. Người đọc
+      // thật của solo là PHIÊN SAU và MÁY KHÁC: đo 2026-08-06, một nhánh 3 commit nằm ngoài
+      // main một ngày vì phiên tạo ra nó hết quota — không ai biết nó tồn tại.
+      if (!s.progressExists) return { state: 'due', why: `đang ở issue ${s.issue} mà chưa có docs/progress/${s.issue}.md — `
+        + (s.solo ? 'phiên sau của BẠN (và máy khác của bạn) không có gì để đọc' : 'phiên sau (và người sau) không có gì để đọc') };
       return { state: 'ok', why: `docs/progress/${s.issue}.md đã có` };
     },
   },
@@ -350,6 +355,9 @@ export function collect() {
 
   return {
     branch, integrationBranch, issue, progressExists,
+    // Đọc ở ĐÂY, không trong `check` — `check` là phần THUẦN (xem mốc ở đầu file), và một
+    // lần đọc đĩa lén trong đó làm test không lái được nhánh solo.
+    solo: cfg.project?.teamSize === 1,
 
     // ── UI của ĐÚNG issue đang làm ────────────────────────────────────────────
     //
