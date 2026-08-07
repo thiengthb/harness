@@ -1717,6 +1717,86 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   } else ok.push(`entropy-scan.mjs${' '.repeat(12)} allowlist GLOBAL_OK khớp thật trên OS này (${present.length} file được miễn, 0 rò)`);
 }
 
+// ─── Banner đầu phiên: cảnh báo dựa trên PLACEHOLDER phải biết VAI (#56) ─────
+//
+// `harness.config.json` khai mọi lệnh là `""` và `project.id` là `CHANGEME-…` — placeholder
+// ĐÚNG theo thiết kế ở repo template. Một cảnh báo gác trên chính những giá trị đó, mà không
+// hỏi `repoRole()`, là dương tính giả 100% ở mọi phiên của template.
+//
+// Đo trước khi sửa: 7/7 lần `session-start` chạy đều thoả điều kiện, từ commit ĐẦU TIÊN của
+// repo, và `grep -c repoRole session-start.mjs` = 0. Agent đọc dòng đó cũng KHÔNG CÓ QUYỀN
+// làm theo — `harness.config.json` ∈ `paths.harness`.
+//
+// Ca này KHÔNG cấm mọi cảnh báo: bốn cảnh báo còn lại (index.lock treo, worktree tích tụ,
+// phiên khác cùng nhánh, evaluate crash) mô tả điều kiện LÚC CHẠY và đúng ở cả hai vai.
+// Nó chỉ cấm đúng một hình dạng: gác trên placeholder mà không hỏi vai.
+{
+  const L = ' '.repeat(4);
+  const src = readFileSync(repoPath('.claude', 'hooks', 'session-start.mjs'), 'utf8').split('\n');
+  const PLACEHOLDER_COND = /c\.commands|commands\?\.|project\?\.id|CHANGEME/;
+  const bad = [];
+  let warns = 0;
+  for (let i = 0; i < src.length; i++) {
+    if (!/lines\.push\(/.test(src[i]) || !src[i].includes('⚠️')) continue;
+    warns++;
+    // Điều kiện bao quanh: `if (` gần nhất phía trên, bỏ qua dòng comment.
+    let cond = '';
+    for (let j = i - 1; j >= 0 && j > i - 14; j--) {
+      const t = src[j].trim();
+      if (t.startsWith('//') || t.startsWith('*') || !t) continue;
+      if (/^\}?\s*(else\s+)?if\s*\(/.test(t) || /\bif\s*\(/.test(t)) { cond = t; break; }
+    }
+    if (PLACEHOLDER_COND.test(cond) && !/repoRole/.test(cond)) {
+      bad.push(`dòng ${i + 1} gác trên placeholder mà KHÔNG hỏi repoRole(): \`${cond.slice(0, 70)}\``);
+    }
+  }
+  if (!warns) bad.push('không tìm thấy `lines.push` nào mang ⚠️ — neo của ca này đã trôi, sửa neo thay vì xoá check');
+  if (bad.length) fail.push(`session-start ⚠️ ↔ vai${L} ${bad.join(' · ')}`);
+  else ok.push(`session-start ⚠️ ↔ vai${L} ${warns} cảnh báo, không cái nào gác trên placeholder của template mà quên hỏi repoRole()`);
+}
+
+// ─── Banner đầu phiên NÊU TÊN mục `?`, không đếm (#51) ───────────────────────
+//
+// `?` phần lớn sinh ra từ phép đo CHẬP CHỜN, tức tự khỏi. Nên lời khuyên "chạy `--all` để
+// xem" không bao giờ trả lời được cho chính ca nó phục vụ — gặp thật 2026-08-06: banner in
+// `? 1 mục KHÔNG đo được`, chạy `--all` ngay sau đó ra 0 mục `?`.
+//
+// Ca này so banner với `rituals.mjs --json` — nguồn sự thật — thay vì so với một chuỗi chép
+// tay. Và nó NÓI RA khi không có mục `?` nào: đó là `n/a`, KHÔNG phải pass.
+{
+  const L = ' '.repeat(6);
+  const j = spawnSync(process.execPath, [repoPath('tooling', 'rituals.mjs'), '--json'], {
+    encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, ...TEST_ENV },
+  });
+  let items = [];
+  try { items = JSON.parse(j.stdout).filter(r => r.state === '?'); } catch {}
+  const b = spawnSync(process.execPath, [repoPath('.claude', 'hooks', 'session-start.mjs')], {
+    encoding: 'utf8', input: '{}', cwd: repoPath(''), env: { ...process.env, ...TEST_ENV },
+  });
+  const out = `${b.stdout || ''}${b.stderr || ''}`;
+  const bad = [];
+
+  if (/\d+ mục KHÔNG đo được — chúng không phải/.test(out)) {
+    bad.push('banner vẫn ĐẾM thay vì nêu tên — mục `?` chập chờn sẽ biến mất trước khi người dùng kịp tra');
+  }
+  // HAI CHẾ ĐỘ, luôn có một khẳng định thật — không có nhánh nào chỉ ghi "n/a" rồi thôi.
+  // Số mục `?` phụ thuộc trạng thái repo lúc chạy, nên ca hành vi có thể không có mẫu; khi đó
+  // rơi về đọc mã nguồn. Nói rõ chế độ nào đã chạy, để một dòng xanh không đọc quá lên.
+  let mode;
+  if (items.length) {
+    mode = `${items.length} mục \`?\` đều được gọi tên (đối chiếu với rituals --json)`;
+    const missing = items.filter(r => !out.includes(r.cmd));
+    if (missing.length) bad.push(`${missing.length}/${items.length} mục \`?\` KHÔNG được nêu tên: ${missing.map(r => r.cmd).join(' · ')}`);
+  } else {
+    mode = 'hiện 0 mục `?` nên không có mẫu hành vi — đối chiếu bằng mã nguồn';
+    const hookSrc = readFileSync(repoPath('.claude', 'hooks', 'session-start.mjs'), 'utf8');
+    if (!/r\.cause \|\| r\.id/.test(hookSrc)) bad.push('banner không còn gộp mục `?` theo KHOÁ nguyên nhân — gộp theo văn xuôi `why` không gộp được gì');
+    if (!/for \(const \{ cmds, why \} of byCause/.test(hookSrc)) bad.push('banner không còn in tên từng mục `?`');
+  }
+  if (bad.length) fail.push(`banner nêu tên mục \`?\`${L} ${bad.join(' · ')}`);
+  else ok.push(`banner nêu tên mục \`?\`${L} ${mode}`);
+}
+
 // ─── Sàn runner ở stage KHÔNG gate nào có lệnh: ĐO ĐƯỢC, không phải `?` ──────
 //
 // Ra từ nghi thức `--reviewed-claude-code` cho Claude Code 2.1.224, mục *"Removed
@@ -2199,7 +2279,7 @@ if (repoRole() === 'template') {
 // thứ chỉ đúng trong repo template — và nó xảy ra TRONG bản vá viết ra để chống lớp lỗi đó.
 // Bài học thật: một sàn phải cộng ĐỦ BA giá trị (chạy + bỏ qua có chủ ý), nếu không "n/a" bị
 // gộp vào "0" — chính phép gộp mà AGENTS.md cấm.
-const RATCHET = 158;
+const RATCHET = 160;
 const ran = ok.length + fail.length;
 const total = ran + skipped;
 if (total < RATCHET) {

@@ -11,6 +11,60 @@
 
 ---
 
+## 2.32.0 — 2026-08-07
+
+**minor.** Banner đầu phiên **biết vai** và **gọi tên** thay vì đếm. Đóng #56 và #51 —
+cùng một file, một lần mở `HARNESS_DRI`.
+
+### #56 — một cảnh báo đỏ vĩnh viễn, về việc template KHÔNG ĐƯỢC làm
+
+```
+⚠️  harness.config.json chưa khai báo lệnh verify/test — gate đang rỗng. Đây là việc số 1 cần làm.
+```
+
+Điều kiện `!c.commands?.verify && !c.commands?.test` **đúng vĩnh viễn ở template, theo thiết
+kế**: template khai mọi lệnh là `""`. Đo: **7/7** lần `session-start` chạy đều thoả điều kiện,
+từ **commit đầu tiên** của repo, và `grep -c repoRole session-start.mjs` = **0**. Agent đọc
+dòng đó cũng không có quyền làm theo — `harness.config.json` ∈ `paths.harness`.
+
+Chi phí không phải một dòng thừa. Là **thói quen bỏ qua**: dòng này đứng ngay dưới khối
+`▶️ N việc ĐANG TỚI HẠN` — khối duy nhất có tín hiệu thật — và dạy người đọc rằng khối đó luôn
+có một mục đỏ không cần làm gì.
+
+Sửa: thêm `repoRole() !== 'template'` vào mệnh đề. **Một mệnh đề, không phải cơ chế mới** — số
+cơ chế không tăng, và bản tin đầu phiên ở template **ngắn đi một dòng**.
+
+### #51 — `? 1 mục KHÔNG đo được` mà không nói mục nào
+
+`?` phần lớn sinh ra từ phép đo **chập chờn**, tức tự khỏi. Nên *"chạy `--all` để xem"* không
+bao giờ trả lời được cho chính ca nó phục vụ. Gặp thật 2026-08-06: banner in `? 1 mục`, chạy
+`--all` ngay sau đó ra **0 mục `?`** — mục đó là gì thì không có cách nào biết.
+
+Giờ banner nêu tên. Nhưng nêu tên trần thì **dài và lặp**: đo ngay lần chạy đầu, một nhánh
+không theo quy ước đặt tên làm **ba** nghi thức cùng ra `?` vì **cùng một nguyên nhân**
+(`/claim`, `/handoff`, `/verify-ui` đều cần issue), còn mục thứ tư có lý do khác hẳn.
+
+Hai lần thử trước khi đúng, cả hai đều đáng ghi:
+
+- **Chặn ở 3** như `due` — trần đó giữ lại ba bản sao của một nguyên nhân rồi **cắt mất mục
+  khác loại**. Tệ hơn không chặn: nó biến một danh sách thành một mẫu thiên lệch.
+- **Gộp theo `why`** — không gộp được gì, vì ba nghi thức viết ba câu văn khác nhau cho cùng
+  một gốc.
+
+Cách đúng là gộp theo một **khoá**: `rituals.mjs` khai `cause: 'branch-no-issue'` ở ba nghi
+thức đó, nghi thức riêng lẻ dùng `id`. Bốn dòng thành hai, không mục nào biến mất.
+
+### Khoá lại
+
+- Mọi `lines.push` mang `⚠️` gác trên **placeholder của template** (`c.commands`, `project.id`,
+  `CHANGEME`) phải hỏi `repoRole()`. Bốn cảnh báo còn lại mô tả điều kiện **lúc chạy** và đúng
+  ở cả hai vai — ca này không đụng chúng.
+- Banner được đối chiếu với `rituals.mjs --json`, **nguồn sự thật**, không với chuỗi chép tay.
+
+**ĐIỀU KIỆN THOÁT** (#56): khi `repoRole()` bị bỏ khỏi harness, cắt cả mệnh đề lẫn test cùng lúc.
+
+---
+
 ## 2.31.0 — 2026-08-07
 
 **minor.** Sàn của chính runner gate là thứ **đo được**, không phải `?`.
