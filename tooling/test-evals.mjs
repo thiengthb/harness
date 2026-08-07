@@ -217,7 +217,11 @@ ${assertions}
   const p9 = writeTask('9009', '# requires-agent\ntest -f khong-bao-gio-ton-tai.json\nnode -e "process.exit(0)"');
   // ⑩ Lệnh NHIỀU DÒNG phải là MỘT lệnh. Bản trước `split("\\n")` nên `=>` của arrow function
   //    đứng một mình, và `cmd.exe` đọc `>` là chuyển hướng ⇒ runner GHI FILE vào repo đang đo.
-  const p10 = writeTask('9010', 'node -e "\nconst v={passes:1};\nif([v].filter(([,x])=>0).length){process.exit(1)}\n"');
+  //    JS phải HỢP LỆ và exit 0 trên MỌI OS — bản đầu viết `[v].filter(([,x])=>0)`, tức
+  //    destructure một object không iterable ⇒ TypeError. Nó "xanh" trên Windows (cmd.exe
+  //    bóp méo chuỗi thành thứ khác) và ĐỎ trên ubuntu/macOS. CI ba OS bắt được; máy tôi
+  //    thì không. Đây đúng là ca Parity Contract sinh ra để chặn.
+  const p10 = writeTask('9010', 'node -e "\nconst v = { passes: 1 };\nconst bad = Object.entries(v).filter(([k, x]) => x === 2);\nif (bad.length) { process.exit(1) }\n"');
 
   const r8 = runEval('', null, '9008');
   const r9 = runEval('', null, '9009');
