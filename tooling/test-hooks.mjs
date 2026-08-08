@@ -3103,6 +3103,71 @@ if (repoRole() === 'template') {
   } else ok.push(`harness.version${' '.repeat(13)} = ${verFile}, khớp mục mới nhất của changelog — dấu đóng vào repo con nói đúng code họ nhận`);
 } else skipped += 1;
 
+// ─── MỘT phép IO cho CẢ HAI bên đọc ngân sách (#125) ─────────────────────────
+//
+// `harness-doctor` và `rituals` đều gọi `budgetStatus`, và `rituals` QUÊN truyền
+// `rateLimitHits`. Mặc định là `null`, `null` ⇒ `flat-unmeasured` — đúng theo hợp đồng ba
+// trạng thái, không ném, không đỏ. Đo 2026-08-08, hai công cụ đọc CÙNG một cái sổ:
+//
+//   harness-doctor  →  ⚠️ gói PHẲNG · 12 lần chạm rate limit
+//   rituals         →  ?  KHÔNG đo được — chưa đọc được `budget-alarm.log`
+//
+// `lib-import` (#122) không thấy được: nó bắt TÊN chưa import, còn đây là một ĐỐI SỐ không
+// được truyền. Nên bản vá là bỏ chỗ để quên (`budgetSnapshot`), và ca ② dưới đây là thứ giữ
+// cho nó không mọc lại.
+{
+  const { budgetSnapshot } = await import('./lib/harness.mjs');
+  const dir = join(tmpdir(), `harness-budget-fixture-${TEST_RUN_ID}`);
+  mkdirSync(dir, { recursive: true });
+  const NOW = Date.parse('2026-08-08T00:00:00.000Z');
+  const line = (daysAgo, kind) => `${new Date(NOW - daysAgo * 86400000).toISOString()}|proj|${kind}|money|attended`;
+  writeFileSync(join(dir, 'budget-alarm.log'),
+    [line(1, 'rate_limit'), line(2, 'rate_limit'), line(3, 'disk_full'), line(90, 'rate_limit')].join('\n'), 'utf8');
+
+  const CFG = { budget: { plan: 'flat', monthlyUsdCap: 0 } };
+  const prevEnv = process.env.HARNESS_TELEMETRY_DIR;
+  const bad = [];
+  try {
+    process.env.HARNESS_TELEMETRY_DIR = dir;
+    const s = budgetSnapshot(CFG, 'consumer', NOW);
+    if (s.mode !== 'flat-limited') bad.push(`sổ có 2 dòng trong cửa sổ mà mode = ${s.mode}`);
+    if (s.rateLimitHits !== 2) bad.push(`đếm ra ${JSON.stringify(s.rateLimitHits)}, chờ 2 (bỏ dòng 90 ngày và dòng disk_full)`);
+
+    // Sổ KHÔNG tồn tại ⇒ `0` (đọc được, chưa lần nào), KHÔNG phải `null`. Chiều ngược của ca trên.
+    process.env.HARNESS_TELEMETRY_DIR = join(dir, 'chua-co-so');
+    const s0 = budgetSnapshot(CFG, 'consumer', NOW);
+    if (s0.mode !== 'flat-ok') bad.push(`sổ chưa tồn tại phải là flat-ok (0 lần chạm), nhận ${s0.mode}`);
+  } finally {
+    if (prevEnv === undefined) delete process.env.HARNESS_TELEMETRY_DIR; else process.env.HARNESS_TELEMETRY_DIR = prevEnv;
+    rmSync(dir, { recursive: true, force: true });
+  }
+  if (bad.length) fail.push(`budgetSnapshot${' '.repeat(14)} ${bad.join(' · ')}`);
+  else ok.push(`budgetSnapshot${' '.repeat(14)} đọc sổ ra SỐ (2 lần chạm, đúng cửa sổ 30 ngày), và "chưa có sổ" ⇒ 0 chứ không phải \`?\``);
+
+  // ② KHÔNG bên đọc nào được tự lắp tham số cho `budgetStatus`. Đây là ca giữ cho lỗi #125
+  //    không mọc lại ở bên đọc thứ ba — và nó là dạng DUY NHẤT bắt được "quên một đối số".
+  //    Quét bằng `codeOnly(..., { blankStrings: true })` — MÁY QUÉT TRẠNG THÁI, không phải
+  //    regex. Bản đầu tự viết một `strip()` bằng regex và nó nuốt **89% `rituals.mjs`**, nên
+  //    check báo XANH trên một file nó gần như không đọc được.
+  const callers = [];
+  for (const d of [['tooling'], ['tooling', 'knowledge'], ['.claude', 'hooks']]) {
+    let names = []; try { names = readdirSync(repoPath(...d)); } catch { continue; }
+    for (const n of names.filter(x => x.endsWith('.mjs'))) {
+      // `lib/harness.mjs` ĐỊNH NGHĨA nó; `test-*` kiểm nó như một hàm thuần — cả hai hợp lệ.
+      if (n.startsWith('test-')) continue;
+      const p = repoPath(...d, n);
+      if (codeOnly(readFileSync(p, 'utf8'), { blankStrings: true }).includes('budgetStatus(')) callers.push(n);
+    }
+  }
+  if (callers.length) {
+    fail.push(`budgetStatus trực tiếp${' '.repeat(6)} ${callers.length} bên đọc tự lắp tham số: ${callers.join(' · ')}. `
+      + 'Dùng `budgetSnapshot()` — một phép IO cho mọi bên đọc. Bên đọc tự lắp thì quên MỘT đối số là đủ để '
+      + 'hai công cụ trả lời trái ngược nhau về cùng một cái sổ (#125), và không gì đỏ.');
+  } else {
+    ok.push(`budgetStatus trực tiếp${' '.repeat(6)} 0 bên đọc tự lắp tham số — mọi bên đi qua \`budgetSnapshot()\``);
+  }
+}
+
 // ─── nhánh gói PHẲNG: phép ĐẾM, và nó phải trả SỐ (#122) ────────────────────
 //
 // 13 ca của #111 kiểm `budgetStatus` — hàm THUẦN — bằng `rateLimitHits` TRUYỀN TAY. Phần đếm
@@ -3160,17 +3225,17 @@ if (repoRole() === 'template') {
 // Quét trên mã nguồn ĐÃ BỎ CHÚ THÍCH — nếu không, chính đoạn chú thích nhắc tên hàm sẽ tự làm
 // check đỏ. Đây là lần thứ tư trong repo này một phép kiểm quét chuỗi suýt tự khớp chính nó.
 {
-  // BỎ CHÚ THÍCH **VÀ CHUỖI**. Bỏ mỗi chú thích là không đủ: `test-migrations.mjs` có
-  // `"… config() fail-open"` bên trong một chuỗi, và `setup.mjs` có tên hàm trong câu hướng
-  // dẫn. Bản đầu bắn nhầm 9 ca vì đúng chuyện đó — và một check bắn nhầm là một check sắp bị
-  // tắt (`knowledge/lessons/0002`). Đây là lần thứ tư trong repo này một phép kiểm quét chuỗi
-  // suýt tự khớp chính văn bản của mình.
-  const strip = (s) => s
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/(^|[^:"'`])\/\/.*$/gm, '$1')
-    .replace(/`(?:\\.|[^`\\])*`/gs, '``')
-    .replace(/"(?:\\.|[^"\\])*"/g, '""')
-    .replace(/'(?:\\.|[^'\\])*'/g, "''");
+  // BỎ CHÚ THÍCH **VÀ RUỘT CHUỖI** — bằng `codeOnly()`, MÁY QUÉT TRẠNG THÁI có sẵn ở `lib`,
+  // KHÔNG phải regex tự viết.
+  //
+  // Bỏ mỗi chú thích là không đủ: `test-migrations.mjs` có `"… config() fail-open"` trong một
+  // chuỗi. Nhưng bản đầu của check này tự viết một `strip()` bằng 5 cái `replace`, và đo
+  // 2026-08-08 (#125) nó nuốt **89% `rituals.mjs`** (46709 → 5016 ký tự): `budgetSnapshot(`
+  // và `repoRole(` biến mất khỏi mã đã strip, nên check báo **XANH** trên một file nó gần như
+  // không đọc được. Mutant tái hiện đúng lỗi #125 **sống sót**.
+  //
+  // Đây là chiều B của `L0007` xảy ra ngay trong cái lưới vừa dựng để bắt chiều A — và
+  // `codeOnly()` tồn tại từ trước, với một chú thích kể đúng chuyện này đã xảy ra một lần rồi.
   const libSrc = readFileSync(repoPath('tooling', 'lib', 'harness.mjs'), 'utf8');
   const exported = new Set([...libSrc.matchAll(/^export (?:async )?(?:function|const|let|class)\s+(\w+)/gm)].map(m => m[1]));
 
@@ -3196,7 +3261,7 @@ if (repoRole() === 'template') {
     scanned++;
     const imported = new Set(imports.flatMap(m => m[1].split(',')
       .map(s => s.trim().split(/\s+as\s+/).pop().trim()).filter(Boolean)));
-    const src = strip(raw);
+    const src = codeOnly(raw, { blankStrings: true });
     const local = new Set([...src.matchAll(/(?:function|const|let|var|class)\s+(\w+)/g)].map(m => m[1]));
     // Tên khai bằng PHÁ CẤU TRÚC (`const { a, b } = …`) cũng là tên cục bộ. Bỏ sót nhóm này
     // thì mọi hàm nạp động qua `await import()` đều bị báo thiếu.

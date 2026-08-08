@@ -324,6 +324,41 @@ export function budgetPlan(cfg = null, env = process.env) {
  *
  * `null` = KHÔNG ĐỌC ĐƯỢC, `0` = đọc được và chưa lần nào chạm. Hai câu khác nhau.
  */
+/**
+ * Ảnh chụp ngân sách — **một phép IO cho MỌI bên đọc**. Trả về đúng thứ `budgetStatus` trả về.
+ *
+ * Tồn tại vì một lý do đo được, không vì gọn gàng. `harness-doctor` và `rituals` đều gọi
+ * `budgetStatus`, và `rituals` **quên truyền `rateLimitHits`**. Mặc định của tham số đó là
+ * `null`, `null` ⇒ `flat-unmeasured` — đúng theo hợp đồng ba trạng thái, không ném, không đỏ.
+ * Kết quả đo 2026-08-08 (#125), hai công cụ đọc CÙNG một cái sổ:
+ *
+ *   harness-doctor  →  ⚠️ gói PHẲNG · 12 lần chạm rate limit
+ *   rituals         →  ?  KHÔNG đo được — chưa đọc được `budget-alarm.log`
+ *
+ * Và `rituals` là cái chạy ở **mỗi SessionStart**, nên câu sai là câu người dùng thấy hằng ngày.
+ *
+ * `lib-import` (#122) không thấy được lỗ này: nó bắt **tên được gọi mà chưa import**, còn đây
+ * là một **đối số không được truyền**. Nên bản vá đúng không phải thêm một luật phải nhớ, mà là
+ * **bỏ chỗ để quên**: gộp phép IO vào một hàm, và không bên đọc nào còn tự lắp tham số nữa.
+ */
+export function budgetSnapshot(cfg = null, role = null, now = Date.now()) {
+  const c = cfg ?? config();
+  let hits = null;
+  try {
+    const f = join(telemetryDir(), 'budget-alarm.log');
+    hits = existsSync(f) ? rateLimitHitsIn(readFileSync(f, 'utf8'), now - 30 * 86400000) : 0;
+  } catch { hits = null; }   // đọc hỏng ⇒ KHÔNG BIẾT — `?`, không phải 0
+  return budgetStatus({
+    cap: c.budget?.monthlyUsdCap,
+    alertAtPercent: c.budget?.alertAtPercent,
+    latest: latestCapoEntry(),
+    role: role ?? repoRole(),
+    plan: budgetPlan(c),
+    rateLimitHits: hits,
+    now,
+  });
+}
+
 export function rateLimitHitsIn(text, sinceMs = 0) {
   if (typeof text !== 'string') return null;
   let total = 0;
@@ -456,7 +491,7 @@ export function budgetStatus({ cap, alertAtPercent = 80, latest = null, now = Da
  * (ví dụ một pattern khớp chính cú pháp comment) vẫn đánh lừa được nó. Chưa gặp trong repo
  * này; gặp thì thêm ca test trước, đừng thêm nhánh trước.
  */
-export function codeOnly(src) {
+export function codeOnly(src, { blankStrings = false } = {}) {
   const s = String(src);
   let out = '', i = 0;
   const n = s.length;
@@ -467,9 +502,16 @@ export function codeOnly(src) {
     if (c === '"' || c === "'" || c === '`') {
       out += c; i++;
       while (i < n) {
-        if (s[i] === '\\') { out += s[i] + (s[i + 1] ?? ''); i += 2; continue; }
-        out += s[i];
-        if (s[i] === c) { i++; break; }
+        if (s[i] === '\\') { out += (blankStrings ? '' : s[i] + (s[i + 1] ?? '')); i += 2; continue; }
+        // `blankStrings` XOÁ RUỘT chuỗi, chỉ giữ cặp nháy. Mặc định `false` vì bên gọi đầu tiên
+        // (hợp đồng hai đầu) CẦN nội dung chuỗi — lệnh mà một thông báo in ra sống trong đó.
+        // Bên gọi thứ hai thì ngược lại: một phép kiểm hỏi *"file này có GỌI hàm X không"* mà
+        // đọc cả chuỗi sẽ bắn oan vào mọi câu văn nhắc tên hàm. Đo 2026-08-08 (#125): bản đầu
+        // của `lib-import` tự viết một `strip()` bằng regex, và nó nuốt **89% `rituals.mjs`** —
+        // check báo XANH trên một file nó gần như không đọc được. Chiều B của `L0007`, trong
+        // chính cái lưới vừa dựng để bắt chiều A.
+        if (!blankStrings) out += s[i];
+        if (s[i] === c) { if (blankStrings) out += c; i++; break; }
         i++;
       }
       continue;

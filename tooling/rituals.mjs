@@ -41,7 +41,7 @@
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, readJson, readPacks, packPending, budgetStatus, budgetPlan, latestCapoEntry, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue } from './lib/harness.mjs';
+import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, readJson, readPacks, packPending, budgetSnapshot, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue } from './lib/harness.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHẦN THUẦN — không đọc đĩa, không gọi git. Test khẳng định trực tiếp vào đây.
@@ -610,13 +610,7 @@ export function collect() {
     })(),
 
     // Phán đoán ngân sách nằm ở `budgetStatus` (THUẦN). `collect` chỉ đọc đĩa.
-    budget: budgetStatus({
-      plan: budgetPlan(cfg),
-      cap: cfg.budget?.monthlyUsdCap,
-      alertAtPercent: cfg.budget?.alertAtPercent,
-      latest: latestCapoEntry(),
-      role: repoRole(),
-    }),
+    budget: budgetSnapshot(cfg, repoRole()),
 
     // Version Claude Code ĐANG chạy, và version đã được RÀ. Cả hai đều có thể là null, và
     // hai cái null đó nghĩa khác nhau: không đọc được version ⇒ `?` (không đo được); đọc
