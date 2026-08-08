@@ -17,7 +17,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, devId, TEST_TELEMETRY_DIR, TEST_RUN_ID, sweepStaleTestRuns, coordinationLayer, verificationCoverage, readPacks, packPending, budgetStatus, budgetPlan, latestCapoEntry } from './lib/harness.mjs';
+import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, devId, TEST_TELEMETRY_DIR, TEST_RUN_ID, sweepStaleTestRuns, coordinationLayer, verificationCoverage, readPacks, packPending, budgetStatus, budgetPlan, latestCapoEntry, telemetryDir, rateLimitHitsIn } from './lib/harness.mjs';
 
 const QUICK = process.argv.includes('--quick');
 // PHẢI chụp TRƯỚC khi chạy các suite bên dưới: nó là mốc phân biệt "telemetry suite của lần
@@ -168,15 +168,19 @@ if (mcpCount > mcpMax) advice.push(`${mcpCount} MCP server (ngưỡng ${mcpMax})
   // `budget-alarm.log` (observe.mjs ghi ở mỗi StopFailure). Đọc nó ở ĐÂY chứ không trong
   // `budgetStatus` — hàm đó là HÀM THUẦN, và một lần đọc đĩa lén trong đó làm test mất khả
   // năng lái từng ca. `null` khi không đọc được ⇒ `?`, không phải 0.
+  //
+  // CHỈ ĐỌC ĐĨA Ở ĐÂY, phép đếm ở `rateLimitHitsIn()` (thuần, có ca test). Bản trước gộp cả
+  // hai vào một IIFE với `catch { return null }`, và cái catch đó nuốt một `ReferenceError`
+  // (`telemetryDir` chưa được import) — nên nhánh phẳng báo "không đọc được" VĨNH VIỄN trên
+  // một cái sổ đọc được. Xem #122.
   const rateLimitHits = (() => {
+    let text;
     try {
       const f = join(telemetryDir(), 'budget-alarm.log');
-      if (!existsSync(f)) return 0;   // sổ chưa có dòng nào là một câu trả lời THẬT: chưa chạm lần nào
-      const since = RUN_STARTED - 30 * 86400000;
-      return [...tallyLines(readFileSync(f, 'utf8'), { field: 2, sinceMs: since }).entries()]
-        .filter(([k]) => /rate.?limit|quota/i.test(k))
-        .reduce((s, [, n]) => s + n, 0);
+      if (!existsSync(f)) return 0;  // sổ chưa có dòng nào là một câu trả lời THẬT: chưa chạm lần nào
+      text = readFileSync(f, 'utf8');
     } catch { return null; }         // đọc hỏng ⇒ KHÔNG BIẾT, và `?` phải nói ra điều đó
+    return rateLimitHitsIn(text, RUN_STARTED - 30 * 86400000);
   })();
 
   const b = budgetStatus({
