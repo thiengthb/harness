@@ -1014,6 +1014,50 @@ export function simpleCommands(cmd) {
  * trả về để chỗ hiển thị nói rõ "suy từ số trần", biến một phán đoán sai thành một phán đoán
  * NHÌN THẤY ĐƯỢC.
  */
+/**
+ * Ai đang chạy lệnh này — hoặc `null` nếu KHÔNG BIẾT. HÀM THUẦN qua `env` để test được.
+ *
+ * `null` chứ không phải `''`, và đó là toàn bộ ý của hàm này. Đo 2026-08-08 (#114):
+ *
+ *     $ node -e "console.log(process.env.DEV_ID)"      → CHANGEME-ten-cua-ban
+ *     $ tail -3 .claude/telemetry/harness-edits.log    → …|CHANGEME-ten-cua-ban  (cả 3 dòng)
+ *
+ * Sổ đó là thứ làm cửa thoát `HARNESS_DRI=1` **audit được** — lý do duy nhất nó được chấp
+ * nhận thay vì bị coi là lỗ hổng. Câu nó phải trả lời là *"AI đã ghi vào vùng cấm?"*, và
+ * hôm đó có hai phiên Claude Code song song trên cùng máy: một mở DRI, một không. Sổ không
+ * phân biệt được. Đúng câu hỏi nó sinh ra để trả lời là câu nó không trả lời được.
+ *
+ * Và cái gác cho đúng chuyện này ĐÃ CÓ — `check-reservations.mjs` in *"Chưa set DEV_ID"* —
+ * nhưng điều kiện của nó là `me` RỖNG. `"CHANGEME-ten-cua-ban"` không rỗng, nên nhánh cảnh
+ * báo đó **chưa từng chạy một lần nào**, kể cả trên repo chưa ai khai gì.
+ *
+ * Lỗi thật nằm ở chỗ mô hình hoá: *"chưa khai"* bị viết thành *"chuỗi rỗng"*, trong khi thực
+ * tế nó là *"còn nguyên giá trị mẫu"*. Placeholder đi lọt mọi phép kiểm vì nó là một giá trị
+ * hợp lệ **về mặt kiểu**. Cùng lớp với #96 (`issuePrefixes: ["ABC"]`).
+ *
+ * TRẢ VỀ `{ id, from }` vì đây là HAI câu hỏi khác nhau, và gộp chúng là cách tái tạo đúng
+ * lỗi đang sửa:
+ *
+ *   · *"ghi tên nào vào sổ?"*      → `id`, giá trị thật tốt nhất tìm được
+ *   · *"DEV_ID đã được khai chưa?"* → `from === 'DEV_ID'`
+ *
+ * Trên Windows `USERNAME` LUÔN có. Nếu chỉ trả một chuỗi thì `id` không bao giờ rỗng, cảnh
+ * báo không bao giờ bắn, và ta quay lại đúng chỗ xuất phát — chỉ khác cái tên biến.
+ *
+ * Và `USERNAME` không thay được `DEV_ID`: chú thích ở `check-reservations.mjs` đã ghi lý do —
+ * *cùng một người trên hai máy thường có `USERNAME` khác nhau*, nên reservation của chính bạn
+ * đọc ra là của người khác.
+ */
+export function devId(env = process.env) {
+  for (const key of ['DEV_ID', 'USER', 'USERNAME']) {
+    const s = String(env[key] ?? '').trim();
+    if (!s) continue;
+    if (/^CHANGEME/i.test(s)) continue;   // hạt giống của template KHÔNG phải một cái tên
+    return { id: s, from: key };
+  }
+  return { id: null, from: null };
+}
+
 export function inferIssue(branch, prefixes = []) {
   if (!branch || /^(main|master|develop)$/.test(branch)) return { issue: '', from: 'integration' };
   const list = (Array.isArray(prefixes) ? prefixes : []).map((p) => String(p).trim()).filter(Boolean);

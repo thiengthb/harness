@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, dangerousCommand, infraFailure, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, dangerousCommand, infraFailure, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -3048,6 +3048,37 @@ if (repoRole() === 'template') {
   } else ok.push(`harness.version${' '.repeat(13)} = ${verFile}, khớp mục mới nhất của changelog — dấu đóng vào repo con nói đúng code họ nhận`);
 } else skipped += 1;
 
+// ─── devId: placeholder KHÔNG phải một cái tên, và "ai" ≠ "đã khai chưa" ─────
+//
+// Đo 2026-08-08 (#114): `harness-edits.log` — sổ làm cửa thoát `HARNESS_DRI=1` audit được —
+// ghi cả 3 dòng vùng cấm của hôm đó với cùng một "người": `CHANGEME-ten-cua-ban`.
+//
+// Cái gác cho đúng chuyện này ĐÃ CÓ (`check-reservations.mjs` in "Chưa set DEV_ID") nhưng
+// điều kiện là chuỗi RỖNG, mà placeholder thì không rỗng ⇒ nó chưa từng bắn một lần nào.
+//
+// Ca ③ là ca quan trọng nhất và là lý do hàm trả về OBJECT: trên Windows `USERNAME` LUÔN có,
+// nên nếu chỉ trả một chuỗi thì `id` không bao giờ rỗng, cảnh báo không bao giờ bắn, và bản
+// vá này chỉ đổi tên biến chứ không sửa gì.
+{
+  const L = ' '.repeat(22);
+  const T = [
+    ['chưa khai gì',           {},                                                    null,    null],
+    ['DEV_ID = placeholder',   { DEV_ID: 'CHANGEME-ten-cua-ban' },                    null,    null],
+    ['placeholder + USERNAME', { DEV_ID: 'CHANGEME-ten-cua-ban', USERNAME: 'trann' }, 'trann', 'USERNAME'],
+    ['DEV_ID khai thật',       { DEV_ID: 'thi3n', USERNAME: 'trann' },                'thi3n', 'DEV_ID'],
+    ['CHANGEME thường',        { DEV_ID: 'changeme-gi-do', USER: 'lan' },             'lan',   'USER'],
+  ];
+  const bad = [];
+  for (const [label, env, wantId, wantFrom] of T) {
+    const got = devId(env);
+    if (got.id !== wantId || got.from !== wantFrom) {
+      bad.push(`${label} → ${JSON.stringify(got.id)}/${got.from}, cần ${JSON.stringify(wantId)}/${wantFrom}`);
+    }
+  }
+  if (bad.length) fail.push(`devId${L} ${bad.length}/${T.length} ca sai: ${bad.join(' | ')}`);
+  else ok.push(`devId${L} ${T.length} ca — placeholder KHÔNG phải tên, và "ai" tách khỏi "DEV_ID đã khai chưa"`);
+}
+
 // ─── inferIssue: nhánh nào suy ra được issue, nhánh nào KHÔNG ───────────────
 //
 // Bảng lấy từ LỊCH SỬ THẬT của repo này (30 nhánh trong reflog + remote), không phải ca bịa.
@@ -3106,7 +3137,7 @@ if (repoRole() === 'template') {
 // SÀN TỪNG TỤT LẠI SAU TỔNG THẬT, và đó là một chế độ hỏng riêng đáng ghi ra: 2026-08-08 đo
 // được `195/195 pass, sàn 185` — 10 ca thêm vào mà không ai nâng sàn, tức 10 ca có thể NGỪNG
 // CHẠY mà thứ duy nhất nhìn thấy điều đó vẫn xanh. Sàn không bám tổng thật là sàn đã nghỉ việc.
-const RATCHET = 202;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96)
+const RATCHET = 203;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114)
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa
