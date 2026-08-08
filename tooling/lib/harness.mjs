@@ -305,6 +305,37 @@ export function budgetPlan(cfg = null, env = process.env) {
   return raw === 'flat' ? 'flat' : 'metered';
 }
 
+/**
+ * Đếm số lần chạm rate limit trong `budget-alarm.log` — **THUẦN**, nhận text, trả số.
+ *
+ * Với gói phẳng đây là toàn bộ phép đo: tiền không phải cổ chai, rate limit mới là. Nó nằm ở
+ * `lib` chứ không inline trong `harness-doctor` vì đúng một lý do — bản trước inline, và **cả
+ * nhánh phẳng chưa từng đếm được lần nào**. Hai lỗi chồng lên nhau (#122):
+ *
+ *   ① `telemetryDir` KHÔNG có trong danh sách import của `harness-doctor.mjs`, nên lời gọi ném
+ *      `ReferenceError` — và `catch { return null }` (viết với nghĩa "đọc sổ hỏng ⇒ không
+ *      biết") nuốt luôn nó. Kết quả: `flat-unmeasured` VĨNH VIỄN, trên một cái sổ đọc được.
+ *   ② `tallyLines` trả `Map<key, {sub: count}>` — giá trị là **object**. `reduce((s,[,n]) => s+n, 0)`
+ *      cho `"0[object Object]"`, rồi `Number()` ra `NaN` ⇒ rơi xuống `flat-ok` với **0**, trong
+ *      khi sổ có **12**. Sai theo chiều DỄ CHỊU, `L0005` ở dạng nguyên bản.
+ *
+ * 13 ca của #111 kiểm `budgetStatus` — hàm thuần — bằng `rateLimitHits` TRUYỀN TAY. Ranh giới
+ * test dừng đúng trước chỗ hỏng. Đưa phép đếm vào đây là dời ranh giới đó qua chỗ hỏng.
+ *
+ * `null` = KHÔNG ĐỌC ĐƯỢC, `0` = đọc được và chưa lần nào chạm. Hai câu khác nhau.
+ */
+export function rateLimitHitsIn(text, sinceMs = 0) {
+  if (typeof text !== 'string') return null;
+  let total = 0;
+  for (const [key, subs] of tallyLines(text, { field: 2, sinceMs })) {
+    if (!/rate.?limit|quota/i.test(key)) continue;
+    // Giá trị của `tallyLines` là một bảng con {trường-kế-tiếp: số lần}. Cộng CÁC GIÁ TRỊ của
+    // nó, không cộng chính nó — đó là toàn bộ lỗi ②.
+    for (const n of Object.values(subs)) total += Number(n) || 0;
+  }
+  return total;
+}
+
 export function budgetStatus({ cap, alertAtPercent = 80, latest = null, now = Date.now(), role = null,
   plan = 'metered', rateLimitHits = null } = {}) {
   const c = Number(cap);

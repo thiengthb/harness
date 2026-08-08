@@ -1,4 +1,4 @@
-<!-- version: 2026-08-08-k -->
+<!-- version: 2026-08-08-l -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,20 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-08 — Nhánh gói PHẲNG chưa từng đếm được lần nào (v2.44.2)
+
+Cơ chế gói phẳng thêm ở v2.44.0 **hỏng ngay từ lúc merge**, và nó chỉ lộ ra khi có người thật sự
+bật `HARNESS_BUDGET_PLAN=flat`. Hai lỗi chồng lên nhau: một tên chưa được import (`ReferenceError`
+bị `catch` trần nuốt ⇒ *"không đọc được"* vĩnh viễn), và một phép cộng trên object (`"0[object
+Object]"` ⇒ báo **0 lần chạm** trong khi sổ có **12**).
+
+13 ca test của v2.44.0 không thấy gì: chúng kiểm hàm THUẦN bằng số truyền tay, còn phép đếm nằm
+inline trong `harness-doctor`. **Ranh giới test dừng đúng trước chỗ hỏng.**
+
+**Việc bạn phải làm khác đi:** không có. Nếu bạn dùng gói phẳng, mục NGÂN SÁCH giờ ra số thật.
+Thêm một lưới `lib-import` chạy trong `test-hooks`: gọi một hàm của `lib` mà quên import thì
+suite đỏ ngay, thay vì đợi tới lúc nhánh đó được ai đó bật.
 
 ## 2026-08-08 — Nếu bạn từng chạy `native-surface --record` TRƯỚC bản rà: chạy lại (v2.44.1)
 

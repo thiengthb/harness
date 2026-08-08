@@ -3103,6 +3103,124 @@ if (repoRole() === 'template') {
   } else ok.push(`harness.version${' '.repeat(13)} = ${verFile}, khớp mục mới nhất của changelog — dấu đóng vào repo con nói đúng code họ nhận`);
 } else skipped += 1;
 
+// ─── nhánh gói PHẲNG: phép ĐẾM, và nó phải trả SỐ (#122) ────────────────────
+//
+// 13 ca của #111 kiểm `budgetStatus` — hàm THUẦN — bằng `rateLimitHits` TRUYỀN TAY. Phần đếm
+// nằm inline trong `harness-doctor.mjs`, và nó hỏng theo HAI cách cùng lúc, suốt từ lúc merge:
+//
+//   ① `telemetryDir` không có trong danh sách import ⇒ ReferenceError ⇒ `catch { return null }`
+//      nuốt ⇒ `flat-unmeasured` VĨNH VIỄN, trên một cái sổ đọc được.
+//   ② `tallyLines` trả `Map<key, {sub: count}>` — giá trị là OBJECT. `s + n` cho
+//      `"0[object Object]"`, `Number()` ra `NaN` ⇒ rơi xuống `flat-ok` với **0** trong khi sổ
+//      có **12**. Sai theo chiều DỄ CHỊU.
+//
+// Ranh giới test cũ dừng đúng TRƯỚC chỗ hỏng. Ca dưới dời nó qua.
+{
+  const { rateLimitHitsIn } = await import('./lib/harness.mjs');
+  const now = Date.now();
+  const stamp = (msAgo) => new Date(now - msAgo).toISOString();
+  const DAY = 86400000;
+  const log = [
+    `${stamp(1 * DAY)}|proj|rate_limit|money|attended`,
+    `${stamp(2 * DAY)}|proj|rate_limit|money|attended`,
+    `${stamp(3 * DAY)}|proj|rate_limit|time|unattended`,   // sub-field KHÁC — vẫn phải cộng
+    `${stamp(4 * DAY)}|proj|quota|money|attended`,          // `quota` cũng là chạm trần
+    `${stamp(5 * DAY)}|proj|disk_full|infra|attended`,      // KHÔNG phải chạm trần
+    `${stamp(90 * DAY)}|proj|rate_limit|money|attended`,    // ngoài cửa sổ 30 ngày
+  ].join('\n');
+
+  const cases = [
+    ['đếm đúng 4 (2 money + 1 time + 1 quota), bỏ dòng ngoài cửa sổ và dòng khác loại',
+      () => rateLimitHitsIn(log, now - 30 * DAY) === 4],
+    // Ca GIẾT bug ②: `"0[object Object]"` cũng "khác 0", nên phải đòi KIỂU.
+    ['trả về SỐ, không phải chuỗi nối object',
+      () => typeof rateLimitHitsIn(log, now - 30 * DAY) === 'number'],
+    ['không có mốc thời gian ⇒ đếm cả 5 dòng chạm trần',
+      () => rateLimitHitsIn(log, 0) === 5],
+    // Ba giá trị: `0` (đọc được, chưa lần nào) KHÁC `null` (không đọc được).
+    ['sổ rỗng ⇒ 0, không phải null', () => rateLimitHitsIn('', 0) === 0],
+    ['không đọc được (không phải chuỗi) ⇒ null, KHÔNG phải 0',
+      () => rateLimitHitsIn(null, 0) === null && rateLimitHitsIn(undefined, 0) === null],
+    ['chỉ có dòng khác loại ⇒ 0', () => rateLimitHitsIn(`${stamp(DAY)}|proj|disk_full|infra|x`, 0) === 0],
+  ];
+  const bad = cases.filter(([, f]) => { try { return !f(); } catch { return true; } }).map(([n]) => n);
+  if (bad.length) fail.push(`rateLimitHitsIn${' '.repeat(13)} sai ${bad.length}/${cases.length} ca: ${bad.join(' · ')}`);
+  else ok.push(`rateLimitHitsIn${' '.repeat(13)} ${cases.length} ca — cộng GIÁ TRỊ của bảng con (không cộng object), và \`0\` ≠ \`null\``);
+}
+
+// ─── Tên gọi từ `lib` mà KHÔNG được import — `catch` trần sẽ nuốt nó (#122) ──
+//
+// Lỗi ① ở trên sống được vì hai thứ cộng lại: một tên chưa import, và một `catch { return null }`
+// bọc quanh nó. `ReferenceError` chỉ nổ lúc CHẠY, và nhánh đó chỉ chạy khi ai đó khai
+// `plan: flat` — không repo nào khai, nên nó im lặng từ lúc merge tới lúc có người bật cờ.
+//
+// Phép kiểm này là phép trừ tập hợp, tất định, và rộng hơn một ca: mọi tên `lib` XUẤT ra mà
+// một file GỌI thì phải có trong danh sách import của file đó.
+//
+// Quét trên mã nguồn ĐÃ BỎ CHÚ THÍCH — nếu không, chính đoạn chú thích nhắc tên hàm sẽ tự làm
+// check đỏ. Đây là lần thứ tư trong repo này một phép kiểm quét chuỗi suýt tự khớp chính nó.
+{
+  // BỎ CHÚ THÍCH **VÀ CHUỖI**. Bỏ mỗi chú thích là không đủ: `test-migrations.mjs` có
+  // `"… config() fail-open"` bên trong một chuỗi, và `setup.mjs` có tên hàm trong câu hướng
+  // dẫn. Bản đầu bắn nhầm 9 ca vì đúng chuyện đó — và một check bắn nhầm là một check sắp bị
+  // tắt (`knowledge/lessons/0002`). Đây là lần thứ tư trong repo này một phép kiểm quét chuỗi
+  // suýt tự khớp chính văn bản của mình.
+  const strip = (s) => s
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:"'`])\/\/.*$/gm, '$1')
+    .replace(/`(?:\\.|[^`\\])*`/gs, '``')
+    .replace(/"(?:\\.|[^"\\])*"/g, '""')
+    .replace(/'(?:\\.|[^'\\])*'/g, "''");
+  const libSrc = readFileSync(repoPath('tooling', 'lib', 'harness.mjs'), 'utf8');
+  const exported = new Set([...libSrc.matchAll(/^export (?:async )?(?:function|const|let|class)\s+(\w+)/gm)].map(m => m[1]));
+
+  const files = [];
+  for (const d of [['tooling'], ['tooling', 'knowledge'], ['.claude', 'hooks']]) {
+    let names = []; try { names = readdirSync(repoPath(...d)); } catch { continue; }
+    for (const n of names.filter(x => x.endsWith('.mjs'))) files.push(repoPath(...d, n));
+  }
+
+  const miss = [];
+  let scanned = 0;
+  for (const f of files) {
+    const raw = readFileSync(f, 'utf8');
+    // `[^}]*`, KHÔNG `[\s\S]*?`: bản lazy bắt đầu ở `import {` ĐẦU TIÊN của file (thường là
+    // `node:fs`) rồi nuốt qua nhiều dòng import, nên tên ĐẦU TIÊN của danh sách `harness.mjs`
+    // dính liền chuỗi `import {` và không bao giờ khớp. Triệu chứng: `repoPath` bị báo thiếu ở
+    // 17 file đang import nó. Một check bắn nhầm 243 ca là một check sắp bị tắt (L0002).
+    const imports = [...raw.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"][^'"]*harness\.mjs['"]/g)]
+      // `const { a, b } = await import('…harness.mjs')` — test-hooks dùng dạng này để nạp
+      // hàm mới mà không đụng danh sách import ở đầu file.
+      .concat([...raw.matchAll(/\{([^}]*)\}\s*=\s*await\s+import\(\s*['"][^'"]*harness\.mjs['"]/g)]);
+    if (!imports.length) continue;
+    scanned++;
+    const imported = new Set(imports.flatMap(m => m[1].split(',')
+      .map(s => s.trim().split(/\s+as\s+/).pop().trim()).filter(Boolean)));
+    const src = strip(raw);
+    const local = new Set([...src.matchAll(/(?:function|const|let|var|class)\s+(\w+)/g)].map(m => m[1]));
+    // Tên khai bằng PHÁ CẤU TRÚC (`const { a, b } = …`) cũng là tên cục bộ. Bỏ sót nhóm này
+    // thì mọi hàm nạp động qua `await import()` đều bị báo thiếu.
+    for (const m of src.matchAll(/(?:const|let|var)\s*\{([^}]*)\}/g)) {
+      for (const n of m[1].split(',')) { const t = n.split(':').pop().trim(); if (t) local.add(t); }
+    }
+    for (const m of src.matchAll(/(?<![.\w])(\w+)\s*\(/g)) {
+      const name = m[1];
+      if (!exported.has(name) || imported.has(name) || local.has(name)) continue;
+      miss.push(`${f.split(/[\\/]/).pop()}: gọi \`${name}()\` mà không import`);
+    }
+  }
+
+  if (!scanned) {
+    warn.push('lib-import                  KHÔNG file nào import từ `lib/harness.mjs` — check này chưa nói được gì (n/a)');
+  } else if (miss.length) {
+    fail.push(`lib-import${' '.repeat(18)} ${miss.length} lời gọi tới hàm của \`lib\` KHÔNG được import — `
+      + `\`ReferenceError\` chỉ nổ lúc CHẠY, và một \`catch\` trần sẽ nuốt nó:\n`
+      + [...new Set(miss)].map(s => `         · ${s}`).join('\n'));
+  } else {
+    ok.push(`lib-import${' '.repeat(18)} ${scanned} file — mọi tên của \`lib\` được gọi đều có trong danh sách import`);
+  }
+}
+
 // ─── baseline có HAI người ghi — không ai được xoá đo của người kia (#120) ───
 //
 // `.claude/claude-code-baseline.json` nhận hai cây bút khác nhau:

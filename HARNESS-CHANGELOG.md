@@ -11,6 +11,90 @@
 
 ---
 
+## 2.44.2 — 2026-08-08
+
+**patch.** Nhánh gói **PHẲNG** — thêm ở `2.44.0` cách đây 30 phút — **chưa từng đếm được một
+lần nào**. Đóng #122.
+
+### Nó lộ ra vì có người BẬT CỜ
+
+`HARNESS_BUDGET_PLAN=flat` vào `.claude/settings.local.json`. Trước đó **không repo nào khai
+`flat`**, nên cả nhánh này chưa từng chạy ở đâu — kể cả trong 13 ca test của chính nó.
+
+### Hai lỗi, chồng lên nhau, và cái thứ hai tệ hơn
+
+**① `telemetryDir` không có trong danh sách import của `harness-doctor.mjs`.**
+
+```
+CATCH nuốt: ReferenceError: telemetryDir is not defined
+rateLimitHits = null   ← luôn null ⇒ flat-unmeasured VĨNH VIỄN
+```
+
+`catch { return null }` được viết với nghĩa *"đọc sổ hỏng ⇒ không biết"*. Nó **cũng nuốt
+`ReferenceError`**. Đo trên máy có sổ **12 dòng đọc được**:
+
+```
+?    gói PHẲNG — không đọc được `budget-alarm.log`, nên số lần chạm rate limit KHÔNG ĐO ĐƯỢC
+```
+
+**② Kể cả khi sửa ①, phép cộng vẫn sai — và nó sai theo chiều DỄ CHỊU.**
+
+`tallyLines` trả `Map<key, {sub: count}>` — giá trị là **object**:
+
+```
+tallyLines → [ [ 'rate_limit', { money: 12 } ] ]
+0 + {money:12}  =  "0[object Object]"   →  Number(...) = NaN  →  rơi xuống nhánh cuối
+budgetStatus → flat-ok · rateLimitHits: 0
+```
+
+**`ok  gói PHẲNG · 0 lần chạm rate limit`** — trong khi sự thật là **12**. `L0005` ở dạng nguyên
+bản, trong chính cơ chế vừa dựng để chống một cảnh báo vô nghĩa: #111 sửa một cảnh báo **luôn
+bật**; sửa nửa vời thì được một cảnh báo **không bao giờ bật**.
+
+### Vì sao 13 ca của #111 không thấy
+
+Chúng kiểm `budgetStatus` — **hàm thuần** — bằng `rateLimitHits` **truyền tay**. Phép đếm nằm
+inline trong `harness-doctor.mjs`: không thuần, không ca nào. **Ranh giới test dừng đúng trước
+chỗ hỏng.**
+
+`rateLimitHitsIn(text, sinceMs)` dời ranh giới đó qua chỗ hỏng: hàm thuần trong `lib`, 6 ca,
+gồm ca đòi **kiểu trả về là số** (`"0[object Object]"` cũng "khác 0", nên chỉ so giá trị là
+không đủ) và ca đòi `0` ≠ `null`.
+
+### Và một lưới cho cả LỚP lỗi ①
+
+`lib-import` — phép trừ tập hợp trên **40 file**: mọi tên `lib` xuất ra mà một file **gọi** thì
+phải có trong danh sách import của file đó. `ReferenceError` chỉ nổ **lúc chạy**, và ở đây nó
+nổ trong một nhánh không ai bật, bọc trong một `catch` trần.
+
+Bản đầu của lưới này **bắn nhầm 243 ca** — hai nguyên nhân, cả hai đáng ghi:
+
+- regex `[\s\S]*?` bắt đầu ở `import {` **đầu tiên** của file (thường `node:fs`) rồi nuốt qua
+  nhiều dòng, nên **tên đầu tiên** của danh sách `harness.mjs` dính liền chuỗi `import {` và
+  không bao giờ khớp — `repoPath` bị báo thiếu ở 17 file đang import nó;
+- và nó quét cả **chuỗi**, không chỉ chú thích: `"… config() fail-open"` trong một message.
+
+Một check bắn nhầm là một check sắp bị tắt (`L0002`), nên cả hai được vá trước khi ship: quét
+trên mã đã bỏ chú thích **và** chuỗi, cộng tên khai bằng phá cấu trúc. Còn **0/40** dương tính
+giả.
+
+### 4 mutant, 0 sống sót
+
+| mutant | giết |
+|---|---|
+| bỏ `telemetryDir` khỏi import (tái hiện lỗi ①) | `lib-import` |
+| bỏ `rateLimitHitsIn` khỏi import | `lib-import` |
+| cộng chính object thay vì giá trị (tái hiện lỗi ②) | `rateLimitHitsIn` 3/6 ca |
+| không đọc được ⇒ `0` thay vì `null` | `rateLimitHitsIn` 1/6 ca |
+
+### Đo được sau bản vá
+
+```
+⚠️   gói PHẲNG · 12 lần chạm rate limit trong 30 ngày — ĐÂY là trần thật, không phải USD
+```
+
+---
+
 ## 2.44.1 — 2026-08-08
 
 **patch.** `.claude/claude-code-baseline.json` có **hai người ghi**, và một người **xoá phép đo
