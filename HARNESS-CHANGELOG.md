@@ -11,6 +11,83 @@
 
 ---
 
+## 2.44.1 — 2026-08-08
+
+**patch.** `.claude/claude-code-baseline.json` có **hai người ghi**, và một người **xoá phép đo
+của người kia**. Đóng #120.
+
+### Đo được — tìm ra bằng cách chạy đúng nghi thức
+
+```
+$ node tooling/native-surface.mjs --record
+  OK   đã ghi 31 sự kiện vào .claude/claude-code-baseline.json
+
+$ node tooling/rituals.mjs --reviewed-claude-code "…"
+  ✓ đã ghi: rà Claude Code 2.1.226
+
+$ git diff --stat
+  .claude/claude-code-baseline.json | 48 +++-----   (8 thêm, 40 XOÁ)
+
+$ node tooling/rituals.mjs
+  ▸ rituals.mjs --reviewed-claude-code   đã rà changelog 2.1.226 nhưng CHƯA đo tập sự
+    kiện hook lần nào
+```
+
+*"CHƯA đo lần nào"* — trong khi nó vừa được đo **30 giây trước**, và bị ném đi.
+
+### Nguyên nhân
+
+`rituals.mjs` dựng lại object từ đầu với đúng bốn khoá, và chỉ đọc `prev` để lấy `history`:
+
+```js
+writeJson({ $comment, reviewedVersion, reviewedAt, history });   // ← nativeEvents biến mất
+```
+
+`native-surface.mjs` làm **đúng**: đọc `prev`, gán `prev.nativeEvents = …`, ghi `prev` về.
+
+### Vì sao tệ hơn "mất một field"
+
+**Phụ thuộc THỨ TỰ, và im lặng.** Chạy `--record` sau thì không sao; chạy trước thì mất. Không
+có gì báo — chỉ có nghi thức nói *"chưa đo lần nào"*, mà câu đó **không phân biệt được** với
+"thật sự chưa ai đo".
+
+Và nó đánh đúng vào phép đo mà chính `rituals.mjs` gọi là *"máy trừ được thì đừng hỏi người"*:
+tập sự kiện hook là con số **duy nhất** trong bề mặt vendor kiểm được bằng máy. Cơ chế bảo vệ
+nó lại là cơ chế xoá nó.
+
+### Đổi gì
+
+`mergeBaseline(prev, {version, at, found})` — hàm **thuần**, export để test được mà không đụng
+file thật (đường dẫn baseline cứng ở `repoPath('.claude', …)`, không có env chuyển đích như
+`HARNESS_STATE_DIR`, nên một suite chạm file thật sẽ ăn mất bản rà của chính người chạy nó).
+
+`...prev` **trước**, bốn khoá của lần rà ghi đè **sau**. Thứ tự đó là cả bản vá — đảo lại thì
+`history` cũ thắng bản ghi mới: cùng một lỗi, đổi nạn nhân.
+
+### 6 ca, 3 mutant, không mutant nào sống sót
+
+| mutant | giết |
+|---|---|
+| bỏ `...prev` (quay lại bản dựng-từ-đầu) | ① giữ `nativeEvents` |
+| `...prev` đặt SAU bốn khoá | ②③ bản rà mới thắng · history cũ được nối |
+| bỏ trần 20 | ④ |
+
+Ca ② tồn tại vì ca ① **không đủ một mình**: một bản vá *"giữ hết mọi thứ của prev"* cũng làm ①
+xanh, trong khi nó nuốt đúng bản rà vừa viết. Đây là chiều **sửa quá tay** mà
+`.claude/learnings/2026-W32-chieu-sua-qua-tay.md` vừa nói tới — lần thứ tư trong cùng một phiên.
+
+### Kèm theo: bản rà Claude Code 2.1.226
+
+`2.1.225–226` **không** ra sẵn thứ nào harness đang tự làm tay. Tập sự kiện hook **không đổi**
+so với 2.1.224 (31 sự kiện, đo bằng `native-surface`). Mục gần nhất là *"gateway spend-limit
+support"* ở 2.1.225 — thông báo chạm trần nay nêu cap, giờ reset và lời của operator, **nhưng
+nó đòi gateway** (triển khai enterprise), nên nó không thay được `budget-alarm.log` của v2.44.0.
+
+Đáng theo dõi: nếu vendor đưa cap + giờ reset vào thông báo cho **mọi** tài khoản thì
+`flat-limited` đọc được số thật thay vì chỉ đếm số lần chạm.
+
+---
+
 ## 2.44.0 — 2026-08-08
 
 **minor.** Lớp ngân sách giả định **trả theo mức dùng**. Với gói **phẳng**, cảnh báo *"vượt

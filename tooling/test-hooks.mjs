@@ -3103,6 +3103,56 @@ if (repoRole() === 'template') {
   } else ok.push(`harness.version${' '.repeat(13)} = ${verFile}, khớp mục mới nhất của changelog — dấu đóng vào repo con nói đúng code họ nhận`);
 } else skipped += 1;
 
+// ─── baseline có HAI người ghi — không ai được xoá đo của người kia (#120) ───
+//
+// `.claude/claude-code-baseline.json` nhận hai cây bút khác nhau:
+//
+//   rituals.mjs --reviewed-claude-code   → reviewedVersion · reviewedAt · history  (người đọc changelog)
+//   native-surface.mjs --record          → nativeEvents                            (máy quét binary)
+//
+// Bản trước dựng lại object từ đầu với đúng bốn khoá, nên `nativeEvents` biến mất — IM LẶNG,
+// và chỉ khi chạy `--record` TRƯỚC. Đo 2026-08-08: `git diff` ra `8 thêm · 40 XOÁ`, rồi nghi
+// thức nói *"CHƯA đo tập sự kiện hook lần nào"* trong khi nó vừa được đo 30 giây trước.
+//
+// Khẳng định vào hàm THUẦN, không vào file: đường dẫn baseline cứng ở `repoPath('.claude', …)`
+// và KHÔNG có env chuyển đích như `HARNESS_STATE_DIR`, nên một suite chạm file thật sẽ ăn mất
+// bản rà của chính người đang chạy nó.
+{
+  const { mergeBaseline } = await import('./rituals.mjs');
+  const NEW = { version: '9.9.9', at: '2026-08-08T00:00:00.000Z', found: 'ghi chú mới' };
+  const cases = [
+    // ① Ca của #120: khoá của cơ chế KHÁC phải sống sót.
+    ['giữ `nativeEvents` của native-surface',
+      { nativeEvents: { version: '2.1.226', events: ['PreToolUse'] } },
+      (r) => r.nativeEvents?.events?.length === 1 && r.nativeEvents.version === '2.1.226'],
+    // ② CHIỀU NGƯỢC — và nó là lý do ca ① không đủ một mình. `...prev` đặt SAU bốn khoá kia
+    //    thì `history` cũ thắng bản ghi mới: cùng một lỗi, đổi nạn nhân. Không có ca này,
+    //    một bản vá "giữ hết mọi thứ của prev" cũng xanh.
+    ['bản rà MỚI thắng, không bị `...prev` ghi đè ngược',
+      { reviewedVersion: '1.0.0', reviewedAt: 'cũ', history: [{ version: '1.0.0', at: 'cũ', found: 'cũ' }] },
+      (r) => r.reviewedVersion === '9.9.9' && r.reviewedAt === NEW.at && r.history[0].found === 'ghi chú mới'],
+    // ③ `history` cũ vẫn được NỐI, không bị thay thế.
+    ['history cũ được nối sau mục mới',
+      { history: [{ version: '1.0.0', at: 'cũ', found: 'cũ' }] },
+      (r) => r.history.length === 2 && r.history[1].version === '1.0.0'],
+    // ④ Trần 20 vẫn giữ.
+    ['trần 20 mục lịch sử',
+      { history: Array.from({ length: 25 }, (_, i) => ({ version: `0.0.${i}`, at: 'x', found: 'x' })) },
+      (r) => r.history.length === 20],
+    // ⑤ Lần đầu: `prev` rỗng ⇒ không ném, và history có đúng một mục.
+    ['prev rỗng (lần đầu) ⇒ không ném', {}, (r) => r.history.length === 1 && r.reviewedVersion === '9.9.9'],
+    // ⑥ `prev.history` KHÔNG phải mảng ⇒ bỏ qua, không ném.
+    ['history hỏng kiểu ⇒ bỏ qua, không ném', { history: 'hỏng' }, (r) => r.history.length === 1],
+  ];
+  const bad = [];
+  for (const [name, prev, want] of cases) {
+    let r; try { r = mergeBaseline(prev, NEW); } catch (e) { bad.push(`${name} (ném: ${e.message})`); continue; }
+    if (!want(r)) bad.push(name);
+  }
+  if (bad.length) fail.push(`mergeBaseline${' '.repeat(15)} sai ${bad.length}/${cases.length} ca: ${bad.join(' · ')}`);
+  else ok.push(`mergeBaseline${' '.repeat(15)} ${cases.length} ca — khoá của cơ chế KIA sống sót, và bản rà MỚI vẫn thắng (cả hai chiều)`);
+}
+
 // ─── devId: placeholder KHÔNG phải một cái tên, và "ai" ≠ "đã khai chưa" ─────
 //
 // Đo 2026-08-08 (#114): `harness-edits.log` — sổ làm cửa thoát `HARNESS_DRI=1` audit được —

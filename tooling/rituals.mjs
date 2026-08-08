@@ -416,6 +416,40 @@ export function claudeCodeVersionMeasured(execPath = process.env.CLAUDE_CODE_EXE
   return claudeCodeVersion(execPath) ?? claudeCodeVersionFromPackage(execPath);
 }
 
+/**
+ * HỢP NHẤT bản rà mới vào baseline cũ — THUẦN, để test được mà không đụng file thật.
+ *
+ * `.claude/claude-code-baseline.json` có **HAI người ghi**, và họ ghi hai thứ khác nhau:
+ *
+ *   rituals.mjs --reviewed-claude-code   → reviewedVersion · reviewedAt · history   (người đọc changelog)
+ *   native-surface.mjs --record          → nativeEvents                             (máy quét binary)
+ *
+ * Bản trước dựng lại object từ đầu với đúng bốn khoá và chỉ đọc `prev` để lấy `history`. Nên
+ * `nativeEvents` **biến mất** — và nó biến mất IM LẶNG, chỉ phụ thuộc thứ tự chạy hai lệnh.
+ * Đo 2026-08-08 (issue #120): chạy `--record` trước rồi rà, `git diff` ra `8 thêm · 40 XOÁ`, và
+ * nghi thức ngay sau đó nói *"CHƯA đo tập sự kiện hook lần nào"* — trong khi nó vừa được đo 30
+ * giây trước. Câu đó không phân biệt được với "thật sự chưa ai đo".
+ *
+ * Đánh đúng vào phép đo mà chính file này gọi là *"máy trừ được thì đừng hỏi người"*: tập sự
+ * kiện hook là con số DUY NHẤT trong bề mặt vendor kiểm được bằng máy, và cơ chế bảo vệ nó lại
+ * là cơ chế xoá nó.
+ *
+ * `...prev` TRƯỚC, bốn khoá của lần rà GHI ĐÈ SAU — thứ tự đó là cả bản vá. Đảo lại thì
+ * `history` cũ trong `prev` thắng bản ghi mới, tức bản rà vừa viết bị nuốt: cùng một lỗi, đổi
+ * nạn nhân.
+ */
+export function mergeBaseline(prev, { version, at, found }) {
+  const history = Array.isArray(prev?.history) ? prev.history : [];
+  return {
+    ...prev,
+    $comment: 'Bản rà Claude Code gần nhất. Nghi thức `claude-code-drift` so `reviewedVersion` với version đang chạy. '
+      + 'Đừng sửa tay — dùng `node tooling/rituals.mjs --reviewed-claude-code "<thấy gì>"`.',
+    reviewedVersion: version,
+    reviewedAt: at,
+    history: [{ version, at, found }, ...history].slice(0, 20),
+  };
+}
+
 /** Chạy toàn bộ nghi thức trên một trạng thái. Thuần, tất định. */
 export function evaluate(state) {
   return RITUALS.map(r => {
@@ -701,15 +735,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     const p = repoPath('.claude', 'claude-code-baseline.json');
     let prev = {};
     try { prev = JSON.parse(readFileSync(p, 'utf8')); } catch { /* lần đầu */ }
-    const history = Array.isArray(prev.history) ? prev.history : [];
-    history.unshift({ version, at: new Date().toISOString(), found });
-    writeFileSync(p, JSON.stringify({
-      $comment: 'Bản rà Claude Code gần nhất. Nghi thức `claude-code-drift` so `reviewedVersion` với version đang chạy. '
-        + 'Đừng sửa tay — dùng `node tooling/rituals.mjs --reviewed-claude-code "<thấy gì>"`.',
-      reviewedVersion: version,
-      reviewedAt: history[0].at,
-      history: history.slice(0, 20),
-    }, null, 2) + '\n', 'utf8');
+    writeFileSync(p, JSON.stringify(mergeBaseline(prev, { version, at: new Date().toISOString(), found }), null, 2) + '\n', 'utf8');
     console.log(`✓ đã ghi: rà Claude Code ${version}`);
     console.log(`  thấy: ${found}`);
     console.log(`  Nghi thức claude-code-drift sẽ im cho tới lần Claude Code lên version tiếp theo.\n`);
