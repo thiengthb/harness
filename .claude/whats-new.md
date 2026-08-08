@@ -1,4 +1,4 @@
-<!-- version: 2026-08-08-c -->
+<!-- version: 2026-08-08-d -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -9,6 +9,21 @@
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
 
+## 2026-08-08 — Bạn sẽ THẤY phiên song song của chính mình (v2.42.0)
+
+Ba phiên chạy song song 2 giờ trên repo này mà **0 cảnh báo** — vì sổ phiên nằm TRONG
+worktree, nên mỗi phiên chỉ thấy chính nó. Giờ nó ở `.git/harness-shared/`, chỗ mọi worktree
+cùng nhìn thấy.
+
+**Việc bạn phải làm khác đi:** đầu phiên, nếu thấy dòng `ℹ️ N phiên KHÁC đang mở` — dừng một
+giây và hỏi *hai việc này có chạm cùng file không?*
+
+```
+node tooling/overlap-scan.mjs <đường-dẫn dự kiến>
+```
+
+Song song **không rẻ gấp đôi**: ~2× là sàn cứng (context nhân đôi), phần vượt lên là rebase +
+nhiễu do tranh máy + làm trùng. Quy trình 5 bước ở `docs/WIP.md`.
 ## 2026-08-08 — Sổ telemetry ĐÓNG được (v2.41.0)
 
 `/harness-propose` đỏ vì đếm **mọi dòng từng có** trong `gate-fails.log`. Ba lần chặn hôm qua
