@@ -11,6 +11,45 @@
 
 ---
 
+## 2.42.2 — 2026-08-08
+
+**patch.** `issuePrefixes` placeholder làm `/claim` · `/handoff` · `/verify-ui` đọc `?` trên
+**mọi** nhánh làm việc. Đóng #96.
+
+### Đo trên 30 nhánh THẬT của repo, không phải trực giác
+
+| dạng tên nhánh | số | prefix `["ABC"]` khớp? |
+|---|---|---|
+| `<type>/<số>-<slug>` (`fix/100-…`, `feat/85-…`) | **21** | không |
+| không có số (`docs/retro-w32-lan-hai`) | **9** | không (đúng) |
+| `ABC-123` kiểu Jira | **0** | — |
+
+Khớp **0/30**. Ba nghi thức chỉ xanh khi đứng trên `main` — đúng lúc chúng không có gì để nói.
+
+### Nhận số trần, và NÓI RA rằng đó là suy ra
+
+`inferIssue(branch, prefixes)` ở `lib/harness.mjs` — hàm thuần, trả `{ issue, from }`. Prefix
+khai thật vẫn thắng trước; không khớp thì nhận số **ở đầu tên nhánh**, neo `^<type>/`. Số ở
+GIỮA không được đọc là issue (`feat/promote-L0005-…` ⇒ không phải issue 5).
+
+Bắn nhầm có thật (`fix/2-space-indent` ⇒ issue 2) và **không vá được offline**. Hướng "đòi
+`docs/progress/<issue>.md` tồn tại trước khi tin" đã đo và bỏ: thư mục đó gần như rỗng và 0/4
+PR gần nhất tạo nó, nên điều kiện ấy sẽ làm nhánh dự phòng không bao giờ kích hoạt.
+
+Thay vào đó `from` được trả về và nghi thức in `· issue SUY TỪ số trần trong tên nhánh`. Hai
+cái giá không đối xứng: `?` là mù trên **100%** nhánh; bắn nhầm cần một tên nhánh bất thường
+(**0/30**), và khi xảy ra thì nó nhìn thấy được nên sửa được.
+
+### Bản cũ còn LỎNG hơn — đây là siết, không phải nới
+
+`prefixes` rỗng ⇒ biểu thức thành `()-?d+` ⇒ khớp **chuỗi số bất kỳ ở bất kỳ đâu** trong tên
+nhánh. Nhánh mới có neo đầu, chặt hơn thứ nó thay thế.
+
+### Bằng chứng
+
+12 ca lấy từ lịch sử nhánh thật, khoá **cả hai vế**: nhận (bỏ ⇒ tái tạo #96) và bỏ qua (bỏ ⇒
+số ở giữa tên bị đọc thành issue). Xác minh trên chính nhánh `fix/96-…`: `/claim` chuyển từ
+`?` sang `due` và đòi đúng `docs/progress/96.md`.
 ## 2.42.1 — 2026-08-08
 
 **patch.** Suite gác thôi chập chờn: **năm** đường ghi trạng thái mang tên cố định toàn máy,

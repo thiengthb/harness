@@ -1,4 +1,4 @@
-<!-- version: 2026-08-08-e -->
+<!-- version: 2026-08-08-f -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -9,6 +9,17 @@
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
 
+## 2026-08-08 — `/claim` `/handoff` `/verify-ui` thôi mù trên nhánh của bạn (v2.42.2)
+
+Ba nghi thức đó đọc `?` trên **mọi** nhánh làm việc, và lý do in ra thì nói sai — nó bảo nhánh
+không theo quy ước, trong khi nhánh theo đúng quy ước. Thật ra `project.issuePrefixes` là hạt
+giống kiểu Jira (`["ABC"]`), và nó khớp **0/30** nhánh từng tồn tại ở repo này.
+
+Giờ số ở **đầu** tên nhánh được nhận làm issue (`fix/100-…` ⇒ 100), còn số ở giữa thì không.
+
+**Việc bạn phải làm khác đi:** nếu thấy dòng `· issue SUY TỪ số trần trong tên nhánh` mà số đó
+sai — đổi tên nhánh, hoặc khai `project.issuePrefixes` cho đúng project của bạn. Dùng Jira thì
+**không đổi gì**: prefix khai thật vẫn được thử trước.
 ## 2026-08-08 — `test-hooks` đỏ thì đó là lỗi THẬT (v2.42.1)
 
 Suite gác từng chập chờn, và **chỉ khi bạn chạy song song với một phiên khác**: đo được tuần tự

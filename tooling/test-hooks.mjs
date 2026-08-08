@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, dangerousCommand, infraFailure, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, dangerousCommand, infraFailure, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -3048,6 +3048,46 @@ if (repoRole() === 'template') {
   } else ok.push(`harness.version${' '.repeat(13)} = ${verFile}, khớp mục mới nhất của changelog — dấu đóng vào repo con nói đúng code họ nhận`);
 } else skipped += 1;
 
+// ─── inferIssue: nhánh nào suy ra được issue, nhánh nào KHÔNG ───────────────
+//
+// Bảng lấy từ LỊCH SỬ THẬT của repo này (30 nhánh trong reflog + remote), không phải ca bịa.
+// Đó là điều làm bảng này đáng tin hơn trực giác: `issuePrefixes: ["ABC"]` khớp 0/30, nên ba
+// nghi thức đọc `?` trên MỌI nhánh làm việc — chúng chỉ xanh khi đứng trên `main`, đúng lúc
+// không có gì để nói (#96).
+//
+// Hai vế phải khoá cùng lúc, vì bỏ vế nào cũng hỏng theo một kiểu riêng:
+//   · vế NHẬN  — bỏ ⇒ tái tạo #96, mù trên 100% nhánh làm việc
+//   · vế BỎ QUA — bỏ ⇒ số ở GIỮA tên nhánh bị đọc thành issue (`feat/promote-L0005-…` ⇒ 5),
+//                 và nghi thức sẽ tự tin nói về một issue không tồn tại
+{
+  const L = ' '.repeat(18);
+  //         nhánh                                        prefixes      issue    from
+  const T = [
+    ['fix/100-suite-chap-chon',                           [],           '100',  'bare'],
+    ['feat/85-tap-su-kien-hook-do-bang-may',              [],           '85',   'bare'],
+    ['docs/56-canh-bao-vinh-vien-template',               [],           '56',   'bare'],
+    ['fix/44b-guard-chi-quan-tam-file-trong-repo',        [],           '44',   'bare'],  // nhánh nối tiếp #44 — có thật ở đây
+    ['fix/51-56-banner-dau-phien',                        [],           '51',   'bare'],  // hai issue ⇒ lấy cái đầu
+    ['feat/promote-L0005-bo-dem-do-ve-phia-de-chiu',      [],           null,   null],    // KHÔNG được đọc là issue 5
+    ['chore/vong-hoc-2026-W32-len-main',                  [],           '',     'chore'],
+    ['docs/retro-w32-lan-hai',                            [],           '',     'chore'],
+    ['feat/goi-y-skill-nguoi-goi',                        [],           null,   null],    // feat/ không được miễn như chore/
+    ['main',                                              [],           '',     'integration'],
+    // Prefix THẬT vẫn thắng — một project dùng Jira không được bản vá này làm hỏng.
+    ['feature/ABC-123-lam-gi-do',                         ['ABC'],      'ABC-123', 'prefix'],
+    ['fix/7-loi-nho',                                     ['ABC'],      '7',    'bare'],  // prefix khai mà không khớp ⇒ vẫn suy được
+  ];
+  const bad = [];
+  for (const [branch, prefixes, wantIssue, wantFrom] of T) {
+    const got = inferIssue(branch, prefixes);
+    if (got.issue !== wantIssue || got.from !== wantFrom) {
+      bad.push(`${branch} → ${JSON.stringify(got.issue)}/${got.from}, cần ${JSON.stringify(wantIssue)}/${wantFrom}`);
+    }
+  }
+  if (bad.length) fail.push(`inferIssue${L} ${bad.length}/${T.length} ca sai: ${bad.join(' | ')}`);
+  else ok.push(`inferIssue${L} ${T.length} ca từ lịch sử nhánh THẬT — số ở ĐẦU tên là issue, số ở GIỮA thì không, prefix vẫn thắng`);
+}
+
 // SỐ MẪU không phải một phép cộng viết tay. Bản trước in
 // `ok.length / (cases + MUTANTS + GATE_CASES + 3)` và ĐO ĐƯỢC 2026-08-05: **`75/72`** — tử số
 // lớn hơn mẫu số. Tỉ số đó không sai vô hại: mẫu số tồn tại để trả lời "có case nào NGỪNG
@@ -3066,7 +3106,7 @@ if (repoRole() === 'template') {
 // SÀN TỪNG TỤT LẠI SAU TỔNG THẬT, và đó là một chế độ hỏng riêng đáng ghi ra: 2026-08-08 đo
 // được `195/195 pass, sàn 185` — 10 ca thêm vào mà không ai nâng sàn, tức 10 ca có thể NGỪNG
 // CHẠY mà thứ duy nhất nhìn thấy điều đó vẫn xanh. Sàn không bám tổng thật là sàn đã nghỉ việc.
-const RATCHET = 201;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100)
+const RATCHET = 202;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96)
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa

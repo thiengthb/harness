@@ -41,11 +41,23 @@
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, readJson, readPacks, packPending, budgetStatus, latestCapoEntry, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries } from './lib/harness.mjs';
+import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, readJson, readPacks, packPending, budgetStatus, latestCapoEntry, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue } from './lib/harness.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHẦN THUẦN — không đọc đĩa, không gọi git. Test khẳng định trực tiếp vào đây.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Nói RA rằng số issue là SUY RA, không phải đọc được.
+ *
+ * `inferIssue()` nhận số trần khi không `issuePrefixes` nào khớp, và phép đó bắn nhầm được:
+ * `fix/2-space-indent` sẽ đọc thành issue 2. Cái giá của việc né bằng `?` là mù trên 100%
+ * nhánh (đó chính là #96); cái giá của bắn nhầm là một dòng sai mà người đọc SỬA ĐƯỢC — nhưng
+ * chỉ khi họ thấy nó đến từ đâu. Một phán đoán ngầm thì không ai sửa.
+ */
+const inferred = (s) => (s.issueFrom === 'bare'
+  ? ' · issue SUY TỪ số trần trong tên nhánh (`project.issuePrefixes` không khớp) — sai thì đổi tên nhánh hoặc khai prefix'
+  : '');
 
 /**
  * Mỗi nghi thức trả về `{ state, why }` với `state` ∈ `due` | `ok` | `?`.
@@ -67,8 +79,8 @@ export const RITUALS = [
       // thật của solo là PHIÊN SAU và MÁY KHÁC: đo 2026-08-06, một nhánh 3 commit nằm ngoài
       // main một ngày vì phiên tạo ra nó hết quota — không ai biết nó tồn tại.
       if (!s.progressExists) return { state: 'due', why: `đang ở issue ${s.issue} mà chưa có docs/progress/${s.issue}.md — `
-        + (s.solo ? 'phiên sau của BẠN (và máy khác của bạn) không có gì để đọc' : 'phiên sau (và người sau) không có gì để đọc') };
-      return { state: 'ok', why: `docs/progress/${s.issue}.md đã có` };
+        + (s.solo ? 'phiên sau của BẠN (và máy khác của bạn) không có gì để đọc' : 'phiên sau (và người sau) không có gì để đọc') + inferred(s) };
+      return { state: 'ok', why: `docs/progress/${s.issue}.md đã có${inferred(s)}` };
     },
   },
   {
@@ -84,7 +96,7 @@ export const RITUALS = [
       if (!s.issue) return { state: 'ok', why: 'đang ở nhánh tích hợp — không có gì để giao lại' };
       if (!s.progressExists) return { state: 'ok', why: '/claim đang tới hạn trước — nhật ký chưa tồn tại' };
       if (s.commitsSinceProgress > 0) {
-        return { state: 'due', why: `${s.commitsSinceProgress} commit mới hơn lần sửa docs/progress/${s.issue}.md gần nhất — công việc đã đi trước nhật ký` };
+        return { state: 'due', why: `${s.commitsSinceProgress} commit mới hơn lần sửa docs/progress/${s.issue}.md gần nhất — công việc đã đi trước nhật ký${inferred(s)}` };
       }
       return { state: 'ok', why: 'nhật ký ngang bằng với commit gần nhất' };
     },
@@ -170,7 +182,7 @@ export const RITUALS = [
       if (s.ui === null) return { state: '?', why: 'không đọc được features/ — không đo được' };
       if (s.issue == null) return { state: '?', cause: 'branch-no-issue', why: 'không suy ra được issue từ tên nhánh — không biết có feature nào cần chụp không' };
       if (!s.issue) return { state: 'ok', why: 'đang ở nhánh tích hợp — không có feature nào để chụp' };
-      if (s.ui === undefined) return { state: 'ok', why: `không có features/*.json nào khai issue ${s.issue}` };
+      if (s.ui === undefined) return { state: 'ok', why: `không có features/*.json nào khai issue ${s.issue}${inferred(s)}` };
       if (s.ui.state === 'n/a') return { state: 'ok', why: `${s.ui.id}: web ngoài scope${s.ui.why ? ` (${s.ui.why})` : ''}` };
       if (s.ui.state === 'no-web') return { state: 'ok', why: `${s.ui.id}: không khai nền web` };
       if (s.ui.state === 'done') return { state: 'ok', why: `${s.ui.id}: web.passes=true, bằng chứng ${s.ui.evidence || '(rỗng — gate check-feature-integrity sẽ bắt)'}` };
@@ -420,20 +432,16 @@ export function collect() {
 
   // `issue`: '' nghĩa là nhánh tích hợp (không có issue — đúng, không phải thiếu);
   // `null` nghĩa là KHÔNG SUY RA ĐƯỢC (nhánh không theo quy ước) ⇒ `?`, không phải `ok`.
-  const prefixes = cfg.project?.issuePrefixes ?? [];
-  let issue = null;
-  if (!branch || /^(main|master|develop)$/.test(branch)) issue = '';
-  else {
-    const m = branch.match(new RegExp(`(${prefixes.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})-?\\d+`, 'i'));
-    if (m) issue = m[0];
-    else if (/^(chore|docs|ci|test)\//.test(branch)) issue = '';   // nhánh việc-nhà: không cần issue
-  }
+  // Phép suy nằm ở `lib` và là HÀM THUẦN — xem chú thích ở `inferIssue()` để biết vì sao có
+  // nhánh "số trần" và bắn nhầm được cân thế nào. `issueFrom` đi kèm để chỗ hiển thị nói RA
+  // phép suy đã dùng: một phán đoán nhìn thấy được thì sửa được, một phán đoán ngầm thì không.
+  const { issue, from: issueFrom } = inferIssue(branch, cfg.project?.issuePrefixes ?? []);
 
   const progress = issue ? repoPath('docs', 'progress', `${issue}.md`) : null;
   const progressExists = Boolean(progress && exists(progress));
 
   return {
-    branch, integrationBranch, issue, progressExists,
+    branch, integrationBranch, issue, issueFrom, progressExists,
     // Đọc ở ĐÂY, không trong `check` — `check` là phần THUẦN (xem mốc ở đầu file), và một
     // lần đọc đĩa lén trong đó làm test không lái được nhánh solo.
     solo: cfg.project?.teamSize === 1,
