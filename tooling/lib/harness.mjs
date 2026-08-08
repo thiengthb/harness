@@ -282,7 +282,8 @@ export function coordinationLayer({ teamSize: ts, role } = {}) {
  * Gộp hai cái làm mất mục (2) — thứ thật sự làm được — sau lưng mục (1). Cờ `measured` tồn
  * tại để bên gọi tách lại được.
  */
-export function budgetStatus({ cap, alertAtPercent = 80, latest = null, now = Date.now(), role = null } = {}) {
+export function budgetStatus({ cap, alertAtPercent = 80, latest = null, now = Date.now(), role = null,
+  plan = 'metered', rateLimitHits = null } = {}) {
   const c = Number(cap);
   // MỘT phép kiểm "số đo có dùng được không", dùng ở CẢ HAI chỗ cần nó: cờ `measured` (nhánh
   // template) và mode `unmeasured` (nhánh có cap). Viết hai lần thì hai bản sẽ lệch, và lúc
@@ -290,6 +291,44 @@ export function budgetStatus({ cap, alertAtPercent = 80, latest = null, now = Da
   const usd = Number(latest?.usd), days = Number(latest?.days);
   const at = Date.parse(latest?.at ?? '');
   const measured = Number.isFinite(usd) && Number.isFinite(days) && days > 0 && Number.isFinite(at);
+
+  // ── GÓI PHẲNG (#111) ──────────────────────────────────────────────────────
+  //
+  // Mọi thứ dưới đây giả định TRẢ THEO MỨC DÙNG: `runRate = usd/days*30` rồi so với cap. Giả
+  // định đó đúng cho API pay-as-you-go và SAI cho subscription phẳng, nơi chi tiêu **bằng
+  // định nghĩa** đúng bằng trần. Đo 2026-08-08 với dữ liệu ĐÚNG:
+  //
+  //     --days 30 --usd 20  (nguyên tháng, cap 20)  → `over`, 100%
+  //     --days 7  --usd 4.67 (chia đều, cap 20)     → `over`, 100%
+  //
+  // `percent >= 100` luôn đúng ⇒ `over` không bao giờ tắt. Một cảnh báo luôn bật không phân
+  // biệt được với một cảnh báo không tồn tại, và tệ hơn — nó dạy người đọc bỏ qua khối ngân
+  // sách. Đó là `knowledge/lessons/0002-guard-ban-nham.md`.
+  //
+  // Với gói phẳng, ba điều đổi: chi phí BIÊN của một lần chạy là 0, chi phí tháng BIẾT TRƯỚC
+  // (không cần đo), và cổ chai thật **không phải tiền mà là rate limit**. `docs/WIP.md` §"Sự
+  // thật số 2" đã nói đúng điều này; cơ chế ngân sách thì chưa biết.
+  //
+  // ĐẶT SAU `template-cap` là chủ ý: một cap lạc vào repo template vẫn phải kêu, vì nó chảy
+  // xuống mọi consumer bất kể họ dùng gói nào.
+  //
+  // `rateLimitHits === null` ⇒ `?`, KHÔNG phải 0. "Chưa đọc được sổ" và "chưa lần nào chạm
+  // trần" là hai chuyện, và gộp chúng là đúng phép gộp AGENTS.md cấm.
+  if (String(plan) === 'flat' && !(role === 'template' && Number.isFinite(c) && c > 0)) {
+    if (rateLimitHits == null) {
+      return { mode: 'flat-unmeasured', percent: null, runRate: null, measured, plan: 'flat', rateLimitHits: null,
+        advice: 'gói PHẲNG: tiền không phải cổ chai, rate limit mới là — nhưng chưa đọc được `budget-alarm.log` nên KHÔNG ĐO ĐƯỢC. Đây là `?`, không phải "ổn".' };
+    }
+    const n = Number(rateLimitHits);
+    if (n > 0) {
+      return { mode: 'flat-limited', percent: null, runRate: null, measured, plan: 'flat', rateLimitHits: n,
+        advice: `gói PHẲNG: ${n} lần chạm rate limit trong 30 ngày — ĐÂY là trần thật của bạn, không phải USD. `
+          + 'Tiền không giảm được (chi phí biên = 0); thứ giảm được là số lần chạm trần: cắt context thừa, ít phiên song song hơn. Xem docs/WIP.md' };
+    }
+    return { mode: 'flat-ok', percent: null, runRate: null, measured, plan: 'flat', rateLimitHits: 0,
+      advice: null };
+  }
+
   if (!Number.isFinite(c) || c <= 0) {
     if (role === 'template') {
       return { mode: 'template-na', percent: null, runRate: null, measured,

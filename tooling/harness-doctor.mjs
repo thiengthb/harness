@@ -164,11 +164,28 @@ if (mcpCount > mcpMax) advice.push(`${mcpCount} MCP server (ngưỡng ${mcpMax})
 {
   // `role` (#92): bốn chỗ khác trong file này đã biết vai; chỗ này là chỗ thứ năm và nó
   // KHÔNG biết, nên nó đòi khai trần ở đúng nơi `setup.mjs:55` từ chối ghi.
+  // Gói PHẲNG (#111): cổ chai không phải USD mà là RATE LIMIT, và con số đó đã nằm sẵn trong
+  // `budget-alarm.log` (observe.mjs ghi ở mỗi StopFailure). Đọc nó ở ĐÂY chứ không trong
+  // `budgetStatus` — hàm đó là HÀM THUẦN, và một lần đọc đĩa lén trong đó làm test mất khả
+  // năng lái từng ca. `null` khi không đọc được ⇒ `?`, không phải 0.
+  const rateLimitHits = (() => {
+    try {
+      const f = join(telemetryDir(), 'budget-alarm.log');
+      if (!existsSync(f)) return 0;   // sổ chưa có dòng nào là một câu trả lời THẬT: chưa chạm lần nào
+      const since = RUN_STARTED - 30 * 86400000;
+      return [...tallyLines(readFileSync(f, 'utf8'), { field: 2, sinceMs: since }).entries()]
+        .filter(([k]) => /rate.?limit|quota/i.test(k))
+        .reduce((s, [, n]) => s + n, 0);
+    } catch { return null; }         // đọc hỏng ⇒ KHÔNG BIẾT, và `?` phải nói ra điều đó
+  })();
+
   const b = budgetStatus({
     cap: cfg.budget?.monthlyUsdCap,
     alertAtPercent: cfg.budget?.alertAtPercent,
     latest: latestCapoEntry(),
     role: ROLE,
+    plan: cfg.budget?.plan,
+    rateLimitHits,
   });
   console.log('\n── NGÂN SÁCH ──');
   const cap = Number(cfg.budget?.monthlyUsdCap) || 0;
@@ -182,9 +199,17 @@ if (mcpCount > mcpMax) advice.push(`${mcpCount} MCP server (ngưỡng ${mcpMax})
     'template-na': `  n/a  trần tháng KHÔNG khai được ở repo template (setup.mjs từ chối — cap ở đây chảy xuống mọi consumer)`
       + `. CAPO thì đo được: ${b.measured ? `đã đo ${b.ageDays ?? '?'} ngày trước` : 'CHƯA lần nào'}`,
     'template-cap': `  ⚠️   trần $${cap} nằm trong REPO TEMPLATE — nó sẽ chảy xuống MỌI consumer áp template sau này`,
+    'flat-unmeasured': '  ?    gói PHẲNG — không đọc được `budget-alarm.log`, nên số lần chạm rate limit KHÔNG ĐO ĐƯỢC',
+    'flat-limited': `  ⚠️   gói PHẲNG · ${b.rateLimitHits} lần chạm rate limit trong 30 ngày — ĐÂY là trần thật, không phải USD`,
+    'flat-ok': '  ok   gói PHẲNG · 0 lần chạm rate limit trong 30 ngày — cổ chai hiện không phải hạn mức',
   };
   console.log(LINE[b.mode]);
-  if (b.mode !== 'off' && b.mode !== 'template-na') console.log('       harness KHÔNG đọc được hoá đơn — con số này do người chép từ dashboard billing.');
+  // Dòng "harness không đọc được hoá đơn" chỉ đúng khi con số ĐANG hiển thị là USD nhập tay.
+  // Ở gói phẳng thì con số là số lần chạm rate limit, do chính harness đo — in câu đó ở đây
+  // là nói sai về nguồn gốc dữ liệu của chính mình.
+  if (!['off', 'template-na', 'flat-ok', 'flat-limited', 'flat-unmeasured'].includes(b.mode)) {
+    console.log('       harness KHÔNG đọc được hoá đơn — con số này do người chép từ dashboard billing.');
+  }
   if (b.advice) advice.push(b.advice);
 }
 
