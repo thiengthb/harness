@@ -1,4 +1,4 @@
-<!-- version: 2026-08-08-h -->
+<!-- version: 2026-08-08-i -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,21 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-08 — `--bare` giờ THẬT SỰ gỡ harness (v2.43.0)
+
+Chỉ số trung tâm của cả vòng học — *"giá trị đo được của harness = `eval` − `eval --bare`"* —
+đang so **hai lần chạy giống hệt nhau**. `--bare` đổi tên file baseline, đổi tiêu đề, đổi lời
+nhắn cuối; `spawnSync` gọi agent thì **không nhận nó**. Cùng `cwd`, cùng bộ hook.
+
+Nay `--bare` chạy agent trong một **clone dùng một lần** đã gỡ remote và gỡ lớp harness Claude
+Code tự nạp (`settings.json` · rules/skills/agents · `CLAUDE.md`/`AGENTS.md` · `.mcp.json`).
+Giữ `tooling/` và `harness.config.json` — assertion lớp 1 gọi thẳng vào đó.
+
+**Việc bạn phải làm khác đi:** `--bare` giờ **TỪ CHỐI** chạy nếu `evals.command` rỗng — đó là
+trạng thái của mọi repo hiện tại, nên bạn sẽ gặp nó ngay. Khai `evals.command` rồi chạy lại.
+Và đừng trừ hai con số bằng mắt nữa: runner tự trừ, **trên giao của hai tập đo được**, vì hai
+tỉ lệ đó có hai mẫu số khác nhau.
 
 ## 2026-08-08 — Một task eval thôi được chấm PASS cho phép đo nó không làm (v2.42.4)
 

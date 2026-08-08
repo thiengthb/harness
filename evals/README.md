@@ -131,6 +131,42 @@ model đời sau. Không ai gửi thông báo cho bạn khi một mảnh harness
 
 ```
 node evals/run.mjs                 # chạy toàn bộ
-node evals/run.mjs --bare          # với harness trần (deprecation review)
+node evals/run.mjs --baseline      # ghi mốc so sánh
+node evals/run.mjs --bare          # với harness trần (deprecation review) — ĐÒI `evals.command`
 node evals/run.mjs --task 0001     # một task
 ```
+
+## `--bare` — harness trần, và phép trừ nó phục vụ
+
+Chỉ số trung tâm của cả vòng học:
+
+```
+giá trị đo được của harness  =  eval  −  eval --bare
+```
+
+Từ **2.43.0** runner **tự làm phép trừ** và in ra, thay vì để bạn trừ hai con số bằng mắt.
+Lý do không phải tiện tay: hai con số đó có **hai mẫu số khác nhau**, nên trừ bằng mắt là một
+phép tính sai mà không gì báo. Runner chỉ trừ trên **giao của hai tập ĐO ĐƯỢC**, và in số task
+bị loại. Giao rỗng ⇒ `?`, không phải một hiệu số.
+
+**Cây trần là một clone dùng một lần**, không phải repo của bạn. Ranh giới gỡ là *"Claude Code
+có TỰ NẠP thứ này không"*:
+
+| | gỡ | vì sao |
+|---|---|---|
+| `.claude/settings.json` | ✓ | đăng ký hook + permission — không có nó, hook không chạy |
+| `.claude/rules` · `skills` · `agents` · `.mcp.json` | ✓ | nạp vào context / tầng discovery |
+| `CLAUDE.md` · `AGENTS.md` | ✓ | memory file, ~4.6k token (ADR 0002) |
+| `.claude/hooks/**` | ✗ | script **trơ** khi không được đăng ký |
+| `tooling/` · `harness.config.json` | ✗ | chỉ chạy khi **có người gọi** |
+
+Giữ `tooling/` không phải nhân nhượng: assertion lớp 1 gọi thẳng vào đó. Gỡ nó thì lần chạy
+trần đo *"harness còn tồn tại không"*, không đo *"agent có hành xử khác không"*.
+
+**Tiền kiểm.** Trước khi agent chạy, runner chạy thử các assertion không phụ thuộc agent trên
+cây trần. Cái nào **đã đỏ khi chưa có gì xảy ra** thì nó đo lớp harness chứ không đo agent ⇒
+`n/a`. Không có bước này, một task như `0001` (assertion của nó đọc `.claude/`) sẽ đỏ ở lần
+trần, xanh ở lần đầy đủ, và chênh lệch đó bị ghi thành *"giá trị của harness"*.
+
+**`--bare` TỪ CHỐI chạy** khi `evals.command` rỗng (không agent nào chạy ⇒ hai lần đo không thể
+khác nhau) hoặc khi không gỡ được gì. Một chỉ số không tạo ra được thì không được in ra.

@@ -11,6 +11,128 @@
 
 ---
 
+## 2.43.0 — 2026-08-08
+
+**minor.** `--bare` là một cái **NHÃN không có cơ chế** — và phép trừ *"giá trị đo được của
+toàn bộ harness"* đang so hai lần chạy **giống hệt nhau**. Đóng #91.
+
+### Đo được
+
+Grep toàn bộ chỗ dùng biến `BARE` trong `evals/run.mjs` trước bản này:
+
+```
+26:  const BARE = has('--bare');
+72:  bare: BARE,                                   // metadata trong env
+311: `eval-baseline${BARE ? '-bare' : ''}.json`    // đổi tên file baseline
+329: report(BARE ? 'EVAL (HARNESS TRẦN)' : 'EVAL', …)   // đổi tiêu đề
+331: if (BARE) { … }                               // đổi lời nhắn cuối
+```
+
+`spawnSync` ở `runAgent()` **không nhận `BARE`**: không đổi `cwd`, không đổi `env`, không đổi
+`cmd`. Agent con chạy trong đúng repo, đọc đúng `.claude/settings.json`, với đúng bộ hook.
+
+### Vì sao nó tệ hơn một cờ hỏng
+
+`docs/adr/harness/0002` và `evals/README.md` đặt phép trừ này làm **chỉ số trung tâm**, và lời
+nhắn cuối của chính runner dạy người đọc tin vào nó:
+
+> *"Chênh lệch NHỎ nghĩa là phần lớn harness của bạn là dead weight. Bật lại từng mảnh…"*
+
+Chênh lệch **luôn** ≈ 0 do cấu trúc — và câu trên bảo người đọc kết luận *"phần lớn harness là
+dead weight"*. Một chỉ số bằng 0 do cấu trúc, kèm một dòng hướng dẫn diễn giải số 0 đó thành
+một kết luận sai về chính harness. ADR 0002 quy nguyên nhân cho `evals.command` rỗng: đúng
+nhưng **chưa đủ** — lấp `evals.command` cũng không làm số đó khác 0, chỉ tốn gấp đôi tiền.
+
+### Cơ chế: cây trần là một CLONE DÙNG MỘT LẦN
+
+`git clone --depth 1` qua `file://` (clone local mặc định bỏ qua `--depth`), gỡ remote, rồi
+**đổi tên** — không xoá — lớp harness. Ranh giới là *"Claude Code có TỰ NẠP thứ này không"*:
+
+```
+gỡ   .claude/settings.json            đăng ký hook + permission ⇒ không có nó, hook không chạy
+gỡ   .claude/rules · skills · agents · .mcp.json    nạp vào context / tầng discovery
+gỡ   CLAUDE.md · AGENTS.md            memory file, ~4.6k token (ADR 0002)
+GIỮ  .claude/hooks/**                 script TRƠ khi không được đăng ký
+GIỮ  tooling/ · harness.config.json   chỉ chạy khi CÓ NGƯỜI GỌI
+```
+
+Giữ `tooling/` không phải nhân nhượng: assertion lớp 1 gọi thẳng vào đó. Gỡ nó thì lần chạy
+trần đo *"harness còn tồn tại không"*, không đo *"agent có hành xử khác không"*.
+
+Gỡ remote là bắt buộc, không phải vệ sinh: agent chạy trong cây đó với quyền ghi, và một
+`git push` từ đó là push vào repo thật.
+
+### Tiền kiểm — thứ làm phép trừ có nghĩa thay vì chỉ có số
+
+Gỡ lớp harness thì có assertion **đứt theo**. Đo `--bare --task 0001`: **4/6 assertion** đỏ vì
+đúng lý do đó (`test-hooks` · `test-migrations` · `apply-to --audit` · `harness-doctor --quick`
+đều đọc `.claude/`).
+
+Không xử lý, task đó ĐỎ ở lần trần và XANH ở lần đầy đủ ⇒ chênh lệch được ghi vào cột *"giá trị
+của harness"*, trong khi agent không liên quan gì. **Một số 0 do cấu trúc được thay bằng một số
+DƯƠNG do cấu trúc thì không khá hơn** — nó chỉ sai theo hướng dễ chịu hơn.
+
+Nên: chạy các assertion không phụ thuộc agent trên cây trần **trước khi agent chạy**. Cái nào đã
+đỏ khi chưa có gì xảy ra thì không nói gì về agent ⇒ `n/a`. Tất định, không cần task tự khai, và
+tự đúng khi ai đó đổi `BARE_STRIP`.
+
+### Runner tự làm phép trừ, trên GIAO của hai tập đo được
+
+```
+=== GIÁ TRỊ ĐO ĐƯỢC CỦA HARNESS ===
+  đầy đủ 100%  −  trần 100%  =  +0pp   trên 1 task so được
+```
+
+Hai tỉ lệ đó có **hai mẫu số khác nhau** (`0001` đo được ở lần đầy đủ, `n/a` ở lần trần), nên
+trừ bằng mắt là một phép tính sai không có gì báo. Giao rỗng ⇒ `?` kèm số task mỗi bên, **không
+bịa ra một hiệu số**.
+
+### `--bare` TỪ CHỐI in ra con số nó không tạo ra được
+
+Hai lối ra CHẶN, không phải cảnh báo — người gõ `--bare` đang xin đúng một con số:
+
+- `evals.command` rỗng ⇒ không agent nào chạy ⇒ hai lần đo không thể khác nhau;
+- `BARE_STRIP` không khớp gì ⇒ cây trần y hệt cây đầy đủ.
+
+### Parity Contract: dọn rác thất bại KHÔNG được là một exception
+
+Đo trên Windows, `--bare --task 0001` (task spawn nhiều tiến trình con nhất): `rmSync` ném
+`EPERM` **trên chính thư mục** sau khi đã xoá hết file bên trong — còn hai thư mục **rỗng**, và
+chúng không xoá được **kể cả từ một tiến trình mới**, trong khi cây của lần chạy trước xoá được
+ngay. Không tiến trình nào giữ chúng (đã soi `Win32_Process`) ⇒ trình quét nền, không phải
+handle rò trong code.
+
+Bản đầu ném exception **sau khi đã in xong báo cáo**: phép đo đã xong, đã đúng, và người dùng
+nhận một stack trace kèm exit code sai. Nay `rmTree()` không bao giờ ném, thất bại thành một
+WARN kèm đường dẫn, và lần chạy `--bare` sau **quét lại** những cây cũ hơn 1 giờ.
+
+### Năm ca mới, sáu mutant, không mutant nào sống sót
+
+`tooling/test-evals.mjs` ⑯–⑳. Hai trong năm ca khoá chiều **ngược** (gỡ quá tay · trừ trên hai
+mẫu số khác nhau) — vì một cơ chế "gỡ harness" sai theo chiều đó **vẫn cho ra số**.
+
+| mutant | giết |
+|---|---|
+| bỏ chốt `evals.command` rỗng | ⑯ |
+| `ROOT` luôn là repo thật | ⑰ ⑱ ⑳ |
+| bỏ tiền kiểm | ⑱ ⑳ |
+| trừ KHÔNG theo giao | ⑳ |
+| `BARE_STRIP` rỗng | ⑰ ⑱ ⑲ ⑳ |
+| bỏ hẳn phép trừ | ⑲ ⑳ |
+
+`evals/fixtures/fake-agent.mjs` khai thêm `FAKE_AGENT_CWD` và `FAKE_AGENT_SEES`: một agent giả
+không tự biết nó "trần" hay không, nên cách duy nhất kiểm được từ ngoài là bắt nó khai chỗ nó
+đứng và những gì còn đọc được từ đó.
+
+### Đổi kèm
+
+- `eval-baseline*.json` nay đi qua `stateDir()` ⇒ `HARNESS_STATE_DIR` chuyển được. Không có nó,
+  suite ghi đè baseline THẬT của người đang chạy — một mốc so sánh mất vĩnh viễn.
+- `evals/tasks/0001` bỏ dòng *"task tốt nhất để chạy với `--bare`"*: đo được 4/6 assertion của
+  nó là `n/a` ở chế độ trần. Dòng đó viết khi `--bare` chưa gỡ gì, nên chưa có gì để mâu thuẫn.
+
+---
+
 ## 2.42.4 — 2026-08-08
 
 **patch.** Một task eval được chấm **PASS** cho một phép đo nó **không thực hiện**. Đóng #104.

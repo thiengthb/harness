@@ -82,22 +82,32 @@ function received(out) {
   let txt; try { txt = readFileSync(m[1], 'utf8'); } catch { return null; }
   const a = txt.match(/FAKE_AGENT_ARGV=(\[.*\])/);
   const p = txt.match(/FAKE_AGENT_STDIN=("(?:[^"\\]|\\.)*")/);
+  const c = txt.match(/FAKE_AGENT_CWD=("(?:[^"\\]|\\.)*")/);
+  const s = txt.match(/FAKE_AGENT_SEES=(\[.*\])/);
   try {
-    return { argv: a ? JSON.parse(a[1]) : null, stdin: p ? JSON.parse(p[1]) : null };
+    return {
+      argv: a ? JSON.parse(a[1]) : null,
+      stdin: p ? JSON.parse(p[1]) : null,
+      cwd: c ? JSON.parse(c[1]) : null,
+      sees: s ? JSON.parse(s[1]) : null,
+    };
   } catch { return null; }
 }
 
 // `taskId` mặc định `9001` — ca ①–⑦ đều dùng task đó. Tham số hoá vì ca ⑧⑨⑩ cần task
 // RIÊNG: bản trước cứng `--task 9001`, nên một fixture mới ghi vào `TASKS` bị lọc mất và
 // ca của nó xanh VÌ KHÔNG CÓ GÌ CHẠY. Đã gặp thật khi viết ⑩ (2026-08-07).
-function runEval(command, mode, taskId = '9001') {
-  const r = spawnSync(process.execPath, [repoPath('evals', 'run.mjs'), '--task', taskId], {
+function runEval(command, mode, taskId = '9001', { flags = [], stateDir = null } = {}) {
+  const r = spawnSync(process.execPath, [repoPath('evals', 'run.mjs'), '--task', taskId, ...flags], {
     cwd: repoPath(''), encoding: 'utf8',
     env: {
       ...process.env,
       HARNESS_CONFIG: writeConfig(command),
       EVAL_TASKS_DIR: TASKS,
       EVAL_ISOLATED: '1',
+      // Baseline LÀ trạng thái cục bộ. Không chuyển đi thì suite ghi đè baseline THẬT của
+      // người đang chạy nó — và một baseline bị ghi đè là một mốc so sánh mất vĩnh viễn.
+      ...(stateDir ? { HARNESS_STATE_DIR: stateDir } : {}),
       ...(mode ? { FAKE_AGENT_MODE: mode } : {}),
     },
   });
@@ -400,6 +410,95 @@ ${assertions}
   } else ok.push('⑮ task có ≥1 assertion chạy được vẫn vào mẫu số bình thường — bản vá #104 không cắt quá tay');
 
   for (const p of [p13, p14]) rmSync(p, { force: true });
+}
+
+// ── ⑯–⑳ `--bare` là một CƠ CHẾ, không phải một cái nhãn (#91) ────────────────
+//
+// Tới 2.42.4, `--bare` đổi tên file baseline, đổi tiêu đề, đổi lời nhắn cuối — và
+// `spawnSync` trong `runAgent()` **không nhận nó**: cùng `cwd`, cùng bộ hook. Hai lần chạy đo
+// cùng một thứ, nên `eval − eval --bare` luôn ≈ 0. Mà `docs/adr/harness/0002` đặt đúng phép
+// trừ đó làm chỉ số trung tâm, và runner dạy người đọc rằng chênh lệch nhỏ nghĩa là *"phần lớn
+// harness của bạn là dead weight"*.
+//
+// Năm ca dưới khoá năm nửa khác nhau, và hai trong số đó khoá chiều NGƯỢC (gỡ quá tay, trừ
+// trên hai mẫu số khác nhau) — vì một cơ chế "gỡ harness" sai theo chiều đó vẫn cho ra số.
+{
+  const BARE_STATE = join(WORK, 'state-bare');
+  mkdirSync(BARE_STATE, { recursive: true });
+  const NEUTRAL = 'node -e "process.exit(0)"';
+  // Assertion ĐỌC lớp harness: xanh ở cây đầy đủ, đỏ ở cây trần — mà agent không liên quan.
+  // Đây là dạng thật của `0001` (`node tooling/test-hooks.mjs` đọc `.claude/`).
+  const READS_HARNESS = 'node -e "process.exit(require(\'fs\').existsSync(\'AGENTS.md\')?0:1)"';
+
+  // ⑯ `--bare` mà `evals.command` rỗng ⇒ TỪ CHỐI. Không agent nào chạy thì hai lần đo chạy
+  //    cùng assertion trên cùng trạng thái cây — chênh lệch 0 là DO CẤU TRÚC. Đây chính là
+  //    trạng thái mọi repo đang có, nên nó là ca hay nổ nhất.
+  {
+    const r = runEval('', null, '9001', { flags: ['--bare'] });
+    if (r.status === 0) fail.push('⑯ `--bare` + `evals.command` rỗng vẫn chạy — nó sắp in ra một chênh lệch 0 DO CẤU TRÚC như thể là phát hiện');
+    else if (/HARNESS TRẦN/.test(r.out)) fail.push('⑯ runner in tiêu đề khẳng định `EVAL (HARNESS TRẦN)` cho một lần chạy nó từ chối thực hiện');
+    else if (!/TỪ CHỐI/.test(r.out)) fail.push('⑯ thoát khác 0 nhưng không nói TỪ CHỐI vì lý do gì');
+    else ok.push('⑯ `--bare` + `evals.command` rỗng ⇒ TỪ CHỐI kèm lý do, không in tiêu đề khẳng định');
+  }
+
+  // ⑰ HỢP ĐỒNG CHÍNH: agent chạy trong một CÂY KHÁC, và từ đó KHÔNG đọc được lớp harness.
+  //    Hai nửa, và nửa thứ hai quan trọng ngang nửa thứ nhất: `tooling/` + `harness.config.json`
+  //    PHẢI còn, vì assertion lớp 1 gọi thẳng vào đó. Gỡ sạch mọi thứ thì lần chạy trần đo
+  //    "harness còn tồn tại không", không đo "agent có hành xử khác không".
+  {
+    const p = writeTask('9016', NEUTRAL);
+    const r = runEval(CMD, 'ok', '9016', { flags: ['--bare'] });
+    const got = received(r.out);
+    const HIDDEN = ['AGENTS.md', 'CLAUDE.md', '.claude/settings.json', '.claude/rules'];
+    if (!got?.cwd) fail.push('⑰ không đọc được `FAKE_AGENT_CWD` từ transcript — agent không chạy, hoặc fixture không khai chỗ nó đứng');
+    else if (got.cwd === repoPath('')) fail.push('⑰ agent chạy trong CHÍNH repo đang đo — `--bare` vẫn là một cái nhãn, đúng chế độ hỏng của #91');
+    else if (!Array.isArray(got.sees)) fail.push('⑰ không đọc được `FAKE_AGENT_SEES`');
+    else if (got.sees.some(f => HIDDEN.includes(f))) fail.push(`⑰ cây trần VẪN còn lớp harness agent đọc được: ${got.sees.filter(f => HIDDEN.includes(f)).join(' · ')}`);
+    else if (!got.sees.includes('tooling') || !got.sees.includes('harness.config.json')) fail.push('⑰ gỡ QUÁ TAY: `tooling/` hoặc `harness.config.json` cũng biến mất — assertion lớp 1 gọi thẳng vào đó, lần chạy trần sẽ đo nhầm thứ');
+    else ok.push('⑰ agent chạy trong cây trần dùng-một-lần: gỡ memory + settings + rules/skills/agents, GIỮ `tooling/` và config');
+    rmSync(p, { force: true });
+  }
+
+  // ⑱ TIỀN KIỂM. Assertion đọc lớp harness sẽ đỏ trên cây trần dù agent làm đúng. Không có
+  //    tiền kiểm, task đó ĐỎ ở lần trần và XANH ở lần đầy đủ, rồi phép trừ ghi chênh lệch đó
+  //    vào cột "giá trị của harness" — một số 0 do cấu trúc được thay bằng một số DƯƠNG do
+  //    cấu trúc. Sai theo hướng dễ chịu hơn thì vẫn sai.
+  {
+    const p = writeTask('9017', `${NEUTRAL}\n${READS_HARNESS}`);
+    const r = runEval(CMD, 'ok', '9017', { flags: ['--bare'] });
+    if (!/\b9017\b/.test(r.out)) fail.push('⑱ task 9017 KHÔNG chạy — ca này mất phạm vi');
+    else if (/→ fail/.test(r.out)) fail.push('⑱ assertion đọc lớp harness bị chấm FAIL trên cây trần — chênh lệch đó sẽ được ghi thành "giá trị của harness"');
+    else if (!/ĐỎ SẴN trên cây trần/.test(r.out)) fail.push('⑱ không có tiền kiểm: runner không phân biệt được "assertion đo agent" với "assertion đo lớp harness"');
+    else if (!/REGRESSION\s+\d/.test(r.out)) fail.push('⑱ tiền kiểm loại QUÁ TAY — task còn assertion trung lập chạy được thì vẫn phải ở trong mẫu số');
+    else ok.push('⑱ assertion đỏ sẵn trên cây trần ⇒ `n/a` (nó đo lớp harness), assertion trung lập vẫn chấm bình thường');
+    rmSync(p, { force: true });
+  }
+
+  // ⑲ PHÉP TRỪ chỉ tính trên GIAO của hai tập ĐO ĐƯỢC. Task có cả assertion trung lập lẫn
+  //    assertion đọc harness ⇒ đo được ở CẢ HAI lần ⇒ so được.
+  {
+    const p = writeTask('9018', `${NEUTRAL}\n${READS_HARNESS}`);
+    runEval(CMD, 'ok', '9018', { flags: ['--baseline'], stateDir: BARE_STATE });
+    const r = runEval(CMD, 'ok', '9018', { flags: ['--bare'], stateDir: BARE_STATE });
+    if (!/GIÁ TRỊ ĐO ĐƯỢC CỦA HARNESS/.test(r.out)) fail.push('⑲ runner KHÔNG tự làm phép trừ — người đọc phải trừ hai con số bằng mắt, mà hai con số đó có hai mẫu số khác nhau');
+    else if (!/đầy đủ \d+%\s+−\s+trần \d+%\s+=\s+[+-]?\d+pp/.test(r.out)) fail.push('⑲ có tiêu đề phép trừ nhưng không có phép trừ');
+    else if (!/trên 1 task so được/.test(r.out)) fail.push('⑲ phép trừ không nói MẪU SỐ — "chênh 0" trên 1 task khác hẳn "chênh 0" trên 5');
+    else ok.push('⑲ runner tự trừ, và nói ra số task SO ĐƯỢC (giao của hai tập đo được)');
+    rmSync(p, { force: true });
+  }
+
+  // ⑳ GIAO RỖNG ⇒ `?`. Task chỉ có assertion đọc lớp harness: đo được ở lần đầy đủ, KHÔNG đo
+  //    được ở lần trần. Trừ hai tỉ lệ đó bằng mắt cho ra `100% − 0%` — một con số bịa hoàn
+  //    toàn. Đây là chiều nói dối mà chính bản vá này có thể sinh ra nếu làm ẩu.
+  {
+    const p = writeTask('9019', READS_HARNESS);
+    runEval(CMD, 'ok', '9019', { flags: ['--baseline'], stateDir: BARE_STATE });
+    const r = runEval(CMD, 'ok', '9019', { flags: ['--bare'], stateDir: BARE_STATE });
+    if (/đầy đủ \d+%\s+−\s+trần \d+%/.test(r.out)) fail.push('⑳ trừ hai lần chạy KHÔNG có task nào chung — con số in ra không nói về cái gì cả');
+    else if (!/không task nào ĐO ĐƯỢC ở CẢ HAI/.test(r.out)) fail.push('⑳ giao rỗng mà runner không nói `?` — im lặng ở đây đọc thành "chưa chạy phép trừ"');
+    else ok.push('⑳ giao rỗng ⇒ `?` kèm số task mỗi bên, KHÔNG bịa ra một hiệu số');
+    rmSync(p, { force: true });
+  }
 }
 
 rmSync(WORK, { recursive: true, force: true });
