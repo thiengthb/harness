@@ -11,6 +11,93 @@
 
 ---
 
+## 2.46.0 — 2026-08-08
+
+**minor.** Lớp lỗi *"field cấu hình không ai đọc"* đã bị sửa **bằng tay ba lần**; giờ nó có
+máy dò. Quét **hai chiều**, và hai chiều **không đối xứng**. Đóng #127.
+
+### Ba lần sửa ca, không lần nào dựng máy
+
+| Version | Field | Bia mộ để lại trong config |
+|---|---|---|
+| 2.0.0 | `budget.modelTiering` | *"một niềm tin được đóng gói thành cấu hình"* |
+| 2.28.0 | `budget.monthlyUsdCap` | *"nơi DUY NHẤT đọc nó là một dòng advice"* |
+| 2.35.0 | `budget.maxToolCallsPerRun` | *"không cơ chế nào đọc nó"* |
+
+`AGENTS.md`: lỗi cùng kiểu ≥2 lần thì làm **cơ chế**, đừng sửa tay lần nữa. Đây là lần ba.
+
+### Đo được ngay khi cắm vào
+
+```
+$ node tooling/harness-doctor.mjs
+  ⚠️   config: 49 field · 2 không ai đọc · 1 đọc-mà-chưa-khai · 1 cố ý vắng (có $comment_)
+```
+
+- `limits.prWarnFiles` — 0 nơi đọc. Trớ trêu: nó mang **đoạn biện minh dài nhất file**
+  (đo 6 release: 19·15·21·10·25·35). Một niềm tin được hiệu chỉnh kỹ, nối vào hư không.
+- `mcp.maxTools` — 0 nơi đọc (`maxServers` thì có).
+- **Chiều ngược**: `limits.sessionPresenceMinutes` được `session-start.mjs` đọc qua
+  `limit(…)` mà config **không khai** ⇒ TTL 240 phút là hằng số cứng, và người mở config
+  để hiệu chỉnh **không thấy nó tồn tại**.
+
+### Hai chiều KHÔNG đối xứng — đây là quyết định, không phải tối ưu
+
+| | Chiều A *"có gì tiêu thụ field này không?"* | Chiều B *"code với tay tới thứ không tồn tại?"* |
+|---|---|---|
+| Quét | code **+ markdown** | **chỉ** code |
+| Vì sao | một skill bảo agent đọc `limits.reservationTtlHours` **là** một người tiêu thụ — chỉ là inferential thay vì computational | `harness-migrations/README.md` có ví dụ migration **giả định** dùng `cfg.paths.hotspots`; nhận nó vào là một dương tính giả **ngày đầu**, và gác đỏ ngày đầu là gác sẽ bị tắt |
+
+Allowlist cho ca **cố ý vắng** dùng chính idiom sẵn có: một khoá `$comment_<tên>` trong
+config. `$comment_teamSize` đã nói *"KHÔNG khai ở template — file này là SEED"*. **Không có
+danh sách thứ hai để bảo trì.**
+
+### BỐN lần phép quét tự tố giác mình trong lúc viết
+
+| # | Triệu chứng | Nguyên nhân |
+|---|---|---|
+| 1 | báo 6 field ĐANG ĐƯỢC ĐỌC là chết | sao chép `blankStrings: true` từ check `lib-import`. Tên field sống **trong** chuỗi: `limit('staleLockMinutes', 5)` |
+| 2 | báo `paths.hotspots` thiếu | quét markdown ở chiều B — bắt phải một ví dụ giả định trong tài liệu |
+| 3 | mutant `blankStrings: true` **SỐNG SÓT** | neo 5-field bị làm bẩn bởi **chính file test**: `test-hooks.mjs` chứa `pathsFor\('lintable'\)` trong một **regex literal**, và `codeOnly` không hiểu regex literal — nó thấy hai dấu nháy và xử lý như chuỗi |
+| 4 | ngay khi cắm vào doctor, báo **5 field ma**: `limits.doDot` · `limits.doStr` · `limits.thieuTrongConfig` · `limits.x` · `paths.hotspots` | `srcCode` gồm `tooling/test-hooks.mjs`, và bảng test của phép quét chứa **fixture config GIẢ** ở dạng chuỗi. Chuỗi giữ ruột (mục 1!) nên fixture đọc thành accessor thật |
+
+Mục 4 là hệ quả trực tiếp của mục 1 — hai quyết định đúng, ghép lại thành sai. Bản vá:
+**file `test-*.mjs` là fixture ở dạng khác**, loại khỏi chiều B (giữ ở chiều A: một test đọc
+field THẬT thì đó là người đọc thật). Cùng lý do `fixtures/` bị loại từ đầu.
+
+Mục 3 là hở **đã ghi sẵn** trong chú thích của `codeOnly` (*"regex literal … vẫn đánh lừa
+được nó"*), chỉ khác chiều: ở đó là `//`, ở đây là dấu nháy. Luật của chính chú thích đó —
+*gặp thì thêm ca test trước, đừng thêm nhánh trước* — nên bản vá là **đổi neo**, không phải
+sửa `codeOnly`. Neo mới trỏ vào **đúng lời gọi trong đúng hàm**, kèm nhánh riêng báo
+*"neo đã trôi"*.
+
+### `rejected` — con số bắt được ca phạm vi mở toang
+
+Mutant vô hiệu `COV_ROOTS` **sống sót** phép so `scanned < tracked`, vì lọc theo **đuôi
+file** vẫn giữ bất đẳng thức đó đúng. Phải đếm **riêng** số file bị *phạm vi* loại. Quét cả
+repo là quét cả changelog/docs/ADR — nơi mọi tên field được nhắc như bia mộ — và khi đó
+**mọi** field đọc thành "có người đọc": phép quét câm, im lặng, đúng chiều hỏng của `L0007`.
+
+Đo hôm nay: **82 quét · 88 bị phạm vi loại · 206 tracked**.
+
+### Mutant
+
+| mutant | trước | sau |
+|---|---|---|
+| chiều A không bắt gì | sống sót | giết |
+| `blankStrings: true` | **SỐNG SÓT** | giết |
+| chiều B nhận markdown | giết | giết |
+| bỏ allowlist `$comment_` | giết | giết |
+| `COV_ROOTS` mở toang | **SỐNG SÓT** | giết |
+| `COV_ROOTS` rỗng (quét 0 file) | giết | giết |
+
+### Chưa làm, cố ý
+
+Ba phát hiện là **dữ liệu**, không phải bản vá. Quyết chúng cần tay DRI —
+`harness.config.json` là vùng cấm — và mỗi field là một quyết định riêng: cho người đọc,
+hay cắt và giữ nguyên lý trong `docs/`.
+
+---
+
 ## 2.45.1 — 2026-08-08
 
 **patch.** Hai bên đọc ngân sách trả lời **trái ngược nhau về cùng một cái sổ** — và cái lưới

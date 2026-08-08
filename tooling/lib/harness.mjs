@@ -238,6 +238,109 @@ export function coordinationLayer({ teamSize: ts, role } = {}) {
 }
 
 /**
+ * ═══ CONFIG COVERAGE: HAI CHIỀU ═════════════════════════════════════════════
+ *
+ * Lớp lỗi này đã bị sửa BẰNG TAY ba lần — `budget.modelTiering` (2.0.0),
+ * `budget.monthlyUsdCap` (2.28.0), `budget.maxToolCallsPerRun` (2.35.0) — mỗi lần một
+ * bia mộ trong config, không lần nào dựng máy dò. Ba field khác sống sót vì không ai tìm.
+ *
+ * HAI CHIỀU, và chúng KHÔNG đối xứng — đây là quyết định thiết kế, không phải tối ưu:
+ *
+ *   A "có gì tiêu thụ field này không?"    → quét code + MARKDOWN.
+ *      Một skill bảo agent đọc `limits.reservationTtlHours` LÀ một người tiêu thụ; nó
+ *      chỉ là inferential thay vì computational. Bỏ markdown ⇒ báo nhầm nó là chết.
+ *
+ *   B "code với tay tới thứ không tồn tại?" → quét CHỈ code.
+ *      `harness-migrations/README.md` có một ví dụ migration GIẢ ĐỊNH dùng
+ *      `cfg.paths.hotspots`. Đó là văn xuôi dạy người viết migration, không phải reader.
+ *      Nhận markdown vào chiều B ⇒ một dương tính giả ngay ngày đầu ⇒ check bị tắt.
+ *
+ * `blankStrings: false` là CỐ Ý, và NGƯỢC với check `lib-import`. Tên field sống TRONG
+ * chuỗi: `limit('staleLockMinutes', 5)`. Xoá ruột chuỗi là xoá đúng thứ đang đi tìm —
+ * bản đầu của phép quét này báo nhầm SÁU field vì đúng lỗi đó. `codeOnly` vẫn bỏ CHÚ
+ * THÍCH, và đó là phần cần thiết: một comment nhắc tên field không phải là ĐỌC nó.
+ *
+ * `fixtures/` bị loại: chúng dựng config GIẢ nên chúng "đọc" mọi field, và một phép quét
+ * gồm chúng thì luôn xanh. Cùng lớp với "template là mẫu vật không điển hình".
+ */
+const CFG_ACCESSORS = [
+  [/\blimit\(\s*['"]([\w-]+)['"]/g, 'limits'],
+  [/\bpathsFor\(\s*['"]([\w-]+)['"]/g, 'paths'],
+  [/\brunConfigured\(\s*['"]([\w-]+)['"]/g, 'commands'],
+];
+
+/** THUẦN — nhận hai chuỗi nguồn, không chạm đĩa. Đây là phần test-hooks kiểm. */
+export function configCoverageOf({ cfg, srcAll, srcCode }) {
+  const leaves = [];
+  const documented = new Set();
+  const walkCfg = (o, path = []) => {
+    for (const [k, v] of Object.entries(o || {})) {
+      if (k.startsWith('$comment_')) { documented.add(k.slice('$comment_'.length)); continue; }
+      if (k === '$comment') continue;
+      if (v && typeof v === 'object' && !Array.isArray(v)) walkCfg(v, [...path, k]);
+      else leaves.push([...path, k]);
+    }
+  };
+  walkCfg(cfg);
+
+  // CHIỀU A
+  const unread = leaves
+    .filter(p => !new RegExp(`\\.${p.at(-1)}\\b|['"\`]${p.at(-1)}['"\`]`).test(srcAll))
+    .map(p => p.join('.'));
+
+  // CHIỀU B
+  const hit = new Set();
+  const has = (s, f) => cfg[s] && Object.prototype.hasOwnProperty.call(cfg[s], f);
+  for (const [re, section] of CFG_ACCESSORS)
+    for (const m of srcCode.matchAll(re)) if (!has(section, m[1])) hit.add(`${section}.${m[1]}`);
+  // `cfg.X.Y` / `config().X.Y` / `c.X.Y`. Lọc `!cfg[section]` là thứ giữ phép này an toàn:
+  // chỉ section CÓ THẬT trong config mới được xét, nên `c.foo.bar` của một biến khác trôi qua.
+  for (const m of srcCode.matchAll(/\b(?:cfg|config\(\)|c)\.(\w+)\??\.(\w+)\b/g)) {
+    const [, section, field] = m;
+    if (cfg[section] && !has(section, field)) hit.add(`${section}.${field}`);
+  }
+  const all = [...hit].sort();
+  const excused = all.filter(k => documented.has(k.split('.').at(-1)));
+  const undeclared = all.filter(k => !documented.has(k.split('.').at(-1)));
+
+  return { leaves: leaves.length, unread, undeclared, excused };
+}
+
+const COV_ROOTS = /^(tooling|evals|harness-migrations)\/|^\.claude\/(hooks|skills)\/|^\.github\//;
+
+/** IO: gom nguồn từ file ĐƯỢC TRACK rồi gọi phần thuần. */
+export function configCoverage(cfg = config()) {
+  const listed = git(['ls-files']).stdout.split('\n').filter(Boolean);
+  // Không đọc được danh sách file ⇒ CHƯA ĐO, không phải "sạch". Ba trạng thái.
+  if (!listed.length) return { leaves: 0, unread: [], undeclared: [], excused: [], scanned: 0, tracked: 0, unknown: true };
+  let srcAll = '', srcCode = '', scanned = 0, rejected = 0;
+  for (const f of listed) {
+    const isCode = /\.(mjs|js)$/.test(f);
+    if (!isCode && !/\.(ya?ml|md)$/.test(f)) continue;
+    // ĐẾM RIÊNG file bị PHẠM VI loại (không phải file bị đuôi loại). Đây là số duy nhất
+    // phân biệt "COV_ROOTS đang lọc" với "COV_ROOTS đã bị vô hiệu": mở toang phạm vi thì
+    // phép lọc đuôi vẫn giữ `scanned < tracked`, nên so hai số đó KHÔNG bắt được gì.
+    if (!COV_ROOTS.test(f) || f.includes('fixtures/')) { rejected++; continue; }
+    // File TEST là fixture ở dạng khác: chúng dựng config GIẢ và viết accessor GIẢ để chứng
+    // minh phép quét chạy. `srcCode` gồm chúng ⇒ chiều B báo `limits.doDot`, `paths.hotspots`
+    // — tên trong fixture của CHÍNH nó. Đây là lần thứ tư trong repo này một phép quét mã
+    // nguồn khớp phải lời giải thích/bằng chứng của chính nó.
+    // Chỉ loại khỏi chiều B: chiều A giữ chúng, vì một test ĐỌC field thật thì đó là người đọc thật.
+    const isTestMaterial = /(^|\/)test-[^/]*\.(mjs|js)$/.test(f);
+    let raw = ''; try { raw = readFileSync(repoPath(f), 'utf8'); } catch { continue; }
+    const t = isCode ? codeOnly(raw, { blankStrings: false }) : raw;
+    srcAll += t;
+    if ((isCode || /\.ya?ml$/.test(f)) && !isTestMaterial) srcCode += t;
+    scanned++;
+  }
+  // `scanned`/`tracked` KHÔNG phải thống kê trang trí — chúng là thứ DUY NHẤT khoá được
+  // PHẠM VI. Mở toang `COV_ROOTS` thì phép quét đọc cả `HARNESS-CHANGELOG.md` và `docs/`,
+  // nơi mọi tên field đều được nhắc (bia mộ!), nên MỌI field đọc thành "có người đọc" và
+  // phép quét câm — im lặng, và đúng chiều hỏng của L0007. Không con số nào khác phát hiện được.
+  return { ...configCoverageOf({ cfg, srcAll, srcCode }), scanned, rejected, tracked: listed.length };
+}
+
+/**
  * ═══ CAP CHI TIÊU: NỐI FIELD VÀO SỐ ĐO THẬT ═════════════════════════════════
  *
  * `budget.monthlyUsdCap` là field MA cho tới v2.28.0: đo 2026-08-07, nơi DUY NHẤT đọc nó là

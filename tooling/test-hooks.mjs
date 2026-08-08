@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -1805,6 +1805,121 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   }
   if (bad.length) fail.push(`coordinationLayer${L} ${bad.length}/${TABLE.length} ca sai: ${bad.join(' | ')}`);
   else ok.push(`coordinationLayer${L} ${TABLE.length} ca — template KHÔNG bị đòi khai teamSize (bug #56 không tái tạo), vai lạ thì vẫn bị đòi`);
+}
+
+// ─── configCoverage: HAI CHIỀU, và chúng KHÔNG đối xứng ──────────────────────
+//
+// Lớp lỗi "field khai mà không ai đọc" đã bị sửa BẰNG TAY ba lần (2.0.0 · 2.28.0 · 2.35.0),
+// mỗi lần một bia mộ, không lần nào dựng máy dò. Ba field khác sống sót vì không ai tìm.
+//
+// Bảng này khoá BỐN ca mà một bản "đơn giản hoá" sau này chắc chắn sẽ phá:
+//
+//   ⓵ `blankStrings: false`. Tên field sống TRONG chuỗi — `limit('staleLockMinutes', 5)`.
+//      Bản đầu của phép quét dùng `true` (sao chép từ check `lib-import`) và báo nhầm SÁU
+//      field. Ca `đọc qua chuỗi` ở dưới là ca DUY NHẤT phân biệt hai cờ đó.
+//   ⓶ Chiều A nhận MARKDOWN. Một skill bảo agent đọc `limits.reservationTtlHours` LÀ một
+//      người tiêu thụ — chỉ là inferential thay vì computational.
+//   ⓷ Chiều B KHÔNG nhận markdown. `harness-migrations/README.md` có một ví dụ migration
+//      GIẢ ĐỊNH dùng `cfg.paths.hotspots`; nhận nó vào chiều B là một dương tính giả ngay
+//      ngày đầu, và một cái gác đỏ ngày đầu là một cái gác sẽ bị tắt.
+//   ⓸ Ca đòi kết quả KHÔNG RỖNG. Không có nó, mutant `unread = []` sống sót — và đó là
+//      chiều hỏng IM LẶNG của L0007: mẫu số co về 0 thì không có gì đỏ.
+{
+  const L = ' '.repeat(9);
+  const CFG = {
+    $comment: 'bỏ qua',
+    $comment_teamSize: 'cố ý vắng ở template',
+    limits: { doDoc: 1, doDot: 2, doStr: 3, chiMd: 4 },
+    paths:  { hot: ['a'] },
+    commands: { build: 'x' },
+    // `project` PHẢI tồn tại mà THIẾU `teamSize`: đó là hình dạng thật của ca cố-ý-vắng.
+    // Bỏ cả section đi thì `cfg[section]` là undefined và lời gọi bị loại ở bước TRƯỚC —
+    // fixture khi đó xanh vì lý do sai. Chính bảng này bắt được ca đó khi tôi viết nó lần đầu.
+    project: { id: 'fixture' },
+  };
+  //  Chiều A đọc CẢ HAI; chiều B chỉ đọc srcCode.
+  const SRC_CODE = `
+    const a = cfg.limits.doDot;              // đọc qua .field
+    const b = limit('doStr', 9);             // đọc qua CHUỖI  ← ca ⓵
+    const c = cfg.limits.thieuTrongConfig;   // chiều B: code đọc, config không khai
+    const d = cfg.project.teamSize;          // có $comment_ ⇒ cố ý vắng
+    const e = khac.limits.khongPhaiConfig;   // section không thuộc config ⇒ bỏ qua
+  `;
+  const SRC_MD = `
+    Skill bảo agent: lấy TTL từ \`limits.chiMd\`.
+    Ví dụ migration giả định: cfg.paths.hotspots = cfg.paths.hot;   ← ca ⓷
+  `;
+  const r = configCoverageOf({ cfg: CFG, srcAll: SRC_CODE + SRC_MD, srcCode: SRC_CODE });
+  const bad = [];
+  const want = (cond, why) => { if (!cond) bad.push(why); };
+
+  want(r.unread.includes('limits.doDoc'), 'field không ai đọc KHÔNG bị bắt (chiều A câm)');
+  want(!r.unread.includes('limits.doDot'), 'đọc qua `.field` mà vẫn báo chết');
+  want(!r.unread.includes('limits.doStr'), 'đọc qua CHUỖI mà vẫn báo chết — hàm thuần phải khớp được chuỗi');
+  want(!r.unread.includes('limits.chiMd'), 'chỉ nhắc trong markdown mà báo chết ⇒ chiều A đang bỏ md (ca ⓶)');
+  want(r.undeclared.includes('limits.thieuTrongConfig'), 'code đọc field chưa khai mà KHÔNG bắt (chiều B câm)');
+  want(!r.undeclared.some(k => k.includes('hotspots')), 'ví dụ trong markdown lọt vào chiều B (ca ⓷)');
+  want(r.excused.includes('project.teamSize'), '$comment_ không được nhận là cố-ý-vắng');
+  want(!r.undeclared.includes('project.teamSize'), 'field có $comment_ vẫn bị báo thiếu');
+  want(!r.undeclared.some(k => k.includes('khongPhaiConfig')), 'section ngoài config lọt vào chiều B');
+  // ca ⓸ — chiều "sửa quá tay": một phép quét trả rỗng thoả mãn MỌI ca phủ định ở trên.
+  want(r.unread.length > 0 && r.undeclared.length > 0, 'CẢ HAI chiều đều rỗng ⇒ phép quét không đo gì (ca ⓸)');
+  want(r.leaves >= 6, `đếm sai số field: ${r.leaves} — $comment_* phải bị loại, field thật thì không`);
+
+  if (bad.length) fail.push(`configCoverage${L} ${bad.length} ca sai: ${bad.join(' | ')}`);
+  else ok.push(`configCoverage${L} 11 ca — hai chiều KHÔNG đối xứng (A đọc md, B thì không), và chuỗi giữ ruột`);
+
+  // ── ca ⓵ phải chạy trên ĐƯỜNG THẬT, không trên hàm thuần ───────────────────
+  //
+  // Bảng trên truyền `srcAll`/`srcCode` thẳng vào hàm thuần, nên nó KHÔNG BAO GIỜ đi qua
+  // `codeOnly` — tức là nó không thể khoá cờ `blankStrings`. Bản đầu của khối này tự nhận
+  // là có khoá; mutant `blankStrings: true` sống sót và chứng minh lời khai đó sai.
+  //
+  // ── Cờ `blankStrings`: neo vào LỜI GỌI, không neo vào field ────────────────
+  //
+  // Bản đầu neo vào 5 field "chỉ đọc qua chuỗi", đo bằng cách chạy phép quét hai lần rồi lấy
+  // hiệu. Mutant `blankStrings: true` VẪN SỐNG SÓT, và lý do là bài học cũ của repo bắn vào
+  // chính bảng này: `tooling/test-hooks.mjs` nằm TRONG phạm vi quét, và nó chứa
+  // `pathsFor\('lintable'\)` bên trong một REGEX LITERAL của khối MUTANTS. `codeOnly` không
+  // hiểu regex literal — nó thấy hai dấu nháy đơn và xử lý như chuỗi — nên tên field sống sót
+  // qua cả chế độ blank. Neo dựng trên dữ liệu bị chính file test làm bẩn.
+  //
+  // Đây là hở ĐÃ GHI SẴN trong chú thích của `codeOnly` (*"regex literal … vẫn đánh lừa được
+  // nó"*), chỉ khác chiều: ở đó là `//`, ở đây là dấu nháy. Luật của chú thích đó là thêm ca
+  // test trước khi thêm nhánh — ca đó là khối này.
+  //
+  // Nên neo vào ĐÚNG LỜI GỌI trong ĐÚNG HÀM, không grep cả file. Có nhánh riêng báo "neo đã
+  // trôi" để người sau sửa neo thay vì xoá check.
+  {
+    const libSrc = readFileSync(repoPath('tooling', 'lib', 'harness.mjs'), 'utf8');
+    const at = libSrc.indexOf('export function configCoverage(');
+    const block = at < 0 ? '' : libSrc.slice(at, at + 2000);
+    if (!block) fail.push(`configCoverage${L} không tìm thấy \`export function configCoverage(\` — NEO ĐÃ TRÔI, sửa neo đừng xoá check`);
+    else if (!/codeOnly\(raw, \{ blankStrings: false \}\)/.test(block))
+      fail.push(`configCoverage${L} lời gọi \`codeOnly\` trong configCoverage KHÔNG còn \`blankStrings: false\`. `
+        + `Tên field sống TRONG chuỗi (\`limit('x', 5)\`); xoá ruột chuỗi là xoá đúng thứ đang tìm, và phép quét `
+        + `sẽ báo hàng loạt field ĐANG ĐƯỢC ĐỌC là chết.`);
+    else ok.push(`configCoverage${L} \`blankStrings: false\` được khoá tại đúng lời gọi trong configCoverage`);
+  }
+
+  {
+    const real = configCoverage();
+    if (real.unknown) ok.push(`configCoverage${L} không liệt kê được file (không phải git repo?) — CHƯA ĐO, không phải "sạch"`);
+    // PHẠM VI, hai đầu. `scanned` khác 0 ⇒ không mù. `rejected` khác 0 ⇒ COV_ROOTS ĐANG lọc.
+    // Đếm `rejected` RIÊNG là bắt buộc: mở toang phạm vi thì phép lọc ĐUÔI FILE vẫn giữ
+    // `scanned < tracked`, nên so hai số đó không bắt được gì — mutant đầu tiên sống sót
+    // đúng vì thế. Quét cả repo là quét cả changelog/docs/ADR, nơi mọi tên field đều được
+    // nhắc như bia mộ, và khi đó MỌI field đọc thành "có người đọc": phép quét câm, im lặng.
+    else if (real.scanned === 0) fail.push(`configCoverage${L} quét 0 file — phép quét MÙ, mọi field sẽ đọc thành "không ai đọc"`);
+    else if (real.rejected === 0) fail.push(`configCoverage${L} 0 file bị PHẠM VI loại (quét ${real.scanned}/${real.tracked}) — `
+      + `\`COV_ROOTS\` không còn lọc gì. Gộp changelog/docs vào làm phép quét CÂM vì chúng nhắc mọi tên field.`);
+    else ok.push(`configCoverage${L} phạm vi ${real.scanned} quét · ${real.rejected} bị loại · ${real.tracked} tracked — lọc THẬT, và khác 0`);
+  }
+
+  // Hàm tồn tại mà không ai gọi thì nó là một field ma dạng khác. Neo vào lời gọi THẬT.
+  const docSrc = codeOnly(readFileSync(repoPath('tooling', 'harness-doctor.mjs'), 'utf8'), { blankStrings: true });
+  if (!/\bconfigCoverage\(/.test(docSrc)) fail.push(`configCoverage${L} harness-doctor KHÔNG gọi configCoverage() — phép quét tồn tại mà không ai chạy`);
+  else ok.push(`configCoverage${L} harness-doctor có gọi — phép quét được nối vào bảng người đọc`);
 }
 
 // ─── budgetStatus: trần khai rồi mà chưa đo KHÔNG được đọc là "ổn" ───────────
