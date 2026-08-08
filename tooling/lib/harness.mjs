@@ -984,6 +984,50 @@ export function simpleCommands(cmd) {
  * `FAIL` nhầm là một kết luận sai về chính harness, ghi vào ADR. Hai cái giá đó không đối
  * xứng, nên khi phân vân thì nghiêng về `?`.
  */
+/**
+ * Suy số issue từ tên nhánh. HÀM THUẦN — tách để test được, cùng lý do `dangerousCommand()`.
+ *
+ * Trả `{ issue, from }`, và `from` là phần đáng giá: nó nói RA phép suy nào đã dùng.
+ *   · `''`   — nhánh tích hợp / nhánh việc-nhà: KHÔNG CÓ issue (đúng, không phải thiếu)
+ *   · `null` — KHÔNG SUY RA ĐƯỢC ⇒ `?`, không phải `ok`
+ *
+ * VÌ SAO CÓ NHÁNH `bare` (#96). `project.issuePrefixes` là hạt giống kiểu Jira (`["ABC"]`).
+ * Đo trên toàn bộ 30 nhánh từng tồn tại ở repo này:
+ *
+ *     21 nhánh  `<type>/<số>-<slug>`  (fix/100-…, feat/85-…)   → prefix khớp 0
+ *      9 nhánh  không có số            (docs/retro-w32-lan-ba)  → đúng khi bỏ qua
+ *      0 nhánh  dạng `ABC-123`
+ *
+ * Tức prefix mặc định khớp KHÔNG MỘT NHÁNH NÀO, và ba nghi thức đọc `?` trên **mọi** nhánh
+ * làm việc — chúng chỉ xanh khi đứng trên `main`, đúng lúc không có gì để nói.
+ *
+ * NEO VÀO ĐẦU, không quét cả tên. `feat/promote-L0005-bo-dem…` có số ở giữa và KHÔNG được
+ * đọc là issue 5. Cho phép một chữ cái đuôi vì `fix/44b-…` (nhánh nối tiếp #44) có thật ở đây.
+ *
+ * Bản trước còn tệ hơn theo hướng ngược lại: `prefixes` rỗng ⇒ biểu thức thành `()-?\d+` ⇒
+ * khớp CHUỖI SỐ BẤT KỲ ở BẤT KỲ ĐÂU trong tên nhánh. Nhánh `bare` có neo là chặt hơn, không
+ * lỏng hơn.
+ *
+ * BẮN NHẦM CÓ THẬT và không vá được offline: `fix/2-space-indent` sẽ đọc là issue 2. Không
+ * đổi thành `?` để né — `?` là cái giá phải trả trên 100% nhánh, còn bắn nhầm cần ai đó đặt
+ * tên nhánh bằng một con số không phải issue (0/30 trong lịch sử). Thay vào đó `from` được
+ * trả về để chỗ hiển thị nói rõ "suy từ số trần", biến một phán đoán sai thành một phán đoán
+ * NHÌN THẤY ĐƯỢC.
+ */
+export function inferIssue(branch, prefixes = []) {
+  if (!branch || /^(main|master|develop)$/.test(branch)) return { issue: '', from: 'integration' };
+  const list = (Array.isArray(prefixes) ? prefixes : []).map((p) => String(p).trim()).filter(Boolean);
+  if (list.length) {
+    const src = list.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+    const m = branch.match(new RegExp(`(${src})-?\\d+`, 'i'));
+    if (m) return { issue: m[0], from: 'prefix' };
+  }
+  const bare = branch.match(/^[a-z]+\/(\d+)[a-z]?(?=[-/]|$)/i);
+  if (bare) return { issue: bare[1], from: 'bare' };
+  if (/^(chore|docs|ci|test)\//.test(branch)) return { issue: '', from: 'chore' };
+  return { issue: null, from: null };
+}
+
 export function infraFailure(text) {
   const t = String(text || '').toLowerCase();
   const SIGNS = [
