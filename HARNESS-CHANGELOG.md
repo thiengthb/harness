@@ -11,6 +11,95 @@
 
 ---
 
+## 2.44.0 — 2026-08-08
+
+**minor.** Lớp ngân sách giả định **trả theo mức dùng**. Với gói **phẳng**, cảnh báo *"vượt
+trần"* luôn bật và luôn vô nghĩa. Đóng #111.
+
+### Đo được — dữ liệu ĐÚNG cũng ra `over`
+
+Người dùng Claude Pro, ~$20/tháng, trả phẳng. Khai đúng và nhập đúng:
+
+| dữ liệu | mode | % |
+|---|---|---|
+| `--days 30 --usd 20` (nguyên tháng) | **`over`** | 100% |
+| `--days 7 --usd 4.67` (chia đều) | **`over`** | 100% |
+
+Với gói phẳng, chi tiêu **bằng định nghĩa** đúng bằng trần, nên `percent >= 100` luôn đúng và
+`over` **không bao giờ tắt**. Một cảnh báo luôn bật không phân biệt được với một cảnh báo không
+tồn tại — và tệ hơn, nó dạy người đọc bỏ qua cả mục ngân sách. Đây là
+`knowledge/lessons/0002-guard-ban-nham.md` ở dạng nguyên bản.
+
+### Nguyên nhân: một giả định về MÔ HÌNH TRẢ TIỀN, không phải một lỗi số học
+
+`budgetStatus` tính `runRate = usd/days*30` rồi so với cap. Giả định đó đúng cho API
+pay-as-you-go và **sai** cho subscription phẳng, nơi:
+
+- chi phí **biên** của một lần chạy là **0**;
+- chi phí tháng **biết trước**, không cần đo;
+- cổ chai thật **không phải tiền** mà là **rate limit**.
+
+`docs/WIP.md` §*"Sự thật số 2"* đã nói đúng điều này (*"cổ chai không phải máy tính, cũng không
+phải tiền"*) — cơ chế ngân sách thì không biết.
+
+### Tín hiệu ĐÚNG cho gói phẳng đã có sẵn, chỉ chưa được nối
+
+`observe.mjs` ghi `budget-alarm.log` ở sự kiện `StopFailure`. Đo hôm nay: **12 dòng
+`rate_limit`**, hai trong số đó cùng ngày 2026-08-07 (11:52 và 19:24). Với người dùng gói
+phẳng, **đó** là tín hiệu ngân sách thật — không phải phần trăm USD. Và nó do **chính harness
+đo**, không phải người chép từ dashboard.
+
+### Ba mode mới, và `?` không bị làm tròn thành `0`
+
+```
+metered · dữ liệu ĐÚNG (20$/30d)   mode=over             percent=100   ← KHÔNG đổi
+flat    · 0 lần chạm rate limit    mode=flat-ok          percent=null
+flat    · 12 lần chạm              mode=flat-limited     percent=null
+flat    · chưa đo được (null)      mode=flat-unmeasured  percent=null
+```
+
+`rateLimitHits === null` ⇒ `flat-unmeasured`, **không** phải `flat-ok`. "Chưa đo được số lần
+chạm trần" và "đã đo, bằng 0" là hai câu khác nhau, và gộp chúng là đúng phép gộp mà cả lớp
+`report()` tồn tại để chống.
+
+### Gói cước là thuộc tính của NGƯỜI TRẢ TIỀN, không phải của project
+
+`budgetPlan(cfg, env)` — hai tầng, tầng theo NGƯỜI thắng:
+
+```
+HARNESS_BUDGET_PLAN=flat  (theo người, .claude/settings.local.json)   ← thắng
+budget.plan               (theo đội, harness.config.json)
+không khai gì             ⇒ metered, hành vi cũ y nguyên
+```
+
+Một đội hoàn toàn có thể có người dùng Pro phẳng và người dùng API theo mức dùng. Khai gói cước
+ở tầng project là ép cả hai vào một câu trả lời sai với ít nhất một người.
+
+### `metered` KHÔNG đổi một chút nào
+
+Hai ca test khoá riêng điều đó. Bản vá này chỉ **thêm** một nhánh; repo nào không khai gì thì
+đọc y hệt trước.
+
+`harness-doctor` thôi in *"harness không đọc được hoá đơn"* ở nhánh phẳng — ở đó con số do chính
+harness đo. `rituals.mjs` phân nhánh cho cả ba mode thay vì rơi xuống `ok` cuối hàm.
+
+### Phát hiện phụ: cái gác chặn bản vá này có một lỗ, và một dấu `?` lách qua nó
+
+Gác `budget ↔ bên đọc` đòi mọi khoá `budget.*` mã nguồn ĐỌC phải được `harness.config.json`
+KHAI. Regex của nó là `[)\w]\.budget` — đòi ký tự liền trước `.budget` là `)` hoặc chữ.
+
+Phép đọc mới nằm trong helper ở `lib` và viết là `cfg?.budget?.plan`. Ký tự trước là `?` ⇒
+**không khớp** ⇒ suite chuyển sang xanh, và sự im lặng đó đọc y hệt *"đã sửa xong"*.
+
+Đã vá thành `[)\w]\??\.budget`. Đây là **lần thứ ba trong một phiên** một phép kiểm dựa trên
+quét chuỗi tự phản bội nó (hai lần trước ở #112, check tự khớp với chú thích của chính mình).
+
+### 13 ca test mới
+
+7 ca cho các mode, 6 ca cho nguồn khai `plan`. Suite `205/205`.
+
+---
+
 ## 2.43.0 — 2026-08-08
 
 **minor.** `--bare` là một cái **NHÃN không có cơ chế** — và phép trừ *"giá trị đo được của

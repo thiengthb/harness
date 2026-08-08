@@ -1,4 +1,4 @@
-<!-- version: 2026-08-08-i -->
+<!-- version: 2026-08-08-j -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,21 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-08 — Ngân sách biết GÓI CƯỚC; gói phẳng thôi báo động vĩnh viễn (v2.44.0)
+
+Lớp ngân sách giả định trả theo mức dùng. Với gói **phẳng** (Pro/Max), chi tiêu **bằng định
+nghĩa** đúng bằng trần, nên `over` luôn đúng và **không bao giờ tắt** — đo được: dữ liệu ĐÚNG
+(`--days 30 --usd 20`, cap 20) vẫn ra `over` 100%. Một cảnh báo luôn bật dạy người đọc bỏ qua
+cả mục ngân sách.
+
+Tín hiệu đúng cho gói phẳng đã có sẵn: **12 dòng `rate_limit`** trong `budget-alarm.log`, do
+chính harness đo. Cổ chai của gói phẳng là **rate limit**, không phải tiền.
+
+**Việc bạn phải làm khác đi:** nếu bạn trả **phẳng**, thêm `"HARNESS_BUDGET_PLAN": "flat"` vào
+`.claude/settings.local.json` → `env`. Gói cước là thuộc tính của **người trả tiền**, không phải
+của project — nên tầng theo người thắng `budget.plan` của đội. Trả theo mức dùng thì **không đổi
+gì**: `metered` là mặc định và hành vi y nguyên.
 
 ## 2026-08-08 — `--bare` giờ THẬT SỰ gỡ harness (v2.43.0)
 
