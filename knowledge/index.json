@@ -1,8 +1,8 @@
 {
   "generatedBy": "tooling/knowledge/lint.mjs",
-  "count": 6,
+  "count": 7,
   "byScope": {
-    "universal": 6
+    "universal": 7
   },
   "lessons": [
     {
@@ -112,6 +112,22 @@
         "tooling/harness-doctor.mjs",
         "tooling/rituals.mjs",
         "tooling/test-hooks.mjs"
+      ]
+    },
+    {
+      "id": "L0007",
+      "file": "knowledge/lessons/0007-va-hai-chieu-thieu-mot-chieu.md",
+      "title": "Một bản vá có HAI chiều sai, và bộ ca test chỉ được viết cho chiều ồn ào — chiều còn lại không có triệu chứng nào",
+      "scope": "universal",
+      "class": "verification",
+      "representation": "test",
+      "status": "active",
+      "added": "2026-08-08",
+      "occurrences": 4,
+      "artifacts": [
+        "tooling/test-evals.mjs — ⑮ *task có ≥1 assertion chạy được vẫn vào mẫu số* (chốt chống `measured=false`); ⑰ vế hai *vẫn PHẢI thấy `tooling` và `harness.config.json`* (chốt chống gỡ quá tay); ⑳ *giao rỗng ⇒ `?`* (chốt chống trừ trên hai mẫu số)",
+        "tooling/test-hooks.mjs — `mergeBaseline` ca ② *bản rà MỚI thắng, không bị `...prev` ghi đè ngược*; `rateLimitHitsIn` ca *`0` ≠ `null`* và ca *trả về SỐ, không phải chuỗi nối object*",
+        "tooling/lib/harness.mjs — `mergeBaseline()` và `rateLimitHitsIn()` tách thành hàm THUẦN, vì một phép hợp nhất/đếm nằm lẫn trong IO thì không có chỗ đặt ca cho chiều thứ hai"
       ]
     }
   ]

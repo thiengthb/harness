@@ -11,6 +11,77 @@
 
 ---
 
+## 2.45.0 — 2026-08-08
+
+**minor.** `L0007` — *một bản vá có HAI chiều sai, và bộ ca test chỉ được viết cho chiều ồn ào*.
+Promote từ `.claude/learnings/` (#119) sau khi DRI duyệt.
+
+### Bằng chứng: 4 lần trong MỘT phiên
+
+| bản vá | ca viết ra (chiều A) | bản vá cực đoan vẫn xanh vì |
+|---|---|---|
+| `measured` bỏ `Boolean(agent)` (#117) | mẫu số CO LẠI | `measured = false` ⇒ tỉ lệ trên tập rỗng |
+| `--bare` gỡ lớp harness (#118) | cây trần không còn `AGENTS.md` | gỡ sạch cả `tooling/` |
+| phép trừ `full − bare` (#118) | có in ra một hiệu số | hai lần chạy có hai MẪU SỐ khác nhau |
+| `mergeBaseline` giữ khoá cơ chế khác (#121) | `nativeEvents` sống sót | `...prev` đặt sau ⇒ nuốt bản ghi mới |
+
+Cả bốn đều bị bắt bởi **cùng một động tác**: chạy một mutant làm *tất cả theo một chiều*, rồi
+hỏi *"suite có đỏ không?"*.
+
+### Vì sao chiều B chưa từng có issue nào
+
+```
+chiều A   đếm/giữ thứ KHÔNG nên   → số sai, và nó ồn: có người mở issue
+chiều B   BỎ ĐẾM/BỎ GIỮ thứ nên   → mẫu số rỗng, bản ghi mới bị nuốt — KHÔNG có triệu chứng
+```
+
+`#93` là chiều A theo hướng hoảng. `#104` là chiều A theo hướng dễ chịu. **Chiều B chưa từng có
+issue nào** — không ai mở issue cho một con số không xuất hiện.
+
+Mặt còn lại của `L0002`: guard **bắn nhầm** thì bị TẮT (ai cũng thấy); guard **bắn quá rộng**
+thì không ai tắt — nó chỉ thôi đo gì cả. Họ hàng gần của `L0005`: ở đó bộ đếm đổ về phía dễ
+chịu, ở đây **bộ ca test** đổ về phía dễ nghĩ ra.
+
+### Cơ chế đi kèm — bài học không có `artifacts` chỉ là một ghi chú
+
+5 ca đã hiện thực và **mỗi ca đã được đo là giết một mutant thật**: `⑮`, vế hai của `⑰`, `⑳`
+(`test-evals.mjs`), `mergeBaseline ②` và `rateLimitHitsIn` `0`≠`null` (`test-hooks.mjs`).
+
+Điều kiện tiền đề, ghi rõ trong bài học: **phép hợp nhất/đếm phải là hàm THUẦN**. `rateLimitHitsIn`
+sống trong trạng thái hỏng 30 phút (#122) vì nó nằm lẫn trong một IIFE có IO và một `catch`
+trần — **không có chỗ nào để đặt ca cho chiều thứ hai**.
+
+### Gate: `evals/tasks/0007`
+
+Prompt cố tình **không nhắc** "hai chiều" hay "mutation" — nó chỉ nói *"viết test cho
+`mergeBaseline`"*. Lớp 1 có **7 khẳng định**, mỗi cặp khoá **hai chiều của cùng một quyết
+định**: giữ-quá-ít với giữ-quá-nhiều, `0` với `null`.
+
+`REGRESSION 100% (6/6)` sau khi thêm task — mẫu số **tăng**, không phải tỉ lệ đẹp lên do co
+mẫu số.
+
+### Lớp phân phối bắt được ngay
+
+`apply-to.mjs --audit` đỏ với đúng hai file mới: *"KHÔNG nằm trong HARNESS hoặc SEED — sẽ không
+được copy sang project mới"*. Một bài học không đi kèm gate của nó sang repo khác thì repo nhận
+**có cơ chế mà không kiểm được cơ chế đó**. Đã đăng ký cả hai; audit phủ **163 file**.
+
+### Bước 7 của `/knowledge-promote` — "xét cắt một thứ"
+
+Bắt buộc **xét**, không bắt buộc cắt. Đã đo: **9/9 khoá `limits` và 2/2 khoá `mcp` đều có bên
+đọc** (3–10 file mỗi khoá), không tìm thấy field ma nào như `maxToolCallsPerRun` (cắt ở 2.35.0)
+hay `modelTiering` (cắt ở 2.0.0).
+
+Hai lần cắt **đã được lên lịch** thay vì làm bây giờ:
+
+- `exit-condition` của `L0007` — bài học retire khi bộ mutant tổng quát có ratchet về 0;
+- `evals/tasks/0004` vẫn ngoài mẫu số cho tới khi runner biết chạy `## Dựng cảnh` (#104 đường a).
+
+`harness-size` vẫn báo **PHÌNH** (`lessons +4`, `hooks +181` dòng so với 2026-08-05). Ghi ra,
+không giấu.
+
+---
+
 ## 2.44.2 — 2026-08-08
 
 **patch.** Nhánh gói **PHẲNG** — thêm ở `2.44.0` cách đây 30 phút — **chưa từng đếm được một

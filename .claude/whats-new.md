@@ -1,4 +1,4 @@
-<!-- version: 2026-08-08-l -->
+<!-- version: 2026-08-08-m -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,20 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-08 — L0007: bản vá hai chiều mà chỉ có ca một chiều (v2.45.0)
+
+Bài học mới, promote từ `.claude/learnings/` sau khi DRI duyệt. **4 lần trong một phiên**
+(#117 #118 #121): mọi bản vá dạng *"đừng đếm cái này"* / *"giữ cái kia"* đều chỉ có ca cho
+chiều ồn ào, và bản vá **cực đoan nhất** — `measured = false`, strip-list rỗng, `...prev` đặt
+sai chỗ — thoả mãn hết chúng.
+
+Chiều còn lại **không có triệu chứng**: mẫu số rỗng, bản ghi mới bị nuốt. Không ai mở issue cho
+một con số không xuất hiện.
+
+**Việc bạn phải làm khác đi:** khi bạn sửa một phép đo để nó **thôi đếm** hoặc **giữ lại** thứ
+gì đó, chạy đúng một mutant trước khi báo xong — làm **TẤT CẢ** theo chiều bản vá đó. Suite vẫn
+xanh ⇒ bạn thiếu ca. Gate: `evals/tasks/0007`.
 
 ## 2026-08-08 — Nhánh gói PHẲNG chưa từng đếm được lần nào (v2.44.2)
 
