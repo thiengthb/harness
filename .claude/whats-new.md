@@ -1,4 +1,4 @@
-<!-- version: 2026-08-08-j -->
+<!-- version: 2026-08-08-k -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,16 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-08 — Nếu bạn từng chạy `native-surface --record` TRƯỚC bản rà: chạy lại (v2.44.1)
+
+`.claude/claude-code-baseline.json` có **hai người ghi** — `rituals --reviewed-claude-code` (bản rà
+changelog) và `native-surface --record` (tập sự kiện hook). Người thứ nhất dựng lại file từ đầu, nên
+nó **xoá** phép đo của người thứ hai. Im lặng, và chỉ khi bạn chạy `--record` trước.
+
+**Việc bạn phải làm khác đi:** nếu nghi thức đang bảo bạn *"CHƯA đo tập sự kiện hook lần nào"* mà bạn
+nhớ là đã đo — nó đúng là đã bị xoá. Chạy lại `node tooling/native-surface.mjs --record`, một lần.
+Từ bản này thứ tự hai lệnh không còn quan trọng.
 
 ## 2026-08-08 — Ngân sách biết GÓI CƯỚC; gói phẳng thôi báo động vĩnh viễn (v2.44.0)
 

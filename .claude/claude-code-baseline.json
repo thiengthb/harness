@@ -1,8 +1,13 @@
 {
   "$comment": "Bản rà Claude Code gần nhất. Nghi thức `claude-code-drift` so `reviewedVersion` với version đang chạy. Đừng sửa tay — dùng `node tooling/rituals.mjs --reviewed-claude-code \"<thấy gì>\"`.",
-  "reviewedVersion": "2.1.224",
-  "reviewedAt": "2026-08-07T10:00:30.504Z",
+  "reviewedVersion": "2.1.226",
+  "reviewedAt": "2026-08-08T10:49:32.682Z",
   "history": [
+    {
+      "version": "2.1.226",
+      "at": "2026-08-08T10:49:32.682Z",
+      "found": "2.1.225-226 KHÔNG ra sẵn thứ nào harness đang tự làm tay. Tập sự kiện hook KHÔNG đổi so với 2.1.224 (31 sự kiện, đo bằng native-surface). 2.1.226 chỉ có bug fix. Mục GẦN NHẤT trong 2.1.225 là 'gateway spend-limit support' — thông báo chạm trần nay nêu cap, giờ reset và lời của operator, NHƯNG nó đòi gateway (triển khai enterprise), nên nó KHÔNG thay được budget-alarm.log của v2.44.0: sổ đó đếm rate_limit từ StopFailure trên máy cục bộ, cho người dùng gói phẳng không có gateway. Đáng theo dõi: nếu vendor đưa cap+reset vào thông báo cho MỌI tài khoản thì flat-limited đọc được số thật thay vì chỉ đếm lần chạm. Một mục nữa đáng biết dù không trùng harness: auto mode thôi tính một lần bị safety-filter từ chối vào hạn mức chặn liên tiếp."
+    },
     {
       "version": "2.1.224",
       "at": "2026-08-07T10:00:30.504Z",
@@ -30,8 +35,8 @@
     }
   ],
   "nativeEvents": {
-    "version": "2.1.224",
-    "at": "2026-08-07T12:39:57.119Z",
+    "version": "2.1.226",
+    "at": "2026-08-08T10:54:51.203Z",
     "events": [
       "PreToolUse",
       "PostToolUse",
