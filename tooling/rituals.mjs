@@ -41,7 +41,7 @@
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, readJson, readPacks, packPending, budgetStatus, latestCapoEntry, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue } from './lib/harness.mjs';
+import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, readJson, readPacks, packPending, budgetStatus, budgetPlan, latestCapoEntry, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue } from './lib/harness.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHẦN THUẦN — không đọc đĩa, không gọi git. Test khẳng định trực tiếp vào đây.
@@ -294,6 +294,16 @@ export const RITUALS = [
           : { state: 'due', why: b.advice };
       }
       if (b.mode === 'template-cap') return { state: 'due', why: b.advice };
+      // GÓI PHẲNG (#111): CAPO vẫn đo được và vẫn đáng đo — nhưng nó đọc là *"giá trị rút ra
+      // trên một khoản phí CỐ ĐỊNH"*, không phải *"tiền đã tiêu"*. Cổ chai là rate limit, và
+      // con số đó do chính harness đếm, không phải người chép từ dashboard.
+      if (b.mode === 'flat-unmeasured') return { state: '?', why: b.advice };
+      if (b.mode === 'flat-limited') return { state: 'due', why: b.advice };
+      if (b.mode === 'flat-ok') {
+        return b.measured
+          ? { state: 'ok', why: `gói PHẲNG · 0 lần chạm rate limit trong 30 ngày · CAPO đo ${b.ageDays} ngày trước — CAPO ở đây là giá trị rút ra trên phí cố định, không phải tiền tiêu` }
+          : { state: 'due', why: 'gói PHẲNG: 0 lần chạm rate limit (tốt), nhưng CAPO chưa lần nào đo — không biết harness có đang tốt lên không. `node tooling/capo-report.mjs --days 7 --usd <phí tháng>`' };
+      }
       if (b.mode === 'off') return { state: '?', why: 'budget.monthlyUsdCap = 0 — chưa khai trần, nên không có gì để đối chiếu. Đây KHÔNG phải "ổn"' };
       if (b.mode === 'unmeasured') return { state: 'due', why: b.advice };
       if (b.mode === 'stale') return { state: 'due', why: b.advice };
@@ -567,6 +577,7 @@ export function collect() {
 
     // Phán đoán ngân sách nằm ở `budgetStatus` (THUẦN). `collect` chỉ đọc đĩa.
     budget: budgetStatus({
+      plan: budgetPlan(cfg),
       cap: cfg.budget?.monthlyUsdCap,
       alertAtPercent: cfg.budget?.alertAtPercent,
       latest: latestCapoEntry(),

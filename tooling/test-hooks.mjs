@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, dangerousCommand, infraFailure, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -1853,13 +1853,63 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   // Doctor in bằng một bảng tra `mode → dòng`. Thiếu một mode ⇒ nó in `undefined` — và đó là
   // ca KHÔNG bảng thuần nào ở trên bắt được, vì lỗi nằm ở chỗ HIỂN THỊ. Không dựng repo có
   // `cap > 0` được (`harness.config.json` là vùng cấm), nên đối chiếu bằng mã nguồn.
-  const MODES = ['off', 'unmeasured', 'stale', 'ok', 'alert', 'over', 'template-na', 'template-cap'];
+  const MODES = ['off', 'unmeasured', 'stale', 'ok', 'alert', 'over', 'template-na', 'template-cap',
+    'flat-ok', 'flat-limited', 'flat-unmeasured'];
   const doc = readFileSync(repoPath('tooling', 'harness-doctor.mjs'), 'utf8');
   const budgetBlock = doc.slice(doc.indexOf('── NGÂN SÁCH ──'));
   // Hai dạng khoá: `off:` và `'template-na':` — mode có gạch ngang phải viết trong nháy.
   const missing = MODES.filter(m => !new RegExp(`^\\s{4}'?${m}'?:`, 'm').test(budgetBlock));
   if (missing.length) fail.push(`budgetStatus${L} harness-doctor thiếu dòng cho mode: ${missing.join(' · ')} — sẽ in \`undefined\``);
   else ok.push(`budgetStatus${L} harness-doctor có dòng cho cả ${MODES.length} mode (không mode nào in \`undefined\`)`);
+
+  // ── GÓI PHẲNG (#111) ──────────────────────────────────────────────────────
+  //
+  // Với subscription phẳng, chi tiêu BẰNG ĐỊNH NGHĨA đúng bằng trần ⇒ `percent >= 100` luôn
+  // đúng ⇒ `over` không bao giờ tắt. Đo 2026-08-08: dữ liệu ĐÚNG (`--days 30 --usd 20`, cap
+  // 20) vẫn ra `over` 100%. Một cảnh báo luôn bật không phân biệt được với không có cảnh báo.
+  //
+  // Hai hàng phải khoá chặt nhất:
+  //   · `metered` (và KHÔNG khai `plan`) phải giữ NGUYÊN hành vi cũ — bản vá này không được
+  //     đụng tới project trả theo mức dùng;
+  //   · `flat` + `rateLimitHits: null` phải là `?`, KHÔNG phải `flat-ok`. "Chưa đọc được sổ"
+  //     và "chưa chạm lần nào" là hai chuyện — gộp chúng là đúng phép gộp AGENTS.md cấm.
+  const FULL = { usd: 20, days: 30, at: at(1) };
+  const PLAN_TABLE = [
+    //  plan        cap  role        hits   mode
+    ['flat',      0,   'consumer',  0,     'flat-ok'],
+    ['flat',      20,  'consumer',  12,    'flat-limited'],
+    ['flat',      20,  'consumer',  null,  'flat-unmeasured'],
+    ['flat',      0,   'template',  0,     'flat-ok'],       // template không cap ⇒ vẫn phẳng
+    ['flat',      20,  'template',  0,     'template-cap'],  // ← cap lạc vào template VẪN phải kêu
+    ['metered',   20,  'consumer',  0,     'over'],          // ← hành vi cũ, không được đổi
+    [undefined,   20,  'consumer',  0,     'over'],          // ← không khai plan = metered
+  ];
+  const badPlan = [];
+  for (const [plan, cap, role, rateLimitHits, want] of PLAN_TABLE) {
+    const got = budgetStatus({ cap, role, plan, rateLimitHits, latest: FULL });
+    if (got.mode !== want) badPlan.push(`plan=${plan} cap=${cap} role=${role} hits=${rateLimitHits} → ${got.mode}, cần ${want}`);
+  }
+  if (badPlan.length) fail.push(`budgetStatus${L} gói phẳng ${badPlan.length}/${PLAN_TABLE.length} ca sai: ${badPlan.join(' | ')}`);
+  else ok.push(`budgetStatus${L} ${PLAN_TABLE.length} ca gói phẳng — \`metered\` KHÔNG đổi, và "chưa đọc được sổ" ≠ "chưa chạm lần nào"`);
+
+  // Hai tầng khai `plan`: env THEO NGƯỜI thắng config THEO ĐỘI. Ca thứ ba là ca có giá trị —
+  // một đội có người dùng Pro phẳng và người dùng API theo mức dùng, và ép cả hai theo một
+  // khoá trong config là báo sai cho ít nhất một người.
+  const PLAN_SRC = [
+    ['không khai gì',            null,                    {},                                'metered'],
+    ['config: flat',             { budget: { plan: 'flat' } },    {},                        'flat'],
+    ['env đè config',            { budget: { plan: 'metered' } }, { HARNESS_BUDGET_PLAN: 'flat' },    'flat'],
+    ['env đè ngược lại',         { budget: { plan: 'flat' } },    { HARNESS_BUDGET_PLAN: 'metered' }, 'metered'],
+    ['giá trị lạ ⇒ metered',     { budget: { plan: 'FLATT' } },   {},                        'metered'],
+    ['hoa thường không quan trọng', { budget: { plan: 'FLAT' } }, {},                        'flat'],
+  ];
+  const badSrc = [];
+  for (const [label, cfgIn, env, want] of PLAN_SRC) {
+    const got = budgetPlan(cfgIn, env);
+    if (got !== want) badSrc.push(`${label} → ${got}, cần ${want}`);
+  }
+  if (badSrc.length) fail.push(`budgetPlan${L.slice(2)} ${badSrc.length}/${PLAN_SRC.length} ca sai: ${badSrc.join(' | ')}`);
+  else ok.push(`budgetPlan${L.slice(2)} ${PLAN_SRC.length} ca — env THEO NGƯỜI thắng config THEO ĐỘI, giá trị lạ về \`metered\` chứ không ném`);
 
   // ── VAI CỦA REPO (#92) ────────────────────────────────────────────────────
   //
@@ -2480,7 +2530,12 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   //
   // Và comment NÀY cố ý không viết ví dụ dưới dạng truy cập thuộc tính: check quét cả file
   // này, nên một ví dụ đúng cú pháp sẽ tự tố giác mình. Đã xảy ra ở lần viết đầu.
-  const referenced = [...src.matchAll(/[)\w]\.budget\??\.([A-Za-z][A-Za-z0-9_]*)/g)].map(m => m[1]);
+  // `\??` TRƯỚC `.budget` — không phải trang trí. Bản trước đòi ký tự liền trước là `)` hoặc
+  // chữ, nên `cfg.budget?.plan` khớp còn `cfg?.budget?.plan` THÌ KHÔNG. Đo 2026-08-08 (#111):
+  // tôi thêm một khoá đọc mới, gác kêu đúng; tôi chuyển phép đọc vào một helper ở `lib` và gõ
+  // optional chaining ở cả hai bậc — gác im, và tôi suýt đọc sự im lặng đó là "đã sửa xong".
+  // Lách được bằng một dấu `?` thì không phải một cái gác.
+  const referenced = [...src.matchAll(/[)\w]\??\.budget\??\.([A-Za-z][A-Za-z0-9_]*)/g)].map(m => m[1]);
   const ghost = [...new Set(referenced)].filter(k => !keys.includes(k));
   if (!keys.length) {
     fail.push(`budget ↔ bên đọc${L} không đọc được khoá nào trong \`budget\` — neo của ca này đã trôi`);
@@ -3137,7 +3192,7 @@ if (repoRole() === 'template') {
 // SÀN TỪNG TỤT LẠI SAU TỔNG THẬT, và đó là một chế độ hỏng riêng đáng ghi ra: 2026-08-08 đo
 // được `195/195 pass, sàn 185` — 10 ca thêm vào mà không ai nâng sàn, tức 10 ca có thể NGỪNG
 // CHẠY mà thứ duy nhất nhìn thấy điều đó vẫn xanh. Sàn không bám tổng thật là sàn đã nghỉ việc.
-const RATCHET = 203;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114)
+const RATCHET = 205;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111)
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa
