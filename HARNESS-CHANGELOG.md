@@ -11,6 +11,81 @@
 
 ---
 
+## 2.45.1 — 2026-08-08
+
+**patch.** Hai bên đọc ngân sách trả lời **trái ngược nhau về cùng một cái sổ** — và cái lưới
+dựng ở `2.44.2` để bắt đúng lớp lỗi đó thì **mù 89% file lớn nhất**. Đóng #125.
+
+### Đo được
+
+```
+$ node tooling/harness-doctor.mjs
+  ⚠️   gói PHẲNG · 12 lần chạm rate limit trong 30 ngày
+
+$ node tooling/rituals.mjs
+  ?  capo-report.mjs --usd <N>   KHÔNG đo được — chưa đọc được `budget-alarm.log`
+```
+
+`rituals.mjs` gọi `budgetStatus({ plan, cap, alertAtPercent, latest, role })` — **thiếu
+`rateLimitHits`**. Mặc định là `null`, và `null` ⇒ `flat-unmeasured`: đúng theo hợp đồng ba
+trạng thái, không ném, không đỏ. Và `rituals` là cái chạy ở **mỗi SessionStart**, nên câu sai
+là câu người dùng thấy hằng ngày.
+
+### Bản vá là BỎ CHỖ ĐỂ QUÊN, không phải thêm một luật phải nhớ
+
+`budgetSnapshot(cfg, role, now)` — một phép IO cho **mọi** bên đọc. Cả `harness-doctor` lẫn
+`rituals` gọi nó; không còn đối số nào để quên. Phép đếm vẫn ở `rateLimitHitsIn()` (thuần, 6 ca).
+
+`lib-import` (#122) **không thấy được** lỗ này: nó bắt *tên được gọi mà chưa import*, còn đây
+là một *đối số không được truyền*. Nên ca thứ hai: **không bên đọc nào ngoài `lib` và `test-*`
+được gọi thẳng `budgetStatus`**.
+
+### Và chỗ tệ hơn: lưới của `2.44.2` báo XANH trên một file nó không đọc được
+
+`lib-import` tự viết một `strip()` bằng 5 cái `replace` để bỏ chú thích và chuỗi. Đo trên
+`rituals.mjs`:
+
+```
+thô 46709 ký tự  →  sau strip 5016  (11%)
+"budgetSnapshot("  thô: có   ·  sau strip: KHÔNG
+"repoRole("        thô: có   ·  sau strip: KHÔNG
+```
+
+**89% file biến mất**, nên check duyệt 40 file và báo xanh trong khi nó gần như không đọc được
+file lớn nhất. Mutant tái hiện đúng lỗi #125 **sống sót**.
+
+Đây là **chiều B của `L0007`** xảy ra ngay bên trong cái lưới vừa dựng để bắt chiều A — và bài
+học đó merge trước bản vá này đúng một PR.
+
+### `codeOnly()` đã tồn tại từ trước, với chú thích kể đúng chuyện này
+
+```
+* PHẢI BIẾT CHUỖI, và bản đầu thì không — nó đã bắn oan ngay lần dùng thứ hai. Trong
+* `rituals.mjs` có một template literal chứa `features/*.json`; cặp regex ngây thơ đọc đó là
+* MỞ block comment, rồi nuốt từ dòng 173 tới `*/` thật ở dòng 349 — 176 dòng code biến mất.
+```
+
+Cùng file, cùng nguyên nhân, và lời cảnh báo nằm ngay trên hàm giải quyết nó. Tôi viết lại một
+`strip()` bằng regex thay vì dùng nó.
+
+`codeOnly()` nhận thêm `{ blankStrings: true }` — xoá **ruột** chuỗi, giữ cặp nháy. Mặc định
+`false` giữ nguyên hành vi cho bên gọi cũ (hợp đồng hai đầu **cần** nội dung chuỗi: lệnh mà một
+thông báo in ra sống trong đó). Sau khi đổi: `rituals.mjs` còn **35%** thay vì 11%, và cả hai
+tên đều đọc được.
+
+### 3 mutant, 0 sống sót
+
+| mutant | trước bản vá | sau |
+|---|---|---|
+| `rituals` quay lại tự lắp tham số (tái hiện #125) | **SỐNG SÓT** | giết bởi `budgetStatus trực tiếp` **và** `lib-import` |
+| `budgetSnapshot`: sổ không có ⇒ `null` thay vì `0` | giết | giết |
+| `budgetSnapshot`: bỏ cửa sổ 30 ngày | giết | giết |
+
+Dòng đầu là cả bản vá: cùng một mutant, cùng một suite, khác nhau ở chỗ suite có **thật sự
+đọc được file** hay không.
+
+---
+
 ## 2.45.0 — 2026-08-08
 
 **minor.** `L0007` — *một bản vá có HAI chiều sai, và bộ ca test chỉ được viết cho chiều ồn ào*.

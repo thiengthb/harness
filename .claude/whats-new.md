@@ -1,4 +1,4 @@
-<!-- version: 2026-08-08-m -->
+<!-- version: 2026-08-08-n -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,23 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-08 — Hai bên đọc ngân sách, một cái sổ, hai câu trả lời (v2.45.1)
+
+`rituals` gọi `budgetStatus` mà **quên một đối số**, nên nó nói *"không đo được"* trong khi
+`harness-doctor` nói *"12 lần chạm rate limit"* — cùng một cái sổ. Và `rituals` là cái chạy ở
+**mỗi SessionStart**.
+
+Bản vá là **bỏ chỗ để quên**: `budgetSnapshot()` — một phép IO cho mọi bên đọc.
+
+Tệ hơn: lưới `lib-import` dựng ở v2.44.2 để bắt đúng lớp lỗi này thì **mù 89% `rituals.mjs`**
+(một `strip()` viết bằng regex). Nó báo XANH trên một file nó gần như không đọc được. Nay dùng
+`codeOnly()` — máy quét trạng thái đã có sẵn ở `lib` từ lâu, kèm chú thích kể đúng chuyện này
+đã xảy ra một lần rồi.
+
+**Việc bạn phải làm khác đi:** đừng gọi `budgetStatus()` trực tiếp nữa — có một ca test chặn.
+Và nếu bạn viết một phép kiểm quét mã nguồn: dùng `codeOnly(src, { blankStrings: true })`,
+đừng tự viết regex bỏ chú thích.
 
 ## 2026-08-08 — L0007: bản vá hai chiều mà chỉ có ca một chiều (v2.45.0)
 
