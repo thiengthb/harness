@@ -351,13 +351,24 @@ const ok = [], fail = [];
 // được. Đẩy chúng vào `ok` là biến một khoảng trống thành một dấu tick — đúng L0005, ở chiều
 // PASS. Đẩy vào `fail` cũng sai: hành vi của hook ở detached HEAD là ĐÚNG (không có nhánh thì
 // không có gì để chặn). Nên: một rổ thứ ba, in ra, và trừ khỏi mẫu số của sàn.
-const na = [];
-// `na` gộp nhiều CA vào một DÒNG (dòng dưới nói "3 ca"), nên `na.length` KHÔNG phải số ca —
-// đó là lý do `naCount` ở cuối file là hằng số. Ca n/a nào có điều kiện KHÁC "HEAD detached"
-// phải tự đếm ở đây, nếu không nó rơi khỏi tổng và sàn báo nhầm "một case đã ngừng chạy".
-let naExtra = 0;
+// Một DÒNG n/a có thể nói về NHIỀU ca ("3 ca cần một nhánh đang đứng"), nên số dòng không phải
+// số ca — sàn cần số ca.
+//
+// Trước v2.42.1 hai con số đó nằm rời nhau và được cộng bằng BA cơ chế khác nhau: một hằng số
+// `3` ở cuối file, một biến đếm tăng tay, và — ở chỗ thứ ba — KHÔNG GÌ CẢ. Ca thứ ba rơi khỏi
+// tổng. Đó là `knowledge/lessons/L0005` nguyên bản, **bộ đếm đổ về phía dễ chịu**: thiếu một ca
+// thì tổng NHỎ đi, mà tổng nhỏ chỉ đỏ khi chạm sàn — nên khe hở tự giấu mình đúng chừng nào sàn
+// còn lỏng. Nó sống từ đó tới lúc sàn được siết lên đúng tổng thật, và khi đó CI đỏ cả ba OS.
+//
+// Cách chữa KHÔNG phải thêm một check canh `na.push()` trần — thử rồi, và check đó tự khớp với
+// chú thích của chính nó. Cách chữa là bỏ hẳn con đường sai: thông điệp và SỐ CA đi chung một
+// object, nên "khai n/a mà quên cộng vào sàn" không viết ra được nữa. Cùng lý do `block()` tự
+// ghi sổ — chặn ở dạng cấu trúc rẻ hơn và bền hơn chặn ở dạng lời nhắc.
+const naEntries = [];
+const declareNa = (count, msg) => naEntries.push({ count, msg });
+
 if (!CUR_BRANCH) {
-  na.push('protect-integration-branch: 3 ca cần một NHÁNH đang đứng — HEAD đang detached '
+  declareNa(3, 'protect-integration-branch: 3 ca cần một NHÁNH đang đứng — HEAD đang detached '
     + '(bình thường ở CI `pull_request`). Chạy suite ở máy để phủ chúng.');
 }
 
@@ -1184,8 +1195,7 @@ for (const [env, expect, label, msg] of GATE_CASES) {
     // vượt 8 KB — lúc đó phép đo trả `null`, đọc y hệt "bundle đổi hình dạng".
     const real = nativeHookEvents();
     if (!real) {
-      na.push(`native-surface${L} không đo được binary ở máy này (CLAUDE_CODE_EXECPATH?) — biên chồng lấn KHÔNG kiểm được, và đây không phải "đạt"`);
-      naExtra++;
+      declareNa(1, `native-surface${L} không đo được binary ở máy này (CLAUDE_CODE_EXECPATH?) — biên chồng lấn KHÔNG kiểm được, và đây không phải "đạt"`);
     } else {
       const realBytes = JSON.stringify(real).length;
       if (realBytes >= SCAN.overlap) {
@@ -2056,7 +2066,7 @@ for (const [env, expect, label, msg] of GATE_CASES) {
 
   if (bad.length) fail.push(`cờ thiếu giá trị${L.slice(6)} ${bad.length} ca sai: ${bad.join(' | ')}`);
   else if (!computable) {
-    na.push(`cờ thiếu giá trị${L.slice(6)} 6 ca exit code + "không entry rác" ĐÃ kiểm; ca "ghi đúng 1 entry" `
+    declareNa(1, `cờ thiếu giá trị${L.slice(6)} 6 ca exit code + "không entry rác" ĐÃ kiểm; ca "ghi đúng 1 entry" `
       + 'KHÔNG kiểm được ở đây (0 merge trong cửa sổ 7 ngày — checkout nông ở CI). Chạy suite ở máy có lịch sử git để phủ nó.');
   } else ok.push(`cờ thiếu giá trị${L.slice(6)} 6 ca — cờ THIẾU GIÁ TRỊ dừng kèm chỉ dẫn, và sổ chỉ nhận entry hữu hạn`);
 }
@@ -3061,7 +3071,7 @@ const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa
 // NGỪNG CHẠY, và sàn — thứ tồn tại để phân biệt hai chuyện đó — sẽ báo nhầm.
-const naCount = (CUR_BRANCH ? 0 : 3) + naExtra;
+const naCount = naEntries.reduce((s, e) => s + e.count, 0);
 const total = ran + skipped + naCount;
 if (total < RATCHET) {
   fail.push(`chỉ có ${total} khẳng định (${ran} chạy + ${skipped} bỏ qua + ${naCount} không dựng được), sàn là ${RATCHET} — một case đã `
@@ -3071,7 +3081,7 @@ console.log(`\n=== HOOK TESTS (${ok.length}/${ran} pass`
   + `${skipped ? ` · ${skipped} n/a (chỉ chạy ở repo template)` : ''}`
   + `${naCount ? ` · ${naCount} n/a (không dựng được ở hình dạng checkout này)` : ''}, sàn ${RATCHET}) ===`);
 for (const m of ok) console.log('  PASS  ' + m);
-for (const m of na) console.log('  n/a   ' + m);
+for (const e of naEntries) console.log('  n/a   ' + e.msg);
 for (const m of fail) console.log('  FAIL  ' + m);
 console.log('');
 
