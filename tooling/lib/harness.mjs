@@ -282,6 +282,29 @@ export function coordinationLayer({ teamSize: ts, role } = {}) {
  * Gộp hai cái làm mất mục (2) — thứ thật sự làm được — sau lưng mục (1). Cờ `measured` tồn
  * tại để bên gọi tách lại được.
  */
+/**
+ * Gói cước nào — `metered` (trả theo mức dùng) hay `flat` (subscription phẳng). HÀM THUẦN.
+ *
+ * HAI TẦNG, và thứ tự có lý do:
+ *   1. `HARNESS_BUDGET_PLAN` (env, `settings.local.json`) — THEO NGƯỜI, thắng
+ *   2. `budget.plan` (config) — mặc định của ĐỘI
+ *
+ * Vì sao cần tầng 1: gói cước là thuộc tính của NGƯỜI TRẢ TIỀN, không phải của project. Một
+ * đội có thể có người dùng Pro phẳng và người dùng API theo mức dùng; ép cả hai theo một khoá
+ * trong config là báo sai cho ít nhất một người.
+ *
+ * Vì sao vẫn cần tầng 2: một khoá chỉ tồn tại trong env là khoá **không ai thấy khi đọc
+ * config** — và `tooling/test-hooks.mjs` có một cái gác cho đúng chuyện đó (mã nguồn ĐỌC mà
+ * config KHÔNG khai). Tầng 2 là chỗ khoá này tự giới thiệu.
+ *
+ * Giá trị lạ ⇒ `metered`, KHÔNG ném. Đây là đường đọc của một bảng điều khiển: một lỗi chính
+ * tả trong config không được làm cả `harness-doctor` chết.
+ */
+export function budgetPlan(cfg = null, env = process.env) {
+  const raw = String(env.HARNESS_BUDGET_PLAN || cfg?.budget?.plan || '').trim().toLowerCase();
+  return raw === 'flat' ? 'flat' : 'metered';
+}
+
 export function budgetStatus({ cap, alertAtPercent = 80, latest = null, now = Date.now(), role = null,
   plan = 'metered', rateLimitHits = null } = {}) {
   const c = Number(cap);
