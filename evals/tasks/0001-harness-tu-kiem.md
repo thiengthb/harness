@@ -50,6 +50,16 @@ Nó bảo vệ điều kiện tiên quyết của mọi thứ khác. Một thay 
 `test-hooks.mjs` mà bạn không biết thì **mọi eval sau đó đều vô nghĩa** — bạn đang
 đo một hệ đã hỏng.
 
-Cũng là task tốt nhất để chạy với `--bare`: nếu điểm với harness đầy đủ và harness
-trần bằng nhau ở task này, đó là tín hiệu bình thường (task này không cần harness
-để làm đúng). Chênh lệch có ý nghĩa nằm ở các task khác.
+**Task này KHÔNG so được ở chế độ `--bare`** — và đây là ca mẫu của lý do runner phải
+có tiền kiểm. Đo 2026-08-08 (v2.43.0), `--bare --task 0001`: **4/6 assertion thành
+`n/a`** vì chúng đọc chính lớp harness vừa bị gỡ.
+
+```
+n/a  node tooling/test-hooks.mjs · test-migrations.mjs · apply-to.mjs --audit
+n/a  node tooling/harness-doctor.mjs --quick
+```
+
+Không có tiền kiểm, bốn dòng đó ĐỎ ở lần chạy trần và XANH ở lần đầy đủ, rồi phép trừ
+ghi chênh lệch đó vào cột *"giá trị của harness"* — trong khi agent không liên quan gì.
+Bản trước của mục này nói ngược lại (*"task tốt nhất để chạy với --bare"*); nó viết khi
+`--bare` chưa gỡ gì, nên chưa có gì để mâu thuẫn. Chênh lệch có ý nghĩa nằm ở các task khác.

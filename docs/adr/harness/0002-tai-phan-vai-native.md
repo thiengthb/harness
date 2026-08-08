@@ -127,6 +127,17 @@ Không có bảng này thì mọi thay đổi trong đợt này là phỏng đo�
    `claude -p …` thật) đo được chỉ số này. Đây đúng là "trạng thái thứ ba" mà
    `report()` bắt phải phân biệt — và nếu ghi "harness không tạo ra giá trị đo được"
    thì đó là một kết luận rút từ một phép đo chưa chạy.
+
+   > **Đính chính 2026-08-08 (v2.43.0, #91) — nguyên nhân ghi ở trên ĐÚNG nhưng CHƯA
+   > ĐỦ, và phần thiếu lớn hơn phần đã ghi.** `--bare` khi đó **không gỡ gì cả**: nó đổi
+   > tên file baseline, đổi tiêu đề, đổi lời nhắn cuối, còn `spawnSync` trong `runAgent()`
+   > không nhận nó — cùng `cwd`, cùng bộ hook. Nên **lấp `evals.command` cũng không làm
+   > số đó khác 0**: hai lần chạy vẫn đo cùng một thứ, chỉ tốn gấp đôi tiền.
+   >
+   > Từ v2.43.0 `--bare` là một cơ chế thật (clone dùng một lần, đã gỡ remote và gỡ lớp
+   > harness Claude Code tự nạp), có tiền kiểm loại các assertion đo chính lớp harness, và
+   > runner **tự làm phép trừ trên giao của hai tập đo được**. Ô "CHƯA ĐO ĐƯỢC" trong bảng
+   > dưới vẫn đúng cho repo template — nhưng lý do nay chỉ còn một: `evals.command` rỗng.
 2. **Mục tiêu "thuế context ↓ ≥30%" KHÔNG so được.** Không ai chạy `/context` TRƯỚC đợt
    này, nên không có số để trừ. 0.5% thoả mục tiêu tuyệt đối (`< 5%`) gấp 10 lần, nhưng
    tỉ lệ giảm thì vĩnh viễn không lấy lại được. Bảng trên **là baseline** cho lần sau.

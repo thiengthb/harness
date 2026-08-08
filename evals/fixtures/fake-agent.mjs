@@ -21,12 +21,22 @@
  *   hang              ngủ lâu hơn wall-clock cap — runner phải cắt và báo timedOut
  *   quota             in chữ ký hết-quota rồi exit 0 — runner phải báo `?`, KHÔNG phải FAIL
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 
 const mode = process.env.FAKE_AGENT_MODE || 'ok';
 
 // In NGUYÊN VĂN những gì nhận được: test khẳng định trên đây, nên nó là hợp đồng.
 console.log('FAKE_AGENT_ARGV=' + JSON.stringify(process.argv.slice(2)));
+
+// CHẠY Ở ĐÂU, và THẤY GÌ TỪ ĐÓ. Hai dòng này là hợp đồng của chế độ `--bare` (#91): trước
+// 2.42.5, `--bare` đổi tiêu đề và tên file baseline nhưng `spawnSync` vẫn dùng `cwd` của repo
+// thật với đúng bộ hook — nên hai lần chạy đo cùng một thứ. Một agent giả không tự biết nó
+// "trần" hay không; cách duy nhất kiểm được điều đó từ ngoài là bắt nó khai chỗ nó đứng và
+// những gì còn đọc được từ chỗ đó.
+console.log('FAKE_AGENT_CWD=' + JSON.stringify(process.cwd()));
+console.log('FAKE_AGENT_SEES=' + JSON.stringify(
+  ['AGENTS.md', 'CLAUDE.md', '.claude/settings.json', '.claude/rules', 'harness.config.json', 'tooling']
+    .filter(p => existsSync(p))));
 
 // Prompt tới qua STDIN (từ 2.7.8). Đọc đồng bộ để không phụ thuộc thứ tự event loop.
 let stdin = '';

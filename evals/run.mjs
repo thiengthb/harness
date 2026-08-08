@@ -4,7 +4,7 @@
  *
  *   node evals/run.mjs                 # toàn bộ
  *   node evals/run.mjs --task 0001
- *   node evals/run.mjs --bare          # harness trần (deprecation review)
+ *   node evals/run.mjs --bare          # harness trần (deprecation review) — ĐÒI `evals.command`
  *   node evals/run.mjs --dry           # chỉ liệt kê, không chạy
  *
  * Runner này CỐ Ý chưa gọi agent: cách gọi phụ thuộc tool bạn dùng và có tính phí.
@@ -13,11 +13,13 @@
  *
  * Nối agent: điền hàm runAgent() ở dưới.
  */
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync, mkdtempSync, renameSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { parseFrontmatter } from '../tooling/lib/frontmatter.mjs';
-import { repoPath, readJson, writeJson, report, git, config, spill, infraFailure } from '../tooling/lib/harness.mjs';
+import { repoPath, readJson, writeJson, report, git, config, spill, infraFailure, stateDir } from '../tooling/lib/harness.mjs';
 
 const argv = process.argv.slice(2);
 const has = f => argv.includes(f);
@@ -146,21 +148,55 @@ function splitCommands(src) {
   return out;
 }
 
-function runAssertions(body, agentRan) {
+/** Khối assertion của một task, đã gộp thành lệnh logic. Rỗng khi task không có khối nào. */
+function assertionsOf(body) {
   const block = body.match(/## Chấm lớp 1[\s\S]*?```bash\n([\s\S]*?)```/);
-  if (!block) return { ran: 0, failed: [], na: [] };
-  const cmds = splitCommands(block[1]);
+  return block ? splitCommands(block[1]) : [];
+}
+
+function runAssertions(body, agentRan, root, skip = null) {
+  const cmds = assertionsOf(body);
   const failed = [], na = [];
   let ran = 0;
   for (const { cmd, requiresAgent } of cmds) {
     const one = cmd.split('\n')[0].slice(0, 70);
     if (PLACEHOLDER.test(cmd)) { na.push(`${one} — còn placeholder chưa điền`); continue; }
     if (requiresAgent && !agentRan) { na.push(`${one} — chấm output của agent, mà \`evals.command\` chưa khai`); continue; }
+    if (skip?.has(cmd)) {
+      na.push(`${one} — ĐỎ SẴN trên cây trần TRƯỚC KHI agent chạy ⇒ nó đo lớp harness, không đo agent`);
+      continue;
+    }
     ran++;
-    const r = spawnSync(cmd, { shell: true, encoding: 'utf8', cwd: repoPath('') });
+    const r = spawnSync(cmd, { shell: true, encoding: 'utf8', cwd: root });
     if ((r.status ?? 1) !== 0) failed.push(cmd);
   }
   return { ran, failed, na };
+}
+
+/**
+ * TIỀN KIỂM của chế độ trần — thứ làm phép trừ có nghĩa thay vì chỉ có số.
+ *
+ * Gỡ lớp harness ra khỏi một cây thì có assertion **đứt theo**: `0001` chạy
+ * `node tooling/test-hooks.mjs`, và suite đó đọc `.claude/`. Nếu để nguyên, task đó ĐỎ ở lần
+ * chạy trần và XANH ở lần chạy đầy đủ — rồi phép trừ ghi chênh lệch đó vào cột *"giá trị của
+ * harness"*, trong khi agent không liên quan gì. Một số 0 do cấu trúc được thay bằng một số
+ * DƯƠNG do cấu trúc thì không khá hơn: nó chỉ sai theo hướng dễ chịu hơn.
+ *
+ * Nên: chạy các assertion KHÔNG phụ thuộc agent trên cây trần **trước khi agent chạy**. Cái
+ * nào đã đỏ khi chưa có gì xảy ra thì nó không nói gì về agent ⇒ `n/a` cho lần chạy này.
+ *
+ * Tất định, không cần task tự khai, và nó tự đúng khi ai đó đổi `BARE_STRIP`.
+ * Chỉ chạy ở chế độ trần: ở chế độ đầy đủ, cây là repo THẬT và tiền kiểm sẽ chạy mọi lệnh
+ * thêm một lượt vào đó.
+ */
+function barePreflight(body, root) {
+  const dead = new Set();
+  for (const { cmd, requiresAgent } of assertionsOf(body)) {
+    if (requiresAgent || PLACEHOLDER.test(cmd)) continue;
+    const r = spawnSync(cmd, { shell: true, encoding: 'utf8', cwd: root });
+    if ((r.status ?? 1) !== 0) dead.add(cmd);
+  }
+  return dead;
 }
 
 /**
@@ -171,9 +207,122 @@ function runAssertions(body, agentRan) {
  * Trả về danh sách đường dẫn mới bẩn, hoặc `null` khi không đọc được git (⇒ `?`, không phải
  * "sạch" — cùng luật ba giá trị với phần trên).
  */
-function worktreeFingerprint() {
-  const r = git(['status', '--porcelain']);
+function worktreeFingerprint(root) {
+  const r = git(['status', '--porcelain'], { cwd: root });
   return r.status === 0 ? r.stdout : null;
+}
+
+// ── HARNESS TRẦN: một cơ chế, không phải một cái nhãn ────────────────────────
+//
+// Tới 2.42.4, `--bare` **không gỡ gì cả**. Nó đổi tên file baseline, đổi tiêu đề, đổi lời
+// nhắn cuối — và `spawnSync` trong `runAgent()` không nhận nó: cùng `cwd`, cùng `env`, cùng
+// bộ hook. Hai lần chạy đo **cùng một thứ**, nên `eval − eval --bare` luôn ≈ 0.
+//
+// Điều đó tệ hơn một cờ hỏng, vì `docs/adr/harness/0002` và `evals/README.md` đặt đúng phép
+// trừ đó làm **chỉ số trung tâm**, và lời nhắn cuối của runner dạy người đọc rằng chênh lệch
+// nhỏ nghĩa là *"phần lớn harness của bạn là dead weight"*. Một số 0 do cấu trúc, kèm một
+// dòng hướng dẫn diễn giải nó thành kết luận sai về chính harness. Xem #91.
+//
+// GỠ CÁI GÌ — ranh giới là "Claude Code TỰ NẠP thứ này hay không":
+//
+//   gỡ   .claude/settings.json   đăng ký hook + permission ⇒ không có nó, hook không chạy
+//   gỡ   .claude/rules · skills · agents · .mcp.json       ⇒ nạp vào context/tầng discovery
+//   gỡ   CLAUDE.md · AGENTS.md                             ⇒ memory file, ~4.6k token (ADR 0002)
+//   GIỮ  .claude/hooks/**                                  ⇒ script TRƠ khi không được đăng ký
+//   GIỮ  tooling/ · harness.config.json                    ⇒ chỉ chạy khi CÓ NGƯỜI GỌI
+//
+// Giữ `tooling/` không phải là nhân nhượng: assertion lớp 1 gọi thẳng vào đó, và nếu gỡ nó
+// thì lần chạy trần không còn dụng cụ để chấm — ta sẽ đo "harness còn tồn tại không" thay vì
+// "agent có hành xử khác không". Cái ta muốn trừ đi là **ảnh hưởng tự động lên agent**.
+//
+// ĐỔI TÊN, không xoá: cây vẫn đọc được sau khi chạy nếu cần dựng lại hiện trường.
+const BARE_STRIP = [
+  '.claude/settings.json',
+  '.claude/rules',
+  '.claude/skills',
+  '.claude/agents',
+  'CLAUDE.md',
+  'AGENTS.md',
+  '.mcp.json',
+];
+
+/**
+ * Clone dùng một lần, đã gỡ remote và gỡ lớp harness. `--depth 1` + `file://` vì clone local
+ * mặc định bỏ qua `--depth` (git nói thẳng điều đó) — đo trên repo này: 0.9 giây, 840 KB.
+ *
+ * Gỡ remote là bắt buộc, không phải vệ sinh: agent chạy trong cây này với quyền ghi, và một
+ * `git push` từ đó là push vào repo thật.
+ */
+/**
+ * Xoá cây tạm — và KHÔNG BAO GIỜ ném. Trả `null` khi sạch, hoặc câu lỗi để gọi là một WARN.
+ *
+ * Đo 2026-08-08 trên Windows, chạy `--bare --task 0001` (task spawn nhiều tiến trình con nhất
+ * trong bộ): `rmSync` ném `EPERM` **trên chính thư mục**, sau khi đã xoá hết file bên trong —
+ * còn đúng hai thư mục rỗng. Xoá lại vài giây sau thì được ngay. Đây là ca handle-còn-treo
+ * kinh điển của Windows: `spawnSync` đã trả về, nhưng handle của tiến trình con (hoặc của phần
+ * mềm diệt virus đang quét) chưa đóng. `maxRetries: 3` × 100ms mặc định không đủ.
+ *
+ * Hai điều rút ra, và điều thứ hai quan trọng hơn:
+ *   · thử lại lâu hơn (10 × 200ms) — vá phần lớn ca;
+ *   · **dọn dẹp thất bại không được là một exception.** Bản đầu ném sau khi đã in xong báo
+ *     cáo: phép đo đã xong, đã đúng, và người dùng nhận một stack trace + exit code sai. Một
+ *     lỗi ở bước dọn rác không được phép nuốt kết quả của bước đo.
+ */
+function rmTree(dir) {
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+    return null;
+  } catch (e) {
+    return `${e.code || 'lỗi'} — còn sót cây tạm ở ${dir}, xoá tay khi rảnh`;
+  }
+}
+
+const BARE_PREFIX = 'harness-eval-bare-';
+
+/**
+ * Dọn cây trần của những lần chạy TRƯỚC. Cần thiết vì `rmTree` được phép thất bại, và cái
+ * được phép thất bại thì sẽ thất bại — mỗi lần một cây 840 KB nằm lại trong tmp.
+ *
+ * Đo 2026-08-08 trên Windows: sau `--bare --task 0001`, hai thư mục RỖNG (`…/` và `…/repo`)
+ * không xoá được, **kể cả từ một tiến trình mới**, trong khi cây của lần chạy trước đó thì xoá
+ * được ngay. Không tiến trình nào giữ chúng (đã soi `Win32_Process`) — dấu hiệu của trình quét
+ * nền, không phải của một handle bị rò trong code này. Nên đây là ca "sẽ tự hết sau vài phút",
+ * và cách đúng là **quét lại ở lần chạy sau**, không phải thử lại lâu hơn ở lần này.
+ *
+ * Ngưỡng 1 giờ, không phải "mọi cây": hai lần chạy `--bare` song song là chuyện hợp lệ, và một
+ * bộ dọn xoá cây của phiên đang chạy thì tệ hơn nhiều so với vài KB rác.
+ */
+function sweepStaleBareTrees() {
+  let n = 0;
+  const cutoff = Date.now() - 60 * 60 * 1000;
+  let entries = [];
+  try { entries = readdirSync(tmpdir(), { withFileTypes: true }); } catch { return 0; }
+  for (const e of entries) {
+    if (!e.isDirectory() || !e.name.startsWith(BARE_PREFIX)) continue;
+    const p = join(tmpdir(), e.name);
+    try { if (statSync(p).mtimeMs > cutoff) continue; } catch { continue; }
+    if (!rmTree(p)) n++;
+  }
+  return n;
+}
+
+function bareTree() {
+  const dir = mkdtempSync(join(tmpdir(), BARE_PREFIX));
+  const root = join(dir, 'repo');
+  const src = pathToFileURL(repoPath('')).href;
+  const cl = spawnSync('git', ['clone', '--quiet', '--depth', '1', '--single-branch', src, root], { encoding: 'utf8' });
+  if ((cl.status ?? 1) !== 0) {
+    return { dir, error: `git clone thất bại: ${(cl.stderr || cl.error?.message || '').trim().slice(0, 300)}` };
+  }
+  git(['remote', 'remove', 'origin'], { cwd: root });
+  const stripped = [];
+  for (const rel of BARE_STRIP) {
+    const p = join(root, ...rel.split('/'));
+    if (!existsSync(p)) continue;
+    renameSync(p, `${p}.bare-disabled`);
+    stripped.push(rel);
+  }
+  return { dir, root, stripped };
 }
 
 /**
@@ -188,7 +337,7 @@ function worktreeFingerprint() {
  * Chưa khai `evals.command` → trả null, runner chỉ chạy assertion trên trạng thái
  * hiện tại. Cố ý: gọi agent TỐN TIỀN, phải là hành động chủ động.
  */
-function runAgent(task) {
+function runAgent(task, root) {
   const tpl = config().evals?.command;
   if (!tpl || !String(tpl).trim()) return null;
 
@@ -229,7 +378,7 @@ function runAgent(task) {
 
   const t0 = Date.now();
   const r = spawnSync(cmd, {
-    shell: true, encoding: 'utf8', cwd: repoPath(''),
+    shell: true, encoding: 'utf8', cwd: root,
     input: prompt,                         // prompt qua stdin: không có tầng escaping nào để sai
     timeout: maxMinutes * 60_000,          // wall-clock cap — guardrail BẮT BUỘC
     maxBuffer: 64 * 1024 * 1024,
@@ -264,6 +413,40 @@ function runAgent(task) {
 const ok = [], warn = [], fail = [];
 const results = [];
 
+// ── `--bare` TỪ CHỐI in ra một con số nó không tạo ra được ───────────────────
+//
+// Ba trạng thái, và `?` ở đây phải là một lối ra CHẶN, không phải một dòng cảnh báo: người gõ
+// `--bare` đang xin đúng MỘT con số, nên in cho họ một con số sai còn tệ hơn không in gì.
+// Hai điều kiện dưới đây là hai cách khác nhau để hai lần chạy giống hệt nhau.
+let bare = null;
+if (BARE && !DRY) {
+  if (!String(config().evals?.command || '').trim()) {
+    console.error('\n`--bare` TỪ CHỐI chạy: `evals.command` rỗng.\n\n'
+      + 'Không agent nào chạy ⇒ cả hai lần đo chỉ chạy assertion tất định trên cùng một trạng thái\n'
+      + 'cây, nên lần trần KHÔNG THỂ khác lần đầy đủ. Phép trừ sẽ ra 0 do CẤU TRÚC, và một số 0\n'
+      + 'do cấu trúc đọc y hệt một phát hiện.\n\n'
+      + 'Khai `evals.command` trong harness.config.json rồi chạy lại.\n');
+    process.exit(1);
+  }
+  bare = bareTree();
+  if (bare.error) {
+    console.error(`\n\`--bare\` TỪ CHỐI chạy: không dựng được cây trần.\n  ${bare.error}\n`);
+    rmTree(bare.dir);
+    process.exit(1);
+  }
+  if (!bare.stripped.length) {
+    console.error('\n`--bare` TỪ CHỐI chạy: KHÔNG gỡ được gì.\n\n'
+      + `Không đường dẫn nào trong BARE_STRIP tồn tại ở cây này (${BARE_STRIP.join(' · ')}).\n`
+      + 'Cây trần y hệt cây đầy đủ ⇒ phép trừ vô nghĩa. Đây đúng là chế độ hỏng của #91.\n');
+    rmTree(bare.dir);
+    process.exit(1);
+  }
+  console.log(`\nCÂY TRẦN: ${bare.root}\n  đã gỡ: ${bare.stripped.join(' · ')}`);
+  const swept = sweepStaleBareTrees();
+  if (swept) console.log(`  dọn thêm ${swept} cây trần cũ (>1 giờ) còn sót từ lần chạy trước`);
+}
+const ROOT = bare?.root || repoPath('');
+
 for (const t of tasks) {
   const label = `${t.id} [${t.kind}/${t.type}] ${t.file.replace(/\.md$/, '')}`;
   if (DRY) { ok.push(label); continue; }
@@ -278,10 +461,13 @@ for (const t of tasks) {
     continue;
   }
 
-  const agent = runAgent(t);
-  const before = worktreeFingerprint();
-  const asserts = runAssertions(t.body, Boolean(agent));
-  const after = worktreeFingerprint();
+  // Tiền kiểm CHẠY TRƯỚC agent — đó là toàn bộ giá trị của nó: nó chụp lại "cây này chấm được
+  // gì khi chưa có gì xảy ra". Chạy sau thì không phân biệt được với hậu quả của agent.
+  const dead = bare ? barePreflight(t.body, ROOT) : null;
+  const agent = runAgent(t, ROOT);
+  const before = worktreeFingerprint(ROOT);
+  const asserts = runAssertions(t.body, Boolean(agent), ROOT, dead);
+  const after = worktreeFingerprint(ROOT);
 
   // Assertion vừa ghi vào repo ⇒ FAIL, và nêu tên. Đây là hỏng THẬT, không phải `n/a`:
   // một bộ đo làm bẩn đối tượng nó đo thì mọi số sau đó đều đáng ngờ, kể cả số của task khác.
@@ -366,7 +552,10 @@ if (reg.length) console.log(`  REGRESSION  ${rate(reg)}%  (${reg.filter(r => r.p
 if (naCount) console.log(`  n/a         ${naCount} task KHÔNG ĐO ĐƯỢC — ngoài mẫu số, KHÔNG phải "pass"`);
 
 // ── So với baseline ──────────────────────────────────────────────────────────
-const basePath = repoPath('.claude', 'state', `eval-baseline${BARE ? '-bare' : ''}.json`);
+// `stateDir()` chứ không `repoPath('.claude','state')` cứng: baseline LÀ trạng thái cục bộ, và
+// `HARNESS_STATE_DIR` là đường duy nhất để suite kiểm phép trừ mà không ghi đè baseline THẬT
+// của người đang chạy nó — cùng lý do `test-hooks.mjs` phải chuyển state đi chỗ khác.
+const basePath = join(stateDir(), `eval-baseline${BARE ? '-bare' : ''}.json`);
 const prev = readJson(basePath);
 if (prev) {
   const dCap = rate(cap) !== null && prev.capability !== null ? rate(cap) - prev.capability : null;
@@ -380,15 +569,54 @@ if (prev) {
 }
 
 if (has('--baseline')) {
-  writeJson(basePath, { at: new Date().toISOString(), env, capability: rate(cap), regression: rate(reg), results });
+  writeJson(basePath, { at: new Date().toISOString(), env, capability: rate(cap), regression: rate(reg), results, stripped: bare?.stripped ?? null });
   ok.push(`đã ghi baseline → ${basePath}`);
 }
 
-report(BARE ? 'EVAL (HARNESS TRẦN)' : 'EVAL', { ok, warn: [...hygiene, ...warn], fail });
+// ── PHÉP TRỪ: giá trị đo được của harness ────────────────────────────────────
+//
+// Runner tự làm phép trừ, thay vì để người đọc trừ hai con số bằng mắt. Lý do không phải tiện:
+// hai con số đó có **hai mẫu số khác nhau**, và trừ chúng bằng mắt là một phép tính sai không
+// có gì báo. Ví dụ thật: `0001` chấm được ở lần đầy đủ nhưng `n/a` ở lần trần (assertion của
+// nó đọc `.claude/`) ⇒ `100% (5/5)` với `100% (4/4)` trông như "chênh 0" trong khi hai vế nói
+// về hai tập task.
+//
+// Nên chỉ trừ trên **giao** của hai tập ĐO ĐƯỢC, và in luôn số task bị loại. Giao rỗng ⇒ `?`.
+const otherPath = join(stateDir(), `eval-baseline${BARE ? '' : '-bare'}.json`);
+const other = readJson(otherPath);
+if (other) {
+  const mine = new Map(results.filter(r => r.measured).map(r => [String(r.id), r.passed]));
+  const theirs = new Map((other.results || []).filter(r => r.measured).map(r => [String(r.id), r.passed]));
+  const common = [...mine.keys()].filter(id => theirs.has(id));
+  const pct = (m) => Math.round(common.filter(id => m.get(id)).length / common.length * 100);
 
-if (BARE) {
-  console.log('  → So điểm này với lần chạy đầy đủ. Chênh lệch NHỎ nghĩa là phần lớn');
-  console.log('    harness của bạn là dead weight. Bật lại từng mảnh, đo delta từng mảnh.\n');
+  console.log('\n=== GIÁ TRỊ ĐO ĐƯỢC CỦA HARNESS ===');
+  if (!common.length) {
+    console.log('  ?  không task nào ĐO ĐƯỢC ở CẢ HAI lần chạy — chưa trừ được gì.');
+    console.log(`     lần này: ${mine.size} task · baseline ${BARE ? 'đầy đủ' : 'trần'}: ${theirs.size} task`);
+  } else {
+    const full = BARE ? pct(theirs) : pct(mine);
+    const nude = BARE ? pct(mine) : pct(theirs);
+    const dropped = results.filter(r => r.measured).length - common.length;
+    console.log(`  đầy đủ ${full}%  −  trần ${nude}%  =  ${full - nude >= 0 ? '+' : ''}${full - nude}pp`
+      + `   trên ${common.length} task so được${dropped ? ` (${dropped} task loại: không đo được ở lần kia)` : ''}`);
+    if (other.env?.commit && other.env.commit !== env.commit) {
+      warn.push(`Phép trừ đang so hai COMMIT KHÁC NHAU (${other.env.commit} vs ${env.commit}) — chênh lệch gồm cả thay đổi code giữa hai commit, không chỉ lớp harness.`);
+    }
+    if (full - nude === 0) {
+      console.log('     Chênh lệch 0 ở đây là một PHÁT HIỆN, không phải hiện vật của dụng cụ:');
+      console.log('     cây trần thật sự đã bị gỡ lớp harness. Bật lại từng mảnh, đo delta từng mảnh.');
+    }
+  }
+} else if (BARE) {
+  console.log('\n=== GIÁ TRỊ ĐO ĐƯỢC CỦA HARNESS ===');
+  console.log('  ?  chưa có baseline đầy đủ để trừ. Chạy `node evals/run.mjs --baseline` trước.');
 }
+
+// Dọn TRƯỚC khi in: nếu dọn hỏng, nó là một WARN trong bảng — không phải một stack trace
+// đổ ra sau một báo cáo đã đúng.
+if (bare) { const e = rmTree(bare.dir); if (e) warn.push(`dọn cây trần: ${e}`); }
+
+report(BARE ? 'EVAL (HARNESS TRẦN)' : 'EVAL', { ok, warn: [...hygiene, ...warn], fail });
 
 process.exit(fail.length ? 1 : 0);
