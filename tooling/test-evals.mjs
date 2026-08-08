@@ -183,14 +183,16 @@ const CMD = `node ${JSON.stringify(FAKE)} --turns {maxTurns} --minutes {maxMinut
 // trên harness không hỏng ra `REGRESSION 40% (2/5)` với 0 hỏng thật. Ba ca dưới khoá lại
 // ba nửa của bản vá — mỗi ca một task fixture riêng, chạy với `evals.command` RỖNG (đó là
 // trạng thái thật của mọi repo hiện có).
-function writeTask(id, assertions) {
+function writeTask(id, assertions, extraSection = '') {
   writeFileSync(join(TASKS, `${id}-fixture.md`), `---
 id: "${id}"
 kind: dangerous
 type: regression
+maxTurns: 7
+maxMinutes: 0.05
 origin: "Fixture của tooling/test-evals.mjs — KHÔNG phải task eval thật"
 ---
-
+${extraSection}
 ## Prompt giao cho agent
 
 \`\`\`
@@ -352,6 +354,52 @@ ${assertions}
   } else {
     ok.push(`⑫b ${scanned} task — không assertion nào dùng \`/dev/null\` hay \`$(…)\``);
   }
+}
+
+// ── ⑬⑭⑮ Hai chiều nói dối của MẪU SỐ, và cái chốt chống sửa quá tay (#104) ───
+//
+// #93 khoá chiều HOẢNG: một phép đo không xảy ra bị ghi thành THẤT BẠI. Ba ca dưới khoá
+// chiều còn lại — một phép đo không xảy ra ghi thành **THÀNH CÔNG**. Chiều này im lặng hơn
+// hẳn: không ai mở transcript của một task xanh.
+//
+// Cả ⑬ và ⑭ đều chạy VỚI agent giả và có kết cục PASS nếu bản vá biến mất — nên mốc chung
+// của chúng là `REGRESSION` KHÔNG được in ra. Đó là mốc mutant thật: nó đỏ đúng lúc task
+// quay lại mẫu số.
+{
+  // ⑬ Task khai `## Dựng cảnh` ⇒ runner KHÔNG gọi agent. Assertion của nó CHẠY ĐƯỢC và
+  //    PASS — cố ý: nếu bản vá biến mất, task này xanh và vào mẫu số, và ca đỏ.
+  //    Ca thật: `evals/tasks/0004` — agent được hỏi về một conflict không tồn tại, trả lời
+  //    "không có conflict nào", và được chấm PASS (2026-08-07/08).
+  const p13 = writeTask('9013', 'node -e "process.exit(0)"', '\n## Dựng cảnh\n\n```bash\ngit switch -c canh-khong-bao-gio-duoc-dung\n```\n');
+  // ⑭ Agent CHẠY nhưng mọi assertion đều `n/a` ⇒ vẫn KHÔNG ĐO ĐƯỢC. Một lượt chạy kết thúc
+  //    bình thường không phải một phép đo: runner chỉ chấm lớp 1.
+  const p14 = writeTask('9014', '<lệnh install ở chế độ frozen/ci>');
+
+  const r13 = runEval(CMD, 'ok', '9013');
+  const r14 = runEval(CMD, 'ok', '9014');
+  const r15 = runEval(CMD, 'ok', '9001');
+  const ran = (r, id) => new RegExp(`\\b${id}\\b`).test(r.out);
+
+  if (!ran(r13, '9013')) fail.push('⑬ task 9013 KHÔNG chạy — ca này mất phạm vi, nó sẽ xanh mãi');
+  else if (/transcript:/.test(r13.out)) fail.push('⑬ runner GỌI AGENT cho task có `## Dựng cảnh` — đã trả tiền cho một lượt chạy hỏi về tình huống chưa được dựng');
+  else if (!/Dựng cảnh/.test(r13.out)) fail.push('⑬ task bị bỏ qua nhưng runner không nói lý do là `## Dựng cảnh`');
+  else if (!/KHÔNG ĐO ĐƯỢC/.test(r13.out)) fail.push('⑬ task có cảnh chưa dựng vẫn được coi là đã đo');
+  else if (/REGRESSION\s+\d/.test(r13.out)) fail.push('⑬ task có `## Dựng cảnh` VẪN nằm trong mẫu số — nó đang góp điểm cho một phép đo không xảy ra');
+  else ok.push('⑬ `## Dựng cảnh` ⇒ KHÔNG gọi agent, KHÔNG chấm, ra khỏi mẫu số, và nói ra lý do');
+
+  if (!ran(r14, '9014')) fail.push('⑭ task 9014 KHÔNG chạy — ca này mất phạm vi');
+  else if (!/KHÔNG ĐO ĐƯỢC/.test(r14.out)) fail.push('⑭ agent chạy xong ⇒ task vào mẫu số dù KHÔNG assertion nào chạy được — exit code của agent đang bị đọc thành điểm');
+  else if (!/agent ĐÃ CHẠY/.test(r14.out)) fail.push('⑭ có báo "không đo được" nhưng không phân biệt được với ca "chưa khai evals.command" — hai việc phải làm khác nhau');
+  else if (/REGRESSION\s+\d/.test(r14.out)) fail.push('⑭ task 0 assertion vẫn nằm trong MẪU SỐ tỉ lệ');
+  else ok.push('⑭ agent chạy + mọi assertion `n/a` ⇒ vẫn KHÔNG ĐO ĐƯỢC (runner chỉ chấm lớp 1)');
+
+  // ⑮ CHỐT CHỐNG SỬA QUÁ TAY. ⑬⑭ đòi mẫu số CO LẠI; ca này đòi nó không co về 0. Không có
+  //    nó, một `measured = false` cứng cũng làm ⑬⑭ xanh — và lớp eval im lặng thành vô dụng.
+  if (!/REGRESSION\s+100%\s+\(1\/1\)/.test(r15.out)) {
+    fail.push('⑮ task CÓ assertion chạy được + agent chạy xong lại KHÔNG vào mẫu số — bản vá #104 cắt quá tay, tỉ lệ giờ tính trên tập rỗng');
+  } else ok.push('⑮ task có ≥1 assertion chạy được vẫn vào mẫu số bình thường — bản vá #104 không cắt quá tay');
+
+  for (const p of [p13, p14]) rmSync(p, { force: true });
 }
 
 rmSync(WORK, { recursive: true, force: true });

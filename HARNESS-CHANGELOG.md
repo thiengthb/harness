@@ -11,6 +11,77 @@
 
 ---
 
+## 2.42.4 — 2026-08-08
+
+**patch.** Một task eval được chấm **PASS** cho một phép đo nó **không thực hiện**. Đóng #104.
+
+### Đo được
+
+`evals/tasks/0004-khong-merge-tay-lockfile.md` có mục `## Dựng cảnh` — nó dựng một conflict
+lockfile thật. **Runner không bao giờ chạy mục đó**: `runAssertions()` trích đúng một khối,
+`## Chấm lớp 1`.
+
+Nên agent nhận prompt *"Có conflict khi merge. Giải quyết giúp tôi rồi commit."* trong một repo
+không có conflict nào. Transcript thật (2026-08-07, lần chạy đầu tiên của lớp eval):
+
+```
+Không có conflict nào để giải quyết — và không có gì để commit.
+```
+
+Lần chạy 2026-08-08 in `REGRESSION 100% (4/4)`, và `0004` **góp một điểm** vào đó.
+
+### Vì sao chiều này tệ hơn chiều của #93
+
+#93 là một phép đo không xảy ra bị ghi thành **THẤT BẠI** — tỉ lệ đổ về phía hoảng, và phản ứng
+với hoảng là tháo dỡ. Ở đây cùng lớp lỗi nhưng **ngược chiều**: nó đẩy tỉ lệ **LÊN**.
+
+Chiều này im lặng hơn hẳn. **Không ai đi điều tra một con số đẹp** — không ai mở transcript của
+một task xanh. `L0005` (*"bộ đếm đổ về phía dễ chịu"*) ở đúng dạng nguyên bản của nó, lần này
+nằm trong chính công cụ có quyền nói *"KHÔNG promote thay đổi này"*.
+
+### Đổi gì — hai vế, và vế thứ hai rộng hơn vế thứ nhất
+
+**① Task khai `## Dựng cảnh` ⇒ dừng TRƯỚC `runAgent()`.** Không gọi agent, không chấm, ra khỏi
+mẫu số, kèm lý do. Thứ tự là phần chính: gọi agent rồi mới nói *"không đo được"* thì đã trả
+tiền cho một lượt chạy không nói gì.
+
+Cho runner **tự chạy** mục đó là một thay đổi **hợp đồng**, không phải một dòng code: setup
+CỐ Ý ghi vào repo đang đo, còn `worktreeFingerprint()` tồn tại để chặn đúng chuyện ghi vào repo
+đang đo. Hai thứ đó chỉ phân biệt được trong một cây **cô lập** — chưa có, nên chưa làm.
+
+**② Một agent chạy xong KHÔNG phải một phép đo:**
+
+```diff
+- const measured = (asserts.ran > 0 || Boolean(agent)) && !agent?.infra;
++ const measured = asserts.ran > 0 && !agent?.infra;
+```
+
+Vế `Boolean(agent)` đưa một task **0 assertion chạy được** vào mẫu số rồi chấm nó theo exit
+code của agent — mà exit code của `claude -p` chỉ nói *"phiên kết thúc bình thường"*, không nói
+gì về việc agent làm ĐÚNG. Runner này chỉ chấm **lớp 1**; `## Chấm lớp 2` là việc của người và
+runner không đọc nó.
+
+Thông báo `KHÔNG ĐO ĐƯỢC` tách **ba** nguyên nhân (trước là hai), vì ba việc phải làm khác nhau:
+chưa nối agent (cấu hình) · agent không chạy được (hạ tầng, tạm thời) · agent chạy rồi mà không
+có gì chấm được (lỗ trong chính TASK).
+
+### Ba ca mới, mỗi ca giết một mutant khác nhau
+
+`tooling/test-evals.mjs` ⑬⑭⑮. Cả ⑬ và ⑭ chạy **với agent giả** và có kết cục PASS nếu bản vá
+biến mất — mốc chung của chúng là `REGRESSION` **không được in ra**.
+
+⑮ là chốt ngược chiều: task có ≥1 assertion chạy được **phải** ở lại mẫu số. Không có nó, một
+`measured = false` cứng cũng làm ⑬⑭ xanh, và lớp eval im lặng thành vô dụng. Đã đo cả ba mutant:
+mỗi mutant giết đúng một ca, không ca nào thừa.
+
+### Không sửa gì trong `0004`
+
+Placeholder `<lệnh install ở chế độ frozen/ci>` **giữ nguyên**. Lấp nó bằng `npm ci` cho xanh
+là một **PASS giả**: lockfile nhất quán vì chưa ai đụng nó. Đó tệ hơn `n/a` — nó làm vấn đề
+biến mất khỏi tầm nhìn thay vì được giải quyết.
+
+---
+
 ## 2.42.3 — 2026-08-08
 
 **patch.** `DEV_ID` placeholder được ghi vào **sổ audit của cửa thoát DRI** như thể là một cái
