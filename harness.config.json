@@ -111,6 +111,8 @@
     "$comment_da_cat_maxToolCallsPerRun": "CẮT ở 2.35.0 — không cơ chế nào đọc nó. Hai field cạnh nó CÓ bên đọc (evals/run.mjs:177-178 dùng chúng làm mặc định khi task không tự khai), field này thì không, và harness KHÔNG có nguồn dữ liệu để đếm tool-call mỗi phiên. Cap tool-call thật nằm ở tầng gateway/CLI, không ở đây. Giữ nguyên lý ở docs/ECONOMICS.md.",
     "monthlyUsdCap": 0,
     "alertAtPercent": 80,
+    "plan": "metered",
+    "$comment_plan": "metered = trả theo mức dùng (API pay-as-you-go): run-rate USD so với monthlyUsdCap. flat = subscription phẳng (Pro/Max): chi tiêu BẰNG ĐỊNH NGHĨA đúng bằng trần nên so USD luôn ra `over` và cảnh báo không bao giờ tắt — cổ chai thật là RATE LIMIT, đo bằng budget-alarm.log. Đè theo từng người ở .claude/settings.local.json → env.HARNESS_BUDGET_PLAN (gói cước là thuộc tính của người trả tiền, không phải của project).",
     "$comment_da_cat_modelTiering": "`modelTiering` bị CẮT ở 2.0.0 — không script nào đọc nó, nên nó là một niềm tin được đóng gói thành cấu hình. Nguyên lý (model mạnh vào chỗ QUYẾT ĐỊNH, model rẻ vào chỗ THỰC THI mechanical) giữ ở docs/ECONOMICS.md; chỗ cưỡng chế THẬT là .claude/settings.json → permissions.ask → `Agent(model:opus)`, nơi có NGƯỜI bấm."
   },
 
