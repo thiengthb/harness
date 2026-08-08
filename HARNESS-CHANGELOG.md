@@ -11,6 +11,54 @@
 
 ---
 
+## 2.42.3 — 2026-08-08
+
+**patch.** `DEV_ID` placeholder được ghi vào **sổ audit của cửa thoát DRI** như thể là một cái
+tên — và nó vô hiệu hoá cái gác vốn có cho đúng chuyện này. Đóng #114.
+
+### Đo được
+
+```
+$ node -e "console.log(process.env.DEV_ID)"       → CHANGEME-ten-cua-ban
+$ tail -3 .claude/telemetry/harness-edits.log     → …|CHANGEME-ten-cua-ban  (cả ba dòng)
+```
+
+`harness-edits.log` là thứ làm cửa thoát `HARNESS_DRI=1` **audit được** — lý do duy nhất nó
+được chấp nhận thay vì bị coi là lỗ hổng. Câu nó phải trả lời là *"AI đã ghi vào vùng cấm?"*.
+Ngày 2026-08-08 có **hai phiên Claude Code song song** trên cùng máy, một mở DRI một không, và
+sổ **không phân biệt được**. Đúng câu hỏi nó sinh ra để trả lời là câu nó không trả lời được.
+
+### Cái gác đã có, và placeholder đi lọt qua nó
+
+`check-reservations.mjs` in *"Chưa set DEV_ID"* — nhưng điều kiện là chuỗi **rỗng**.
+`"CHANGEME-ten-cua-ban"` không rỗng ⇒ nhánh đó **chưa từng chạy một lần nào**, kể cả trên repo
+chưa ai khai gì.
+
+Lỗi nằm ở mô hình hoá: *"chưa khai"* bị viết thành *"chuỗi rỗng"*, trong khi thực tế nó là
+*"còn nguyên giá trị mẫu"*. Placeholder đi lọt mọi phép kiểm vì nó **hợp lệ về mặt kiểu**.
+Cùng lớp với #96 (`issuePrefixes: ["ABC"]`) — hạt giống của template dùng như dữ liệu thật.
+
+### `devId()` trả OBJECT, không trả chuỗi
+
+Hai câu hỏi khác nhau, và gộp chúng là cách tái tạo đúng lỗi đang sửa:
+
+| câu hỏi | trả lời |
+|---|---|
+| ghi tên nào vào sổ? | `id` — giá trị thật tốt nhất (`DEV_ID` → `USER` → `USERNAME`) |
+| DEV_ID đã khai chưa? | `from === 'DEV_ID'` |
+
+Trên Windows `USERNAME` **luôn** có. Chỉ trả một chuỗi thì `id` không bao giờ rỗng, cảnh báo
+không bao giờ bắn, và bản vá chỉ đổi tên biến. Và `USERNAME` không thay được `DEV_ID`: chính
+`check-reservations.mjs` đã ghi lý do — *cùng một người trên hai máy thường có `USERNAME` khác
+nhau*, nên reservation của bạn đọc ra là của người khác.
+
+### Còn thiếu — cần `/harness-propose`
+
+Hai hook vẫn ghi `process.env.DEV_ID` thô vào sổ: `protect-harness.mjs:36` và
+`protect-migrations.mjs:54`. `.claude/hooks/**` là **vùng cấm**, nên phần đó không đi trong PR
+này. Ở máy đã khai `DEV_ID` thì sổ ghi đúng ngay; ở máy chưa khai, `harness-doctor` giờ **nói
+ra** thay vì im.
+
 ## 2.42.2 — 2026-08-08
 
 **patch.** `issuePrefixes` placeholder làm `/claim` · `/handoff` · `/verify-ui` đọc `?` trên

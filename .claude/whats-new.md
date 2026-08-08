@@ -1,4 +1,4 @@
-<!-- version: 2026-08-08-f -->
+<!-- version: 2026-08-08-g -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,18 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-08 — Sổ audit thôi ghi mọi người thành MỘT người (v2.42.3)
+
+`DEV_ID` còn nguyên placeholder `CHANGEME-ten-cua-ban`, và nó được ghi vào `harness-edits.log`
+— sổ làm cửa thoát `HARNESS_DRI=1` **audit được** — như thể là một cái tên. Hôm qua có hai
+phiên song song trên cùng máy; sổ không phân biệt được phiên nào ghi vùng cấm.
+
+Cảnh báo cho đúng chuyện này **đã có sẵn** ở `check-reservations`, nhưng nó hỏi *"có rỗng
+không"* — mà placeholder thì **không rỗng**, nên nó chưa từng bắn một lần nào.
+
+**Việc bạn phải làm khác đi:** mở `.claude/settings.local.json` → `env.DEV_ID`, điền tên bạn.
+File đó gitignored, máy-cục-bộ, không ảnh hưởng ai. `harness-doctor` giờ nói ra nếu bạn chưa làm.
 
 ## 2026-08-08 — `/claim` `/handoff` `/verify-ui` thôi mù trên nhánh của bạn (v2.42.2)
 

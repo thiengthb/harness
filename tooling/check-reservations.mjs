@@ -10,9 +10,9 @@
  */
 import { readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, git, readJson, matchGlob, report, config, isSolo } from './lib/harness.mjs';
+import { repoPath, git, readJson, matchGlob, report, config, isSolo, devId } from './lib/harness.mjs';
 
-const me = process.env.DEV_ID || process.env.USER || process.env.USERNAME || '';
+const { id: me, from: meFrom } = devId();
 const dir = repoPath('reservations');
 
 // ── SOLO: guard này KHÔNG CÓ VIỆC, và tệ hơn — nó chặn NHẦM ─────────────────
@@ -32,8 +32,16 @@ if (isSolo()) {
 }
 
 if (!existsSync(dir)) process.exit(0);
+// Bản trước điều kiện là `!me`, và nó CHƯA TỪNG BẮN một lần nào: `DEV_ID` giữ nguyên
+// placeholder `CHANGEME-…` là một chuỗi KHÔNG RỖNG nên nó đi lọt (#114). Giờ hỏi đúng câu —
+// DEV_ID có được KHAI không — thay vì "có giá trị nào đó không".
 if (!me) {
-  console.error('⚠️  Chưa set DEV_ID — không biết reservation nào là của bạn.');
+  console.error('⚠️  Chưa biết bạn là ai — không xác định được reservation nào là của bạn.');
+  console.error('   Set trong .claude/settings.local.json → env.DEV_ID');
+} else if (meFrom !== 'DEV_ID') {
+  console.error(`⚠️  DEV_ID chưa khai — đang tạm dùng ${meFrom}=${me}.`);
+  console.error(`   Cùng một người trên hai máy thường có ${meFrom} khác nhau, và lúc đó`);
+  console.error('   reservation của CHÍNH BẠN đọc ra là của người khác.');
   console.error('   Set trong .claude/settings.local.json → env.DEV_ID');
 }
 

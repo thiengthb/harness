@@ -17,7 +17,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, TEST_TELEMETRY_DIR, TEST_RUN_ID, sweepStaleTestRuns, coordinationLayer, verificationCoverage, readPacks, packPending, budgetStatus, latestCapoEntry } from './lib/harness.mjs';
+import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, devId, TEST_TELEMETRY_DIR, TEST_RUN_ID, sweepStaleTestRuns, coordinationLayer, verificationCoverage, readPacks, packPending, budgetStatus, latestCapoEntry } from './lib/harness.mjs';
 
 const QUICK = process.argv.includes('--quick');
 // PHẢI chụp TRƯỚC khi chạy các suite bên dưới: nó là mốc phân biệt "telemetry suite của lần
@@ -102,6 +102,23 @@ if (ROLE === 'unknown') {
 
 if (String(cfg.project?.id).includes('CHANGEME')) placeholder('harness.config.json → project.id vẫn là CHANGEME', 'project.id = CHANGEME (placeholder của template)');
 if (String(cfg.project?.dri || '').includes('CHANGEME')) placeholder('harness.config.json → project.dri chưa điền', 'project.dri chưa điền (placeholder của template)');
+
+// DEV_ID không nằm trong `harness.config.json` (nó khác nhau theo MÁY, không theo project) nên
+// nó không đi qua `placeholder()` như hai dòng trên. Nhưng nó im lặng theo cùng một kiểu và
+// đắt hơn: nó là cột "AI" của sổ audit cửa thoát DRI, và placeholder được ghi vào đó như thể
+// là một cái tên (#114). Đo 2026-08-08: cả 3 dòng ghi vùng cấm hôm đó đều mang một "người".
+const who = devId();
+if (!who.id) {
+  advice.push('DEV_ID chưa khai và không có USER/USERNAME — sổ audit cửa thoát DRI (`harness-edits.log`) '
+    + 'đang khuyết danh, tức nó không trả lời được câu hỏi duy nhất nó sinh ra để trả lời. '
+    + 'Sửa: `.claude/settings.local.json` → `env.DEV_ID`');
+} else if (who.from !== 'DEV_ID') {
+  advice.push(`DEV_ID chưa khai — đang tạm dùng ${who.from}=${who.id}. Cùng một người trên hai máy `
+    + `thường có ${who.from} khác nhau, nên reservation và telemetry sẽ đọc bạn thành hai người. `
+    + 'Sửa: `.claude/settings.local.json` → `env.DEV_ID`');
+} else {
+  console.log(`  ✓  DEV_ID = ${who.id} — sổ audit và reservation biết dòng nào là của bạn`);
+}
 
 const cmds = declaredCommands(cfg);
 if (!cmds.length) {
