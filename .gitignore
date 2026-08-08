@@ -45,3 +45,10 @@ target/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ── rác của suite gác ────────────────────────────────────────────────────────
+# `test-hooks.mjs` ghi mutant tạm VÀO ĐÂY (mutant phải giải được import tương đối của hook
+# thật, nên không đẩy sang tmpdir được). Bình thường `finally` xoá ngay; suite bị kill giữa
+# chừng thì file ở lại — và một file `.mjs` lạ trong `.claude/hooks/` mà git không che là thứ
+# bị commit nhầm.
+.claude/hooks/.*.tmp.*.mjs

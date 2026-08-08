@@ -11,6 +11,78 @@
 
 ---
 
+## 2.42.1 — 2026-08-08
+
+**patch.** Suite gác thôi chập chờn: **năm** đường ghi trạng thái mang tên cố định toàn máy,
+nên hai phiên cùng máy làm nhau đỏ ngẫu nhiên. Đóng #100.
+
+### Chập chờn đo được, và nó chỉ xuất hiện khi chạy song song
+
+| cách chạy | kết quả |
+|---|---|
+| tuần tự 6 lần | 6/6 xanh |
+| **2 suite song song** | **cả hai đỏ ngay lần đầu**, mỗi bên một tập ca khác nhau |
+
+Tuần tự xanh là lý do nó sống lâu: ai gặp đỏ cũng chạy lại một mình và thấy xanh, rồi kết luận
+"chắc máy lag". `AGENTS.md` cho phép nhiều session cùng máy, nên đây là cấu hình thường.
+
+Nghiêm trọng vì repo này đặt **toàn bộ thẩm quyền** lên lớp xác minh. Một suite chập chờn dạy
+đúng một phản xạ: **chạy lại cho tới khi xanh** — chính phản xạ mà mọi ratchet ở đây được viết
+ra để chặn. Và ba ca đỏ đầu tiên nói về `block()` không ghi sổ: lần sau chúng đỏ vì lý do thật,
+phản xạ đầu tiên vẫn sẽ là "chạy lại đi".
+
+### Năm tài nguyên dùng chung, không phải một
+
+```
+tmpdir()/harness-test-telemetry          ← lib/harness.mjs
+tmpdir()/harness-test-state              ← lib/harness.mjs
+tmpdir()/harness-test-state-crumb        ← test-hooks.mjs
+.claude/hooks/.mutant.tmp.mjs            ← mutate()
+.claude/hooks/.mutant.observe.tmp.mjs    ← mutant observe
+.claude/hooks/.failmode.tmp.mjs          ← bảng chế độ hỏng
+```
+
+Ba cái sau nằm **trong repo**, không phải `tmpdir()` — và bắt buộc phải thế, vì bản sửa của
+hook cần giải được import tương đối của hook gốc. Bên này ghi đè file bên kia, rồi
+`finally { rmSync }` của bên này xoá file bên kia **giữa lúc nó đang spawn**. Hai kiểu hỏng:
+`exit=1` (module vừa bị xoá) và `exit=2, mong đợi 1` (chạy nhầm bản sửa của suite kia). Kiểu
+thứ hai nguy hiểm hơn — nó không giống lỗi hạ tầng, nó giống **hook có bug**.
+
+### Tên cố định làm HAI việc, và chỉ một việc là cần
+
+Tên cố định tồn tại để `harness-doctor` (cha) đọc được telemetry của suite (con) — nguồn *"bằng
+chứng thứ hai"*. Nhưng *"hai tiến trình thoả thuận được đường dẫn"* không đòi *"mọi tiến trình
+trên máy dùng chung một đường dẫn"*. Giờ đường dẫn theo **lần chạy**, và cha **ghim** id xuống
+con qua `HARNESS_TEST_RUN_ID`:
+
+- chạy thẳng `test-hooks.mjs` → id = pid của nó ⇒ hai lần chạy không giẫm nhau
+- `harness-doctor` spawn suite → id = pid của **doctor** ⇒ cha đọc đúng chỗ con vừa ghi
+
+PID được dùng lại sau khi tiến trình chết. Không vá ở đây: `tallyLines({ sinceMs })` đã chỉ đếm
+dòng sinh ra trong lần chạy hiện tại. Hai lớp cùng hướng, không thay nhau.
+
+### Bằng chứng
+
+- **4 suite song song × 3 vòng ⇒ 12/12 lần đạt `201/201 pass`, 0 FAIL.** Trước bản vá, 2 suite
+  song song đã đủ làm cả hai đỏ.
+- **3 mutant, cả 3 bị giết**: `TEST_RUN_ID` thành hằng · `hookTempName` bỏ qua `runId` ·
+  doctor thôi ghim id.
+- `harness-doctor` vẫn in `suite ✓` — nguồn bằng chứng thứ hai còn nguyên.
+
+Mutant thứ ba lúc đầu **sống sót**, và nó chỉ ra lỗi trong chính ca kiểm: ca grep cả file tìm
+`HARNESS_TEST_RUN_ID`, mà **chú thích giải thích cơ chế cũng chứa chuỗi đó** — check tự khớp
+với lời giải thích của chính nó. Đã neo lại vào đúng lời gọi spawn.
+
+### Kèm theo
+
+- **Sàn `RATCHET` 185 → 201.** Đo được `195/195 pass, sàn 185`: 10 ca thêm vào mà không ai nâng
+  sàn, tức 10 ca có thể ngừng chạy mà thứ duy nhất nhìn thấy điều đó vẫn xanh.
+- `.gitignore` che `.claude/hooks/.*.tmp.*.mjs` — suite bị kill giữa chừng để lại file `.mjs`
+  lạ trong `.claude/hooks/` mà git không che.
+- `sweepStaleTestRuns()` dọn thư mục lần-chạy > 24h (một thư mục mỗi lần chạy thì phải có ai dọn).
+
+---
+
 ## 2.42.0 — 2026-08-08
 
 **minor.** Sổ phiên **dùng chung cho mọi worktree**, và bản tin đầu phiên **nói ra cái giá**.

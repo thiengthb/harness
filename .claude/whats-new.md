@@ -1,4 +1,4 @@
-<!-- version: 2026-08-08-d -->
+<!-- version: 2026-08-08-e -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,18 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-08 — `test-hooks` đỏ thì đó là lỗi THẬT (v2.42.1)
+
+Suite gác từng chập chờn, và **chỉ khi bạn chạy song song với một phiên khác**: đo được tuần tự
+6/6 xanh, mà 2 suite song song thì **cả hai đỏ**. Năm đường ghi trạng thái dùng chung một cái
+tên toàn máy — kể cả ba file tạm ghi thẳng vào `.claude/hooks/`.
+
+**Việc bạn phải làm khác đi:** thôi chạy lại lần hai. Trước đây "chạy lại thì xanh" là thật, nên
+nó dạy đúng phản xạ tệ nhất — và ba ca hay đỏ nhất lại nói về `block()` không ghi sổ, tức lần
+sau chúng đỏ vì lý do thật thì bạn cũng sẽ bỏ qua. Giờ **đỏ là đỏ**.
+
+Sàn cũng vừa bắt kịp tổng thật (185 → 201): 10 ca từng thêm vào mà không ai nâng sàn.
 
 ## 2026-08-08 — Bạn sẽ THẤY phiên song song của chính mình (v2.42.0)
 

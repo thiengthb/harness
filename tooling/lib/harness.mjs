@@ -10,7 +10,7 @@
  * trên Ubuntu / macOS / Windows, kể cả trước khi `install` chạy.
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, readdirSync, statSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, relative, resolve, sep, dirname } from 'node:path';
 import { tmpdir, platform, homedir } from 'node:os';
@@ -1582,9 +1582,56 @@ export function telemetryDir() {
  * Hằng số này viết tay ở hai file thì lệch nhau là chuyện của thời gian, và khi lệch
  * thì doctor đọc một thư mục rỗng rồi kết luận "chưa có bằng chứng" về 9 cái gác
  * vừa chạy xong ngay trong cùng một lần chạy của chính nó. Sai lặng lẽ, không đỏ.
+ *
+ * NHƯNG *"hai tiến trình thoả thuận được đường dẫn"* KHÔNG đồng nghĩa *"mọi tiến trình trên
+ * máy dùng chung một đường dẫn"*. Một cái tên cố định làm cả hai việc cùng lúc, và việc thứ
+ * hai là một cuộc đua. Đo 2026-08-08 (#100): chạy TUẦN TỰ 6 lần ⇒ 6 lần xanh; chạy HAI suite
+ * SONG SONG ⇒ **cả hai đỏ ngay lần đầu**, mỗi bên một tập ca khác nhau. `AGENTS.md` cho phép
+ * nhiều session cùng máy, nên đây là cấu hình thường, không phải ca hiếm.
+ *
+ * Cách tách hai việc: đường dẫn theo LẦN CHẠY, và cha GHIM id đó xuống con qua env.
+ *   · chạy thẳng `test-hooks.mjs`  → id = pid của chính nó  ⇒ hai lần chạy không giẫm nhau
+ *   · `harness-doctor` spawn suite → id = pid của DOCTOR    ⇒ cha đọc đúng chỗ con vừa ghi
+ *
+ * PID được hệ điều hành dùng lại sau khi tiến trình chết, nên một thư mục cũ có thể trùng tên.
+ * Điều đó KHÔNG được vá ở đây, vì đã có lớp khác lo và hai lớp cùng hướng thì mạnh hơn một:
+ * `tallyLines({ sinceMs })` chỉ đếm dòng SINH RA TRONG lần chạy hiện tại (xem ④ ở
+ * `test-hooks.mjs`). Bằng chứng cũ trùng pid vẫn đọc là `?`, không đọc thành `ok`.
  */
-export const TEST_TELEMETRY_DIR = join(tmpdir(), 'harness-test-telemetry');
-export const TEST_STATE_DIR = join(tmpdir(), 'harness-test-state');
+export const TEST_RUN_ID = process.env.HARNESS_TEST_RUN_ID || String(process.pid);
+const TEST_RUN_DIR = join(tmpdir(), `harness-test-run-${TEST_RUN_ID}`);
+/** Mọi trạng thái tạm của một lần chạy suite phải đi qua đây — xem chú thích trên. */
+export const testRunPath = (name) => join(TEST_RUN_DIR, name);
+export const TEST_TELEMETRY_DIR = testRunPath('harness-test-telemetry');
+export const TEST_STATE_DIR = testRunPath('harness-test-state');
+
+/**
+ * Dọn thư mục lần-chạy đã cũ.
+ *
+ * Trước #100 chỉ có MỘT thư mục dùng lại mãi mãi, nên không ai phải dọn. Một thư mục cho mỗi
+ * lần chạy đổi điều đó: không dọn thì `tmpdir()` phình theo số lần chạy suite, và trên máy này
+ * đĩa đã từng đầy thật.
+ *
+ * Ngưỡng để RỘNG (24h) là chủ ý, không phải lười: mục tiêu là chặn tích luỹ vô hạn, không phải
+ * dọn sớm nhất có thể. Một suite ĐANG chạy tuyệt đối không được bị xoá thư mục dưới chân, mà từ
+ * bên ngoài ta không biết pid nào đang chạy — nên hỏng về phía "dọn muộn", không phải phía
+ * "dọn nhầm của người đang làm việc".
+ */
+export function sweepStaleTestRuns({ maxAgeMs = 24 * 60 * 60 * 1000, now = Date.now() } = {}) {
+  let removed = 0;
+  let base;
+  try { base = readdirSync(tmpdir()); } catch { return 0; }   // không đọc được tmpdir: không phải việc của suite
+  for (const name of base) {
+    if (!name.startsWith('harness-test-run-')) continue;
+    const p = join(tmpdir(), name);
+    try {
+      if (now - statSync(p).mtimeMs < maxAgeMs) continue;
+      rmSync(p, { recursive: true, force: true });
+      removed++;
+    } catch { /* tiến trình khác đang giữ, hoặc vừa bị xoá — cả hai đều không phải lỗi */ }
+  }
+  return removed;
+}
 
 /**
  * Đếm dòng telemetry theo khoá — HÀM THUẦN trên TEXT, không đọc đĩa.

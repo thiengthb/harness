@@ -17,7 +17,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, TEST_TELEMETRY_DIR, coordinationLayer, verificationCoverage, readPacks, packPending, budgetStatus, latestCapoEntry } from './lib/harness.mjs';
+import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, TEST_TELEMETRY_DIR, TEST_RUN_ID, sweepStaleTestRuns, coordinationLayer, verificationCoverage, readPacks, packPending, budgetStatus, latestCapoEntry } from './lib/harness.mjs';
 
 const QUICK = process.argv.includes('--quick');
 // PHẢI chụp TRƯỚC khi chạy các suite bên dưới: nó là mốc phân biệt "telemetry suite của lần
@@ -47,10 +47,16 @@ console.log('\n╔════════════════════�
 console.log('║  HARNESS DOCTOR                                              ║');
 console.log('╚══════════════════════════════════════════════════════════════╝\n');
 
+// GHIM lần chạy xuống con. Suite ghi telemetry vào thư mục theo `HARNESS_TEST_RUN_ID`; không
+// truyền xuống thì con dùng pid CỦA NÓ, và doctor đọc một thư mục rỗng rồi kết luận "chưa có
+// bằng chứng" về đúng những cái gác vừa chạy xong trong chính lần chạy này. Đây là cùng một
+// mệnh đề với hằng số dùng chung ở `lib` — chỉ khác, giờ chỗ thoả thuận là env chứ không phải
+// một cái tên cố định toàn máy (xem #100).
+sweepStaleTestRuns();
 for (const c of checks) {
   if (QUICK && c.slow) { results.push({ ...c, status: 'skip' }); continue; }
   if (!exists(repoPath(c.cmd[0]))) { results.push({ ...c, status: 'missing' }); continue; }
-  const r = run('node', [repoPath(c.cmd[0]), ...c.cmd.slice(1)]);
+  const r = run('node', [repoPath(c.cmd[0]), ...c.cmd.slice(1)], { env: { HARNESS_TEST_RUN_ID: TEST_RUN_ID } });
   results.push({ ...c, status: r.status === 0 ? 'pass' : 'fail', out: (r.stdout + '\n' + r.stderr).trim() });
 }
 
