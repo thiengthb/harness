@@ -23,9 +23,51 @@ import { join } from 'node:path';
 // được đích trong test. Ghi thẳng `.claude/state/` là cách một test ghi vào sổ THẬT của bạn.
 const CAPO_HISTORY = () => join(stateDir(), 'capo-history.json');
 
-const arg = (n, d) => { const i = process.argv.indexOf(n); return i > -1 ? process.argv[i + 1] : d; };
-const DAYS = Number(arg('--days', 7));
-const USD = arg('--usd', null);   // chi phí kỳ này — lấy từ dashboard billing của bạn
+/**
+ * ═══ BA TRẠNG THÁI CỦA MỘT CỜ, KHÔNG PHẢI HAI ═══════════════════════════════
+ *
+ * Cờ **vắng mặt** · cờ **có mà thiếu giá trị** · cờ **có giá trị**. Bản trước chỉ có chỗ cho
+ * hai, nên cái ở giữa rơi vào cái thứ ba.
+ *
+ * Đo 2026-08-07 (issue #107), người dùng gõ `--usd` ở cuối dòng:
+ *
+ *     const USD = arg('--usd', null);      // → undefined, không phải null
+ *     if (USD !== null) { ... }            // → undefined !== null là TRUE
+ *     ok.push(`CAPO = $${capo.toFixed(2)}`)  // → "OK   CAPO = $NaN"
+ *
+ * Nhãn **OK**, và nó **ghi thật** một mục `usd: null, capo: null` vào `capo-history.json` —
+ * một sổ đo lường mà mọi run-rate về sau neo vào entry gần nhất.
+ *
+ * `budgetStatus` (v2.39.0) may mắn kiểm `Number.isFinite(usd)` nên hạ nguồn không tin mục đó.
+ * Nhưng đó là **phòng thủ tình cờ ở phía đọc**, không phải phía GHI từ chối ghi. Bên ghi rác
+ * mà chỉ dựa vào bên đọc lọc là một hợp đồng chỉ đúng cho tới khi có bên đọc thứ hai.
+ *
+ * `numArg` KHÔNG ĐOÁN: thiếu giá trị, không phải số, hoặc âm ⇒ dừng kèm chỉ dẫn.
+ */
+const argAt = (n) => { const i = process.argv.indexOf(n); return i > -1 ? { present: true, raw: process.argv[i + 1] } : { present: false }; };
+
+function numArg(name, fallback, { min = 0, hint = '' } = {}) {
+  const a = argAt(name);
+  if (!a.present) return fallback;
+  const v = Number(a.raw);
+  // `raw` là cờ kế tiếp (`--json`) cũng tính là THIẾU GIÁ TRỊ — `Number('--json')` ra NaN,
+  // nhưng nói "không phải số" cho một cờ thì khó hiểu hơn nói "thiếu giá trị".
+  const missing = a.raw === undefined || String(a.raw).startsWith('--');
+  if (missing || !Number.isFinite(v) || v < min) {
+    console.error(`\n⛔ \`${name}\` ${missing ? 'thiếu giá trị' : `nhận "${a.raw}" — không phải một số hợp lệ`}.`);
+    console.error(`  Đây KHÔNG được đoán thành 0 hay bỏ qua: ${name} đi thẳng vào sổ đo lường,`);
+    console.error(`  và một con số bịa ở đó thì mọi kỳ sau neo vào nó.`);
+    if (hint) console.error(`  ${hint}`);
+    process.exit(1);
+  }
+  return v;
+}
+
+const DAYS = numArg('--days', 7, { min: 1, hint: 'Ví dụ: node tooling/capo-report.mjs --days 7 --usd 43' });
+// `null` = KHÔNG khai (hợp lệ: báo cáo vẫn chạy, chỉ không tính được CAPO).
+const USD = argAt('--usd').present
+  ? numArg('--usd', null, { min: 0, hint: 'Lấy con số từ dashboard billing — harness KHÔNG đọc được hoá đơn. Ví dụ: --usd 43' })
+  : null;
 
 const since = new Date(Date.now() - DAYS * 86400_000).toISOString();
 const ok = [], warn = [], fail = [];
@@ -70,7 +112,10 @@ if (manualFixes > accepted && accepted > 0) {
 }
 
 // ── CAPO ─────────────────────────────────────────────────────────────────────
-if (USD !== null) {
+// `Number.isFinite`, KHÔNG phải `!== null`. Tới đây `numArg` đã chặn mọi giá trị hỏng, nên
+// điều kiện này là dây an toàn thứ hai — và nó rẻ. Bên GHI phải tự từ chối ghi rác; dựa vào
+// bên đọc lọc là một hợp đồng chỉ đúng cho tới khi có bên đọc thứ hai.
+if (Number.isFinite(USD)) {
   const capo = accepted ? Number(USD) / accepted : null;
   if (capo === null) fail.push(`Chi tiêu $${USD} nhưng 0 kết quả được chấp nhận.`);
   else {
