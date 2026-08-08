@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, dangerousCommand, infraFailure, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, dangerousCommand, infraFailure, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -1841,6 +1841,45 @@ for (const [env, expect, label, msg] of GATE_CASES) {
   if (!/GIU_LAI/.test(trap)) fail.push(`mergeState${L} codeOnly coi \`/*\` TRONG CHUỖI là mở comment ⇒ nuốt code thật và BÁO OAN`);
   else if (/thật/.test(trap)) fail.push(`mergeState${L} codeOnly không bỏ được block comment đứng sau một chuỗi có \`/*\``);
   else ok.push(`mergeState${L} codeOnly biết CHUỖI: \`/*\` trong template literal KHÔNG mở comment`);
+}
+
+// ─── sổ phiên phải DÙNG CHUNG cho mọi worktree ──────────────────────────────
+//
+// Đo 2026-08-07/08 (#108): ba phiên song song ~2 giờ trên cùng repo, ba worktree. Mỗi phiên ghi
+// vào `<worktree>/.claude/state/sessions/` của RIÊNG nó ⇒ không phiên nào thấy phiên nào ⇒ 0
+// cảnh báo. Người dùng phát hiện bằng cảm giác hoá đơn.
+//
+// Ca phải khoá chặt nhất là **worktree phụ**: ở đó `git rev-parse --git-common-dir` trả đường
+// dẫn TUYỆT ĐỐI. Nối nó vào gốc worktree sẽ ra một đường dẫn vô nghĩa, và mỗi worktree lại có
+// sổ riêng — tức bug quay lại y nguyên, với một cái tên hàm mới.
+{
+  const L = ' '.repeat(13);
+  const bad = [];
+  const MAIN = process.platform === 'win32' ? 'C:/repo' : '/repo';
+  const WT = process.platform === 'win32' ? 'C:/repo-97' : '/repo-97';
+  const ABS = process.platform === 'win32' ? 'C:/repo/.git' : '/repo/.git';
+
+  const fromMain = resolveSharedState('.git', MAIN);          // cây chính: git trả TƯƠNG ĐỐI
+  const fromWt = resolveSharedState(ABS, WT);                 // worktree phụ: git trả TUYỆT ĐỐI
+  const norm = (p) => p.replace(/\\/g, '/');
+  if (norm(fromMain) !== norm(fromWt)) {
+    bad.push(`cây chính và worktree phụ ra HAI sổ khác nhau:\n      ${norm(fromMain)}\n      ${norm(fromWt)}`);
+  }
+  if (!norm(fromWt).startsWith(norm(MAIN))) bad.push(`worktree phụ trỏ ra ngoài repo chính: ${norm(fromWt)}`);
+  // Git im lặng / không phải repo git ⇒ vẫn phải ra một đường dẫn dùng được, không phải crash.
+  if (!resolveSharedState('', MAIN) || !resolveSharedState(null, MAIN)) bad.push('đầu vào rỗng làm hàm trả rỗng');
+  // Nằm trong `.git` ⇒ không bao giờ bị commit, không cần thêm dòng .gitignore nào.
+  if (!norm(fromMain).includes('/.git/')) bad.push(`sổ không nằm trong .git/: ${norm(fromMain)} — sẽ làm cây bẩn ở mọi phiên`);
+
+  // HAI ĐẦU: `session-start.mjs` phải GỌI `sharedStateDir` cho sổ phiên. Còn dùng `stateDir()`
+  // là bug #108 nguyên vẹn.
+  const ss = codeOnly(readFileSync(repoPath('.claude', 'hooks', 'session-start.mjs'), 'utf8'));
+  if (!/join\(\s*sharedStateDir\(\)\s*,\s*'sessions'\s*\)/.test(ss)) {
+    bad.push('session-start.mjs không dựng thư mục sessions từ `sharedStateDir()` — mỗi worktree lại một sổ riêng');
+  }
+
+  if (bad.length) fail.push(`sổ phiên chung${L.slice(4)} ${bad.length} ca sai: ${bad.join(' | ')}`);
+  else ok.push(`sổ phiên chung${L.slice(4)} 5 ca — cây chính và worktree phụ cùng MỘT sổ, và sổ nằm trong .git/`);
 }
 
 // ─── cờ THIẾU GIÁ TRỊ không được đọc thành CÓ GIÁ TRỊ ───────────────────────

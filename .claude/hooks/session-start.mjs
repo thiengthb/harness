@@ -12,7 +12,7 @@
  */
 import { readFileSync, writeFileSync, statSync, unlinkSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { REPO_ROOT, repoPath, git, currentBranch, issueFromBranch, config, limit, readJson, writeJson, exists, hookRan, stateDir, declareFailMode, repoRole } from '../../tooling/lib/harness.mjs';
+import { REPO_ROOT, repoPath, git, currentBranch, issueFromBranch, config, limit, readJson, writeJson, exists, hookRan, stateDir, sharedStateDir, declareFailMode, repoRole } from '../../tooling/lib/harness.mjs';
 
 declareFailMode(1, 'Không dựng được bản tin đầu phiên. Phiên vẫn phải mở được — nhưng crash phải HIỆN RA, không được im.');
 
@@ -128,8 +128,14 @@ try {
 // vùng nóng cho cả ĐỘI, quyết phạm vi) — phần đó không tự động hoá được, và nó được nhắc ở
 // mục 9 chỉ khi thật sự tới hạn.
 //
-// Ghi vào `stateDir()` (máy-cục-bộ, gitignore) chứ KHÔNG vào `reservations/` (được commit):
-// một hook tự ghi file được commit sẽ làm cây bẩn ở mọi phiên, và `gen-clean` sẽ báo về nó.
+// Ghi vào `sharedStateDir()` — tức `.git/harness-shared/`, KHÔNG vào `reservations/` (được
+// commit): một hook tự ghi file được commit sẽ làm cây bẩn ở mọi phiên, và `gen-clean` sẽ báo
+// về nó. `.git/` thì không bao giờ bị commit và không cần thêm dòng `.gitignore` nào.
+//
+// VÌ SAO `sharedStateDir()` CHỨ KHÔNG `stateDir()` (#108): `stateDir()` neo vào gốc WORKTREE.
+// Đo 2026-08-07/08 — ba phiên song song ~2 giờ ở ba worktree, mỗi phiên ghi vào sổ RIÊNG của
+// worktree mình, không phiên nào thấy phiên nào, **0 cảnh báo**. Sổ phiên thuộc về REPO.
+//
 // Đổi lại, phát hiện này chỉ thấy phiên TRÊN CÙNG MÁY — mà đó đúng là ca đã xảy ra.
 // Chồng lấn giữa hai MÁY vẫn cần `reservations/`, tức vẫn cần người.
 // PID của PHIÊN là `process.ppid`, không phải `process.pid`. Hook chạy trong một process con
@@ -142,7 +148,10 @@ try {
 // có. Một cảnh báo sai mỗi lần khởi động lại là đúng loại nhiễu mà mục này ra đời để diệt.
 // TTL giữ lại làm LƯỚI CUỐI cho ca pid bị hệ điều hành cấp lại sau reboot.
 try {
-  const dir = join(stateDir(), 'sessions');
+  // `sharedStateDir()`, KHÔNG phải `stateDir()` (#108). `stateDir()` neo vào gốc WORKTREE, nên
+  // ba phiên ở ba worktree ghi vào ba sổ khác nhau và không phiên nào thấy phiên nào — đo
+  // 2026-08-07/08, ~2 giờ song song, 0 cảnh báo. Sổ phiên thuộc về REPO, không thuộc về cây.
+  const dir = join(sharedStateDir(), 'sessions');
   mkdirSync(dir, { recursive: true });
   const ttlMin = limit('sessionPresenceMinutes', 240);
   const myPid = process.ppid;
@@ -166,7 +175,14 @@ try {
     lines.push('   Xảy ra thật 2026-08-05: file chưa tồn tại lúc `git status`, đã tồn tại lúc `git add`.');
   } else if (others.length) {
     lines.push('');
-    lines.push(`ℹ️  ${others.length} phiên khác trên máy này, nhánh khác: ${others.map(o => o.branch).join(' · ')} (trần ${limit('maxSessionsPerPerson', 2)}/người)`);
+    // NÓI RA CÁI GIÁ, không chỉ đếm. Một dòng "2 phiên khác" là thông tin; một dòng kèm CHI PHÍ
+    // là một quyết định. Đo 2026-08-07/08 trên chính repo này với 3 phiên song song ~2 giờ.
+    lines.push(`ℹ️  ${others.length} phiên KHÁC đang mở trên repo này (trần ${limit('maxSessionsPerPerson', 2)}/người):`);
+    for (const o of others) lines.push(`     ${o.branch}  ·  ${o.cwd}  ·  ${o.ageMin} phút trước`);
+    lines.push('   Song song KHÔNG bị cấm — nhưng nó KHÔNG rẻ gấp đôi, nó đắt hơn thế:');
+    lines.push('   mỗi phiên đọc lại cùng file vào context riêng (~2× là SÀN), cộng rebase,');
+    lines.push('   cộng nhiễu do tranh máy, cộng nguy cơ hai phiên sửa cùng một thứ.');
+    lines.push('   Chạm cùng file? → `node tooling/overlap-scan.mjs <đường-dẫn>` trước khi sửa.');
   }
 } catch {}
 

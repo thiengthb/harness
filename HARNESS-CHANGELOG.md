@@ -11,6 +11,53 @@
 
 ---
 
+## 2.42.0 — 2026-08-08
+
+**minor.** Sổ phiên **dùng chung cho mọi worktree**, và bản tin đầu phiên **nói ra cái giá**.
+Đóng #108.
+
+### Ba phiên song song 2 giờ, 0 cảnh báo
+
+Đo 2026-08-07/08 trên chính repo này. `session-start` **có** ghi sự có mặt của phiên — nhưng
+vào `stateDir()`, mà `stateDir()` neo vào **gốc worktree**. Ba phiên ở ba worktree ⇒ ba sổ
+riêng ⇒ không phiên nào thấy phiên nào.
+
+`.claude/state/sessions/` chỉ có **một** file suốt cả buổi. `overlap-scan` cũng không lấp
+được: nó đối chiếu với **PR đang mở**, nên một phiên chưa push là vô hình với nó.
+
+Người dùng phát hiện ra bằng **cảm giác hoá đơn**, không bằng một dòng báo.
+
+### Sổ về `.git/harness-shared/`
+
+`git rev-parse --git-common-dir` trỏ về `.git` của cây **chính** từ mọi worktree — chỗ duy nhất
+mọi phiên cùng nhìn thấy. Nằm trong `.git` nên **không bao giờ bị commit** và không cần thêm
+dòng `.gitignore` nào.
+
+Ca phải khoá chặt nhất là **worktree phụ**: ở đó git trả đường dẫn **tuyệt đối**. Nối nó vào
+gốc worktree sẽ ra một đường dẫn vô nghĩa, và mỗi worktree lại có sổ riêng — bug quay lại
+nguyên vẹn với một tên hàm mới. `resolveSharedState()` là hàm **thuần** nên test lái được cả
+hai ca mà không cần dựng worktree thật.
+
+### Bản tin nói CÁI GIÁ, không chỉ đếm
+
+Một dòng *"2 phiên khác"* là thông tin. Một dòng kèm **chi phí** là một quyết định:
+
+```
+ℹ️  2 phiên KHÁC đang mở trên repo này (trần 2/người):
+     fix/93-…  ·  C:/project/harness-93  ·  12 phút trước
+   Song song KHÔNG bị cấm — nhưng nó KHÔNG rẻ gấp đôi, nó đắt hơn thế
+```
+
+**Phá một hiểu lầm:** hai phiên **không nói chuyện với nhau** — không có kênh nào. Nên không
+token nào chi cho việc *"hai agent hiểu nhau"*. Hoá đơn tăng hơn gấp đôi là do: **context nhân
+đôi** (~2×, sàn cứng, không tránh được) + **rebase** + **nhiễu do tranh máy** + **làm trùng**.
+Ba cái sau tránh được, và `docs/WIP.md` giờ có quy trình 5 bước cho chúng.
+
+**Ảnh hưởng tới project đã áp:** sổ phiên đổi chỗ. Bản ghi cũ ở
+`.claude/state/sessions/` bị bỏ lại — vô hại (nó tự hết hạn theo liveness), xoá tay được.
+
+---
+
 ## 2.41.1 — 2026-08-08
 
 **patch.** Cờ **thiếu giá trị** thôi bị đọc thành **có giá trị**. Đóng #107.

@@ -1480,6 +1480,49 @@ export function stateDir() {
 }
 
 /**
+ * ═══ STATE DÙNG CHUNG CHO MỌI WORKTREE CỦA CÙNG MỘT REPO ════════════════════
+ *
+ * `stateDir()` neo vào `REPO_ROOT`, mà `REPO_ROOT` suy từ vị trí file ⇒ **trong worktree nó là
+ * gốc worktree**. Đúng cho hầu hết state (thứ nào thuộc về CÂY LÀM VIỆC thì ở lại cây đó).
+ * SAI cho một thứ: **sổ phiên**.
+ *
+ * Đo 2026-08-07/08 (issue #108): ba phiên Claude chạy song song trên cùng repo suốt ~2 giờ.
+ * `.claude/state/sessions/` chỉ có **một** file — phiên này. Hai phiên kia ở worktree riêng nên
+ * ghi vào sổ riêng của chúng. Không phiên nào thấy phiên nào, và **không cảnh báo nào bật**.
+ * Người dùng phát hiện ra bằng *cảm giác hoá đơn*, không bằng một dòng báo.
+ *
+ * `overlap-scan` không lấp được: nó đối chiếu với **PR đang mở**, nên một phiên chưa push là
+ * vô hình với nó.
+ *
+ * CÁI GIÁ, đo được cùng ngày: **3 lần rebase** (2 lần conflict phải hợp tay), eval cho **3 kết
+ * quả khác nhau trên cùng một code** vì tranh máy, và **một lần chẩn đoán trùng**. Không cái
+ * nào là "hai agent hiểu nhầm nhau" — chúng **không có kênh nào để nói chuyện**. Toàn bộ là
+ * chi phí VA CHẠM, và va chạm phát hiện được thì tránh được.
+ *
+ * `git rev-parse --git-common-dir` trỏ về `.git` của cây CHÍNH từ mọi worktree, nên nó là chỗ
+ * duy nhất mọi phiên cùng nhìn thấy. Nằm trong `.git` ⇒ không bao giờ bị commit, không cần
+ * thêm dòng nào vào `.gitignore`.
+ */
+export function resolveSharedState(commonDirRaw, repoRoot) {
+  // Cây chính: git trả `.git` (TƯƠNG ĐỐI). Worktree phụ: git trả đường dẫn TUYỆT ĐỐI tới `.git`
+  // của cây chính. Không phân biệt hai ca này thì worktree phụ tạo `<wt>/<abs>` — một đường dẫn
+  // vô nghĩa, và mỗi worktree lại có sổ riêng đúng như bug đang sửa.
+  const raw = String(commonDirRaw || '').trim() || '.git';
+  const common = /^([A-Za-z]:[\\/]|[\\/])/.test(raw) ? raw : join(repoRoot, raw);
+  return join(common, 'harness-shared');
+}
+
+/** Phần IO của `resolveSharedState`. */
+export function sharedStateDir() {
+  if (process.env.HARNESS_STATE_DIR) return stateDir();   // test lái được, và lái CẢ HAI cùng lúc
+  let raw = '';
+  try { const r = git(['rev-parse', '--git-common-dir']); if (r.status === 0) raw = r.stdout; } catch {}
+  const d = resolveSharedState(raw, REPO_ROOT);
+  try { mkdirSync(d, { recursive: true }); } catch {}
+  return d;
+}
+
+/**
  * `HARNESS_TELEMETRY_DIR` chuyển đích ghi telemetry. CHỈ dùng cho TEST — và nó là
  * bắt buộc, không phải tiện nghi.
  *
