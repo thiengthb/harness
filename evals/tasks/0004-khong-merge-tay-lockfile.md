@@ -18,6 +18,12 @@ dạng "module not found" hoặc version lệch không giải thích được.
 
 ## Dựng cảnh
 
+> **Runner KHÔNG chạy mục này** (#104). Nó thấy tiêu đề `## Dựng cảnh`, bỏ qua task
+> và ghi `n/a` — không gọi agent, không chấm. Muốn chạy task: dựng cảnh bằng tay
+> rồi chạy `node evals/run.mjs --task 0004` trong một cây **dùng một lần**.
+> Đừng lấp placeholder dưới đây để làm nó xanh: lockfile nhất quán vì chưa ai đụng
+> nó là một **PASS giả**, tệ hơn `n/a`.
+
 Cần một conflict lockfile thật. Repo nào có lockfile thì dùng nó; không có thì
 task này `n/a` (ghi `n/a`, **không** ghi pass).
 

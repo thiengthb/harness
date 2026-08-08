@@ -90,6 +90,27 @@ const env = {
 const PLACEHOLDER = /<[^>]*\s[^>]*>|CHANGEME/;
 
 /**
+ * Task khai một CẢNH phải dựng trước khi prompt của nó có nghĩa — mà runner KHÔNG chạy mục đó.
+ *
+ * `runAssertions()` chỉ trích đúng một khối: `## Chấm lớp 1`. Mọi khối bash khác trong task là
+ * văn bản cho người đọc, và với hầu hết mục thì đúng như vậy. Với `## Dựng cảnh` thì không:
+ * agent vẫn được gọi, vẫn trả lời, vẫn được chấm — chỉ là nó trả lời về một tình huống KHÔNG
+ * TỒN TẠI.
+ *
+ * Đo 2026-08-07 trên `0004-khong-merge-tay-lockfile` (prompt: *"Có conflict khi merge. Giải
+ * quyết giúp tôi rồi commit."*) — transcript thật: *"Không có conflict nào để giải quyết."*
+ * Task vẫn vào mẫu số và vẫn được chấm **PASS**, tức nó đẩy tỉ lệ **LÊN**. Cùng lớp với #93
+ * nhưng ngược chiều, và chiều này im lặng hơn: không ai đi điều tra một con số đẹp.
+ *
+ * Nên: có `## Dựng cảnh` ⇒ KHÔNG gọi agent (không tiêu tiền cho một phép đo không xảy ra),
+ * KHÔNG chấm, ra khỏi mẫu số, và nói ra lý do. Cho runner tự chạy mục đó là một thay đổi HỢP
+ * ĐỒNG riêng, không phải một dòng code: setup CỐ Ý ghi vào repo đang đo, còn
+ * `worktreeFingerprint()` dưới đây tồn tại để chặn đúng chuyện ghi vào repo đang đo. Hai thứ
+ * đó phải phân biệt được trước đã, và chỗ phân biệt được là một cây CÔ LẬP. Xem #104.
+ */
+const SETUP_SECTION = /^##\s+Dựng cảnh\s*$/m;
+
+/**
  * Gộp dòng thành LỆNH LOGIC. Bản trước `split('\n')` thẳng, nên một `node -e "…"` nhiều dòng
  * bị băm thành N "lệnh" rời.
  *
@@ -247,6 +268,16 @@ for (const t of tasks) {
   const label = `${t.id} [${t.kind}/${t.type}] ${t.file.replace(/\.md$/, '')}`;
   if (DRY) { ok.push(label); continue; }
 
+  // Cảnh chưa dựng ⇒ dừng TRƯỚC `runAgent`. Thứ tự này là phần chính của bản vá: gọi agent
+  // rồi mới nói "không đo được" thì đã trả tiền cho một lượt chạy không nói gì.
+  if (SETUP_SECTION.test(t.body)) {
+    results.push({ id: t.id, kind: t.kind, type: t.type, measured: false, passed: false, failedAssertions: [], na: [], agent: null });
+    warn.push(`${label}: KHÔNG ĐO ĐƯỢC — task khai \`## Dựng cảnh\` mà runner KHÔNG chạy mục đó. `
+      + 'Agent sẽ nhận một prompt về tình huống CHƯA ĐƯỢC DỰNG, và câu trả lời của nó không nói gì về câu hỏi task đặt ra. '
+      + 'Không gọi agent, không chấm, ra khỏi mẫu số. Dựng cảnh bằng tay rồi chạy lại — hoặc xem #104.');
+    continue;
+  }
+
   const agent = runAgent(t);
   const before = worktreeFingerprint();
   const asserts = runAssertions(t.body, Boolean(agent));
@@ -283,19 +314,33 @@ for (const t of tasks) {
   // assertion có chạy. Assertion khi đó chấm một cây KHÔNG CÓ GÌ XẢY RA — nó nói về trạng thái
   // trước đó, không nói gì về agent. Đo 2026-08-07: bỏ vế này ⇒ hết quota in ra
   // `REGRESSION 25% (1/4)`, tức một phép đo KHÔNG XẢY RA được ghi thành THẤT BẠI. Xem #93.
-  const measured = (asserts.ran > 0 || Boolean(agent)) && !agent?.infra;
+  //
+  // MỘT AGENT CHẠY XONG KHÔNG PHẢI MỘT PHÉP ĐO. Runner này chỉ chấm **lớp 1** — assertion tất
+  // định. `## Chấm lớp 2` là việc của người/LLM và runner không đọc nó. Nên khi không assertion
+  // nào CHẠY ĐƯỢC thì không có gì để chấm, kể cả khi agent đã chạy, exit 0 và tốn 8 phút.
+  // Bản trước viết `(asserts.ran > 0 || Boolean(agent))`: vế thứ hai đưa một task 0 assertion
+  // vào mẫu số rồi chấm nó theo exit code của agent — mà exit code của `claude -p` chỉ nói
+  // "phiên kết thúc bình thường", không nói gì về việc agent làm ĐÚNG. Đo 2026-08-08: `0004`
+  // góp một điểm PASS vào `REGRESSION 100% (4/4)` với 0 assertion chạy được. Xem #104.
+  const measured = asserts.ran > 0 && !agent?.infra;
   const passed = measured && asserts.failed.length === 0 && (!agent || agent.ok);
   results.push({ id: t.id, kind: t.kind, type: t.type, measured, passed, failedAssertions: asserts.failed, na: asserts.na, agent });
 
   for (const n of asserts.na) warn.push(`${label}: n/a — ${n}`);
 
   if (!measured) {
-    // HAI nguyên nhân khác nhau, hai câu khác nhau. Gộp chúng là đúng phép gộp mà cả file này
-    // tồn tại để chống: một bên là "chưa nối agent" (cấu hình), một bên là "agent không chạy
-    // được" (hạ tầng, thường TẠM THỜI — chạy lại là có số).
+    // BA nguyên nhân khác nhau, ba câu khác nhau. Gộp chúng là đúng phép gộp mà cả file này
+    // tồn tại để chống: "chưa nối agent" là cấu hình, "agent không chạy được" là hạ tầng
+    // (thường TẠM THỜI — chạy lại là có số), còn "agent chạy rồi mà không có gì chấm được" là
+    // một lỗ trong chính TASK. Ba việc phải làm khác nhau ⇒ ba câu.
     warn.push(agent?.infra
       ? `${label}: KHÔNG ĐO ĐƯỢC — agent hỏng vì HẠ TẦNG (${agent.infra}), trả về sau ${agent.minutes}p. `
         + `Đây KHÔNG phải "agent làm sai": nó chưa từng chạy. Task ra khỏi mẫu số. Chạy lại khi hạ tầng ổn`
+        + (agent.transcript ? ` · transcript: ${agent.transcript}` : '')
+      : agent
+      ? `${label}: KHÔNG ĐO ĐƯỢC — agent ĐÃ CHẠY (${agent.minutes}p) nhưng KHÔNG assertion nào chạy được `
+        + `(${asserts.na.length} n/a). Runner chỉ chấm LỚP 1: một lượt chạy kết thúc bình thường không phải `
+        + `một phép đo. Điền assertion tất định cho task này, hoặc chấp nhận nó ở ngoài mẫu số`
         + (agent.transcript ? ` · transcript: ${agent.transcript}` : '')
       : `${label}: KHÔNG ĐO ĐƯỢC — ${asserts.na.length} assertion đều n/a và chưa khai \`evals.command\`. Không tính vào tỉ lệ.`);
   } else {

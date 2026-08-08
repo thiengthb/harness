@@ -1,4 +1,4 @@
-<!-- version: 2026-08-08-g -->
+<!-- version: 2026-08-08-h -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,20 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-08 — Một task eval thôi được chấm PASS cho phép đo nó không làm (v2.42.4)
+
+`evals/tasks/0004` có mục `## Dựng cảnh` dựng một conflict lockfile thật, và **runner chưa bao
+giờ chạy mục đó**. Agent được hỏi *"có conflict khi merge, giải quyết giúp tôi"* trong một repo
+không có conflict nào — rồi task vẫn vào mẫu số và vẫn được chấm **PASS**, đẩy tỉ lệ LÊN.
+
+Cùng lớp lỗi với #93 nhưng ngược chiều, và im lặng hơn hẳn: **không ai đi điều tra một con số
+đẹp**.
+
+**Việc bạn phải làm khác đi:** task nào có `## Dựng cảnh` thì runner bỏ qua và nói ra — dựng
+cảnh bằng tay rồi chạy lại. Và nếu task của bạn **không có assertion tất định nào chạy được**,
+nó ra khỏi mẫu số kể cả khi agent đã chạy xong: runner chỉ chấm lớp 1, một lượt chạy kết thúc
+bình thường không phải một phép đo.
 
 ## 2026-08-08 — Sổ audit thôi ghi mọi người thành MỘT người (v2.42.3)
 
