@@ -11,6 +11,93 @@
 
 ---
 
+## 2.50.0 — 2026-08-10
+
+**minor.** Ở repo TEMPLATE, gác fail-đóng của `gates.mjs` là một gác **không có đường thoả** —
+và nó biến mọi phiên headless thành vòng lặp không đáy. Thu hẹp phạm vi. Đóng #145.
+
+### Gác mà lời khuyên của nó bất khả thi
+
+```
+if (skipped && unattended() && HARNESS_ALLOW_SKIPPED_GATES !== '1') exit 2
+   → "Khai đủ lệnh trong harness.config.json"
+```
+
+Ở template, lời khuyên đó **không thực hiện được**: `setup.mjs` TỪ CHỐI `--apply` ở đây, với
+đúng lý do — *"ghi cấu hình thật vào đây sẽ biến placeholder của template thành cấu hình của
+MỘT project, và mọi project áp sau đó thừa hưởng nó"*. `commands` rỗng là trạng thái **ĐÚNG và
+VĨNH VIỄN** của template.
+
+Nên gác chỉ còn một lối ra: đi vòng. Đó đúng tiêu chí nghi thức `guard-nhanh-tich-hop` dùng để
+đề nghị **cắt** một cái gác: *"cửa thoát dùng nhiều hơn được tuân theo là một guard đang dạy
+người ta đi vòng"*.
+
+### Cái giá, đo được
+
+```
+claude -p ⇒ CLAUDE_CODE_ENTRYPOINT=sdk-cli ⇒ unattended() = true
+          ⇒ gates.stop bỏ qua 3/3 ⇒ exit 2 ở MỌI lượt Stop
+          ⇒ Claude Code re-invoke agent ⇒ Stop lại đỏ ⇒ KHÔNG HỘI TỤ
+```
+
+| lệnh trong template | kết quả |
+|---|---|
+| `claude -p --max-turns 6` + prompt **tầm thường** | `Error: Reached max turns (6)`, exit 1 |
+| cùng lệnh + `HARNESS_ALLOW_SKIPPED_GATES=1` | `OK.`, exit 0 |
+
+Nó chặn eval runner, scheduled agent, canary — **mọi thứ chạy không có người**, ở đúng repo mà
+lớp eval phải chạy để chứng minh harness có giá trị. Task eval `0005` bị chấm **FAIL** với
+transcript **44 byte**, trong khi 4 assertion tất định đều PASS và repo không đổi một byte.
+
+### Phạm vi hẹp — ba điều kiện, và điều kiện giữa mới là điều đáng nói
+
+```js
+const templateCannotComply = repoRole() === 'template' && declaredCommands(config()).length === 0;
+```
+
+- `repoRole() === 'template'` — repo tiêu thụ có `.claude/harness-manifest.json` ⇒ **vẫn chặn
+  y như cũ**. Với họ, `commands` rỗng đúng là cấu hình sai.
+- `declaredCommands().length === 0` — khai được MỘT lệnh nghĩa là khai được nhiều hơn. Template
+  khai 1/3 rồi bỏ 2 là **thiếu sót**, không phải cấu trúc ⇒ vẫn chặn.
+- `skipped && unattended()` — như cũ.
+
+### CHO QUA, NHƯNG NÓI RA
+
+Im lặng ở đây biến ca *"không thể thoả"* thành ca *"đã thoả"* — đúng phép gộp mà cả `gates.mjs`
+tồn tại để chống. Nên nó vẫn in, ở stderr của mọi lượt:
+
+```
+⚠️  REPO TEMPLATE, phiên không người: 3 gate bị BỎ QUA và KHÔNG có gì được kiểm.
+   Ở repo TIÊU THỤ, cùng tình huống này VẪN CHẶN.
+```
+
+### Mutation — 5 mutant, 0 sống sót
+
+| # | Mutant | Ca giết nó |
+|---|---|---|
+| M1 | bỏ `repoRole()` ⇒ repo **tiêu thụ** cũng được miễn | ④ tiêu thụ + không người → **vẫn** fail-đóng |
+| M2 | bỏ `declaredCommands()===0` ⇒ mọi template miễn nhiễm | ⑥ template đã khai 1 lệnh → **vẫn** fail-đóng |
+| M3 | cho qua mà **im lặng** | ② phải in `REPO TEMPLATE` |
+| M4 | đảo chiều (template chặn, tiêu thụ miễn) | ② ④ ⑥ cùng đỏ |
+| M5 | cửa thoát thôi tác dụng | ⑤ cửa thoát ở repo tiêu thụ |
+
+M1 là mutant quan trọng nhất: không có ca ④, một bản *"đơn giản hoá"* bỏ `repoRole()` sẽ xanh
+và **cả lớp fail-đóng biến mất im lặng** ở mọi repo tiêu thụ.
+
+### CHƯA VERIFY ĐƯỢC — nói ra thay vì im
+
+Bản vá được kiểm ở **tầng gate** (6 ca, 5 mutant, tất định). Phần *"agent nay kết thúc được một
+lượt headless trong template"* thì **CHƯA đo end-to-end**: `claude -p` đang chạm session limit
+(`resets 1am`, bộ đếm 30 ngày đi 12 → 14). Đó là một `?`, không phải một đảm bảo — chạy lại khi
+quota mở.
+
+### Đã đổi
+
+- `tooling/gates.mjs` — nhánh fail-đóng + nhánh cảnh báo mới
+- `tooling/test-hooks.mjs` — bảng gate đi từ 3 ca lên **6 ca**, chạy trên HAI cây (220 ca)
+
+---
+
 ## 2.49.0 — 2026-08-09
 
 **minor.** Hai phát hiện cuối của máy dò #127 được xử. Máy dò về **0 / 0**. Đóng #142.

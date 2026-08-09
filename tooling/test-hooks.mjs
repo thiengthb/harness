@@ -474,21 +474,70 @@ for (const [hook, input, expect, label, env, msg] of cases) {
 // ─── gates.mjs — cùng luật: code có quyền exit 2 thì phải có test ────────────
 // Nó không nằm trong .claude/hooks/ nhưng nó CHẶN được lượt, nên nó chịu cùng
 // hợp đồng. Ba nhánh dưới đây là toàn bộ hành vi fail-đóng của nó.
+// PHẠM VI CỦA GÁC ĐỔI Ở 2.50.0 (#145), nên bảng này chạy trên HAI CÂY.
+//
+// Ở repo TEMPLATE, `commands` rỗng là trạng thái ĐÚNG và VĨNH VIỄN: `setup.mjs` TỪ CHỐI
+// `--apply` ở đây với đúng lý do (*"ghi cấu hình thật vào đây sẽ biến placeholder của template
+// thành cấu hình của MỘT project"*). Nên lời khuyên của gác — *"khai đủ lệnh"* — là **bất khả
+// thi**, và một gác chỉ còn đường đi vòng là gác dạy người ta đi vòng.
+//
+// Cái giá đo được: `claude -p` ⇒ `unattended()` ⇒ MỌI lượt Stop exit 2 ⇒ Claude Code re-invoke
+// ⇒ Stop lại đỏ, **không hội tụ**. Prompt tầm thường cũng chạm `max turns`.
+//
+// CA SỐ ④ LÀ CA QUAN TRỌNG NHẤT CỦA BẢNG: nó chứng minh bản vá **không làm yếu** gác — repo
+// TIÊU THỤ (có `.claude/harness-manifest.json`) vẫn bị chặn y như cũ. Không có nó, một bản
+// "đơn giản hoá" bỏ điều kiện `repoRole()` sẽ xanh, và cả lớp fail-đóng biến mất im lặng.
 const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json');
-const GATE_CASES = [
-  [{ HARNESS_CONFIG: UNCONF() }, OK, 'phiên CÓ người + gate bỏ qua → cảnh báo, KHÔNG chặn', /BỎ QUA/],
-  [{ HARNESS_CONFIG: UNCONF(), CI: '1' }, BLOCK, 'phiên KHÔNG người + gate bỏ qua → FAIL ĐÓNG', /KHÔNG có người ngồi xem/],
-  [{ HARNESS_CONFIG: UNCONF(), CI: '1', HARNESS_ALLOW_SKIPPED_GATES: '1' }, OK, 'cửa thoát chủ ý mở được ở phiên không người', /BỎ QUA/],
-];
-for (const [env, expect, label, msg] of GATE_CASES) {
-  const r = spawnSync(process.execPath, [repoPath('tooling', 'gates.mjs'), '--stage', 'stop'], {
-    encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, ...TEST_ENV, CI: '', ...env },
-  });
-  const status = r.status ?? -1;
-  const both = (r.stdout ?? '') + '\n' + (r.stderr ?? '');
-  if (status !== expect) fail.push(`gates.mjs ${label}  →  exit=${status}, mong đợi ${expect}`);
-  else if (!msg.test(both)) fail.push(`gates.mjs ${label}  →  thông điệp không khớp ${msg}`);
-  else ok.push(`gates.mjs${' '.repeat(19)} ${label}`);
+{
+  // Cây TIÊU THỤ giả: `REPO_ROOT` suy từ vị trí `lib/harness.mjs`, nên copy `tooling/` sang
+  // thư mục tạm là đủ để `gates.mjs` ở đó coi thư mục tạm là repo. Thêm `harness-manifest.json`
+  // ⇒ `repoRole()` trả `consumer`. Cùng kỹ thuật khối `gen-clean` ngay dưới đây dùng.
+  const consumer = join(tmpdir(), `harness-gate-consumer-${process.pid}`);
+  try {
+    rmSync(consumer, { recursive: true, force: true });
+    cpSync(repoPath('tooling'), join(consumer, 'tooling'), { recursive: true });
+    mkdirSync(join(consumer, '.claude'), { recursive: true });
+    writeFileSync(join(consumer, '.claude', 'harness-manifest.json'),
+      JSON.stringify({ $comment: 'FIXTURE của test gates trong tooling/test-hooks.mjs', templateVersion: '0.0.0-fixture' }, null, 2) + '\n', 'utf8');
+
+    // Config cho ca ⑥: template ĐÃ khai đúng một lệnh, và `gates.stop` còn một gate không có
+    // lệnh ⇒ `skipped = 1`. `node -e ""` cố ý vô hại và tất định trên cả ba OS.
+    const oneCmd = join(tmpdir(), `harness-gate-onecmd-${process.pid}.json`);
+    writeFileSync(oneCmd, JSON.stringify({
+      $comment: 'FIXTURE của test gates trong tooling/test-hooks.mjs — TEMPLATE đã khai 1 lệnh',
+      project: { id: 'fixture-gate-onecmd' },
+      commands: { typecheck: 'node -e ""' },
+      paths: {}, limits: {}, gates: { stop: ['typecheck', 'test'] },
+      budget: {}, knowledge: {}, evals: { command: '' },
+    }, null, 2) + '\n', 'utf8');
+
+    const GATE_CASES = [
+      // ① · ② · ③ — repo NÀY (template).
+      [null, { HARNESS_CONFIG: UNCONF() }, OK, 'phiên CÓ người + gate bỏ qua → cảnh báo, KHÔNG chặn', /BỎ QUA/],
+      [null, { HARNESS_CONFIG: UNCONF(), CI: '1' }, OK, 'TEMPLATE + phiên không người → CHO QUA, và NÓI RA là không kiểm gì', /REPO TEMPLATE/],
+      [null, { HARNESS_CONFIG: UNCONF(), CI: '1', HARNESS_ALLOW_SKIPPED_GATES: '1' }, OK, 'cửa thoát chủ ý mở được ở phiên không người', /BỎ QUA/],
+      // ④ · ⑤ — cây TIÊU THỤ. Gác giữ nguyên sức mạnh ở đây.
+      [consumer, { HARNESS_CONFIG: UNCONF(), CI: '1' }, BLOCK, 'TIÊU THỤ + phiên không người + gate bỏ qua → VẪN FAIL ĐÓNG', /KHÔNG có người ngồi xem/],
+      [consumer, { HARNESS_CONFIG: UNCONF(), CI: '1', HARNESS_ALLOW_SKIPPED_GATES: '1' }, OK, 'cửa thoát vẫn mở được ở repo tiêu thụ', /BỎ QUA/],
+      // ⑥ Template mà ĐÃ khai được một lệnh ⇒ nó khai được thêm ⇒ đây là THIẾU SÓT, không
+      //    phải cấu trúc ⇒ VẪN CHẶN. Không có ca này, mutant bỏ điều kiện
+      //    `declaredCommands().length === 0` sống sót và MỌI template thành miễn nhiễm — kể
+      //    cả template cố tình bỏ gate. `gates.stop` ở đây KHÔNG có `gen-clean`: nó so
+      //    `git diff` nên cây đang sửa dở sẽ làm ca này đỏ vì một lý do không liên quan.
+      [null, { HARNESS_CONFIG: oneCmd, CI: '1' }, BLOCK, 'TEMPLATE đã khai 1 lệnh + còn gate bỏ qua → VẪN FAIL ĐÓNG', /KHÔNG có người ngồi xem/],
+    ];
+    for (const [root, env, expect, label, msg] of GATE_CASES) {
+      const dir = root ?? repoPath('');
+      const r = spawnSync(process.execPath, [join(dir, 'tooling', 'gates.mjs'), '--stage', 'stop'], {
+        encoding: 'utf8', cwd: dir, env: { ...process.env, ...TEST_ENV, CI: '', ...env },
+      });
+      const status = r.status ?? -1;
+      const both = (r.stdout ?? '') + '\n' + (r.stderr ?? '');
+      if (status !== expect) fail.push(`gates.mjs ${label}  →  exit=${status}, mong đợi ${expect}`);
+      else if (!msg.test(both)) fail.push(`gates.mjs ${label}  →  thông điệp không khớp ${msg}`);
+      else ok.push(`gates.mjs${' '.repeat(19)} ${label}`);
+    }
+  } finally { rmSync(consumer, { recursive: true, force: true }); }
 }
 
 // ─── gen-clean: CHẨN ĐOÁN phải đúng, không chỉ MÀU phải đúng ─────────────────
