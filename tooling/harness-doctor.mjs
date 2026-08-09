@@ -17,7 +17,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, devId, TEST_TELEMETRY_DIR, TEST_RUN_ID, sweepStaleTestRuns, coordinationLayer, verificationCoverage, readPacks, packPending, budgetSnapshot } from './lib/harness.mjs';
+import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, devId, TEST_TELEMETRY_DIR, TEST_RUN_ID, sweepStaleTestRuns, coordinationLayer, verificationCoverage, readPacks, packPending, budgetSnapshot, configCoverage } from './lib/harness.mjs';
 
 const QUICK = process.argv.includes('--quick');
 // PHẢI chụp TRƯỚC khi chạy các suite bên dưới: nó là mốc phân biệt "telemetry suite của lần
@@ -156,6 +156,30 @@ if (!exists(repoPath('.mcp.json')) && exists(repoPath('.mcp.json.example'))) {
 const mcpCount = Object.keys(readJson(repoPath('.mcp.json'), {})?.mcpServers ?? {}).length;
 const mcpMax = cfg.mcp?.maxServers ?? 5;
 if (mcpCount > mcpMax) advice.push(`${mcpCount} MCP server (ngưỡng ${mcpMax}) — tool definition ăn context mỗi request`);
+
+// ── Field khai mà không ai đọc · code đọc mà không ai khai ───────────────────
+//
+// Cùng một lớp lỗi đã bị sửa BẰNG TAY ba lần — `budget.modelTiering` (2.0.0),
+// `budget.monthlyUsdCap` (2.28.0), `budget.maxToolCallsPerRun` (2.35.0) — mỗi lần một
+// bia mộ đẹp trong config, và không lần nào dựng máy dò. Ba field khác sống sót vì
+// không ai đi tìm. `AGENTS.md`: lỗi cùng kiểu ≥2 lần thì làm CƠ CHẾ, đừng sửa tay lần nữa.
+//
+// Một field không ai đọc là **một niềm tin được đóng gói thành cấu hình**: nó đọc như một
+// núm vặn, người ta vặn, và không có gì xảy ra. Chiều ngược lại tệ hơn theo cách khác —
+// một hằng số cứng mà người đọc config để hiệu chỉnh KHÔNG THẤY NÓ TỒN TẠI.
+const cov = configCoverage();
+if (cov.unread.length) {
+  advice.push(`${cov.unread.length} field trong harness.config.json KHÔNG ai đọc: ${cov.unread.join(' · ')}`
+    + ` — hoặc cho nó một người đọc, hoặc CẮT nó và giữ nguyên lý trong docs/. Một núm vặn không nối vào gì`
+    + ` dạy người dùng rằng config này không đáng tin.`);
+}
+for (const k of cov.undeclared) {
+  advice.push(`code đọc \`${k}\` nhưng harness.config.json KHÔNG khai — giá trị mặc định trở thành hằng số cứng,`
+    + ` và người mở config để hiệu chỉnh không thấy nó tồn tại. Khai nó (kèm \`$comment_\` nếu vắng mặt là CỐ Ý).`);
+}
+console.log(`  ${cov.unread.length || cov.undeclared.length ? '⚠️ ' : '✓'}  config: ${cov.leaves} field`
+  + ` · ${cov.unread.length} không ai đọc · ${cov.undeclared.length} đọc-mà-chưa-khai`
+  + (cov.excused.length ? ` · ${cov.excused.length} cố ý vắng (có $comment_)` : ''));
 
 // ── NGÂN SÁCH ────────────────────────────────────────────────────────────────
 // Chỉ THU THẬP + IN ở đây; phán đoán ở `budgetStatus` trong lib (hàm THUẦN, cùng lý do tách

@@ -1,4 +1,4 @@
-<!-- version: 2026-08-08-n -->
+<!-- version: 2026-08-08-o -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,13 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-08 — Máy dò field cấu hình chết (v2.46.0)
+
+`harness-doctor` có mục mới: `config: N field · X không ai đọc · Y đọc-mà-chưa-khai`.
+Nó vừa tìm được 3 mục thật, gồm `limits.prWarnFiles` (0 nơi đọc, dù có đoạn biện minh dài
+nhất file) và `limits.sessionPresenceMinutes` (code đọc, config không khai).
+Thêm field vào `harness.config.json` mà quên nối vào code ⇒ doctor sẽ nói. Bị báo oan → nhắn @dri.
 
 ## 2026-08-08 — Hai bên đọc ngân sách, một cái sổ, hai câu trả lời (v2.45.1)
 
