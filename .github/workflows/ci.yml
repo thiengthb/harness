@@ -46,6 +46,7 @@ jobs:
         run: |
           WARN=$(node -e "console.log(require('./harness.config.json').limits.prWarnLines)")
           FAIL=$(node -e "console.log(require('./harness.config.json').limits.prFailLines)")
+          WARN_FILES=$(node -e "console.log(require('./harness.config.json').limits.prWarnFiles)")
           # Ba nhóm bị LOẠI khỏi phép đếm, mỗi nhóm một lý do KHÁC nhau:
           #
           #   *.gen.* · lock · generated/  — không ai review chúng, chúng là OUTPUT.
@@ -58,19 +59,34 @@ jobs:
           # AGENTS.md CỐ Ý KHÔNG được loại: nó nạp vào MỌI phiên của MỌI người nên nó là
           # chỉ thị đang thi hành, không phải tài liệu. Tính theo token × số lần đọc, đó
           # là file đắt nhất repo — nó phải nằm trong phép đếm.
-          LINES=$(git diff origin/${{ github.base_ref }}...HEAD --numstat \
+          # MỘT phép diff, HAI con số. Gọi `git diff` lần thứ hai với một bản CHÉP của danh
+          # sách loại trừ là cách hai ngưỡng lặng lẽ đo hai tập file khác nhau: sửa một bên,
+          # quên bên kia, và không gì báo. Cùng hình dạng với bug v2.45.1 — hai bên đọc ngân
+          # sách tự lắp tham số nên một cái sổ ra hai câu trả lời.
+          NUMSTAT=$(git diff origin/${{ github.base_ref }}...HEAD --numstat \
             -- . ':(exclude)**/*.gen.*' ':(exclude)**/*lock*' ':(exclude)**/generated/**' \
                  ':(exclude)docs/**' ':(exclude)HARNESS-CHANGELOG.md' ':(exclude)README.md' \
                  ':(exclude).claude/whats-new.md' ':(exclude).claude/learnings/**' \
-                 ':(exclude)knowledge/README.md' \
-            | awk '{a+=$1; d+=$2} END {print a+d+0}')
+                 ':(exclude)knowledge/README.md')
+          LINES=$(echo "$NUMSTAT" | awk '{a+=$1; d+=$2} END {print a+d+0}')
+          # Đếm bằng awk, không `grep -c`: `grep -c` thoát 1 khi đếm ra 0, và bước này chạy
+          # dưới `bash -e` nên một PR không chạm file nào sẽ làm CI ĐỎ vì đúng cái nó đo được.
+          FILES=$(echo "$NUMSTAT" | awk 'NF{n++} END {print n+0}')
           echo "(đã loại generated/lockfile và tài liệu; AGENTS.md vẫn tính)"
-          echo "Thay đổi $LINES dòng (cảnh báo $WARN, fail $FAIL)"
+          echo "Thay đổi $LINES dòng · $FILES file (cảnh báo $WARN dòng / $WARN_FILES file · fail $FAIL dòng)"
           if [ "$LINES" -gt "$FAIL" ]; then
             echo "::error::PR quá lớn ($LINES dòng). Chẻ nhỏ. Một PR = một mục đích."
             exit 1
-          elif [ "$LINES" -gt "$WARN" ]; then
+          fi
+          if [ "$LINES" -gt "$WARN" ]; then
             echo "::warning::PR lớn ($LINES dòng) — nêu lý do trong mô tả PR."
+          fi
+          # HAI CẢNH BÁO ĐỘC LẬP, không phải `elif`: dòng và file đo hai thứ khác nhau. Một PR
+          # 200 dòng rải trên 40 file là "đang gộp nhiều mục đích"; một PR 1200 dòng trong 3
+          # file là "một thay đổi lớn". Gộp chúng vào một nhánh thì ca thứ nhất không bao giờ
+          # được nói ra — và đó chính là ca `prWarnFiles` được hiệu chỉnh để bắt.
+          if [ "$FILES" -gt "$WARN_FILES" ]; then
+            echo "::warning::PR chạm $FILES file (ngưỡng $WARN_FILES) — nhiều file mà ít dòng thường là dấu hiệu PR đang gộp nhiều mục đích. Nêu lý do trong mô tả PR."
           fi
 
       - name: Lockfile toàn vẹn
