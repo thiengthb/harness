@@ -106,6 +106,81 @@
       "state": "co-viec",
       "at": "2026-08-09T13:13:04.438Z",
       "why": "idle_prompt đo 'agent đợi người bao lâu' — chỉ số ma sát người-agent chưa ai có. Cùng chậu observe.mjs với #132. #132"
+    },
+    "UserPromptExpansion": {
+      "state": "co-viec",
+      "at": "2026-08-09T13:56:44.370Z",
+      "why": "entropy-sweep cắt skill bằng phép ĐẾM (12/12) vì nó KHÔNG có dữ liệu skill nào từng được gọi. Phép đo duy nhất từng có là GIÁN TIẾP — suy từ artefact ('reservations/ chỉ có README ⇒ /claim chưa chạy') — và suy gián tiếp sai được: skill chạy rồi bỏ giữa chừng không để lại artefact. Ô này đo TRỰC TIẾP, capture miễn phí, không chặn gì. #135"
+    },
+    "SubagentStart": {
+      "state": "co-viec",
+      "at": "2026-08-09T13:56:44.460Z",
+      "why": "AGENTS.md đặt trần <5s ở SubagentStop với lý do 'nhân với tối đa 16 agent song song' — con số 16 CHƯA AI ĐO, và bản rà 2.1.224 ghi vendor đã bỏ trần 200 subagent/phiên nên hệ số nhân không còn trần vendor che chở. SubagentStart + SubagentStop (đã cắm) = đo được số agent đồng thời và vòng đời thật. Nhận xét này nằm trong baseline từ 2026-08-07 mà chưa bao giờ vào hàng đợi. #136"
+    },
+    "PermissionDenied": {
+      "state": "co-viec",
+      "at": "2026-08-09T13:56:44.573Z",
+      "why": "harness đếm được guard CỦA CHÍNH NÓ chặn bao nhiêu lần (gate-fails.log) nhưng không có số nào cho lần bị BỘ PHÂN LOẠI CỦA VENDOR chặn. Ca thật 2026-08-08: auto mode từ chối tool Bash nhiều lần liên tiếp, phải đi vòng suốt một đoạn dài, KHÔNG dòng telemetry nào ghi lại. Chỉ số 'cái gì đang cản việc thật' hiện chỉ có một nửa. #137"
+    },
+    "PostToolBatch": {
+      "state": "khong-co-viec",
+      "at": "2026-08-09T13:57:39.262Z",
+      "why": "PostToolUse đã đếm TỪNG lời gọi (822 qua, đo ở harness-doctor); cái ô này thêm là phép NHÓM theo batch, và harness chưa có câu hỏi nào cần nhóm. Thứ nó mời chào — 'inject context once for the whole batch' — là thuế context, đúng thứ rules/README.md LUẬT 2 cấm. Nó cũng bắn dày hơn Stop/SubagentStop, tức chỗ đắt nhất để cắm bất cứ gì. MỞ LẠI khi có câu hỏi về phân bố kích thước batch."
+    },
+    "UserPromptSubmit": {
+      "state": "khong-co-viec",
+      "at": "2026-08-09T13:57:39.340Z",
+      "why": "đây là điểm chèn context ở MỌI request — thuế phải trả kể cả khi không dùng, đúng thứ rules/README.md LUẬT 2 gọi tên. Phần CHẶN thì PreToolUse đã làm, và nó làm ở chỗ HÀNH ĐỘNG chứ không ở chỗ Ý ĐỊNH, nơi phán đoán chính xác hơn hẳn: 'tôi định sửa main' và 'tôi đang ghi vào main' khác nhau về độ chắc chắn. MỞ LẠI khi có tín hiệu chỉ đọc được từ VĂN BẢN prompt mà không đọc được từ hành động."
+    },
+    "PostCompact": {
+      "state": "khong-co-viec",
+      "at": "2026-08-09T13:57:39.418Z",
+      "why": "harness ĐÃ nhận đúng khoảnh khắc này: SessionStart cắm matcher '*' nên nó bắn với source=compact — đo được trong phiên 2026-08-09, dòng 'SessionStart:compact hook success'. Và PostCompact chỉ in cho NGƯỜI ('Exit code 0 - stdout shown to user'), không chèn được vào model, nên nó không làm được thứ duy nhất sẽ là mới. Phần GHI TRƯỚC KHI XOÁ là #130. Việc tinh chỉnh 'in khác nhau tuỳ source' thuộc session-start.mjs, không cần ô mới. MỞ LẠI: không thấy."
+    },
+    "PermissionRequest": {
+      "state": "khong-co-viec",
+      "at": "2026-08-09T13:57:39.497Z",
+      "why": "cắm quyết định allow/deny ở đây là dựng TẦNG CHO PHÉP THỨ BA, cạnh permissions.deny (tầng vendor, đáng tin) và PreToolUse (tầng hook, best-effort). danger-zones.md §Cưỡng chế nói rõ THỨ TỰ hai tầng quan trọng hơn sức mạnh từng tầng; thêm tầng thứ ba làm thứ tự đó khó đọc mà không thêm phủ sóng nào. Và 2.1.222 vừa vá đúng lớp 'hook auto-allow đi vòng qua tool restriction'. MỞ LẠI khi permissions.deny chứng minh là không đủ cho một ca cụ thể."
+    },
+    "TeammateIdle": {
+      "state": "khong-co-viec",
+      "at": "2026-08-09T13:57:39.572Z",
+      "why": "sức mạnh của ô này là 'Exit code 2 - prevent idle (teammate continues working)' — tức ĐẨY agent làm tiếp. Harness đứng ở phía ngược lại: vấn đề trung tâm mà README nêu là 'agent tự khen, mark done sớm', nên thứ cần là DỪNG và KIỂM, không phải chống dừng. Lớp phối hợp của harness (reservations/, overlap-scan) nói về phiên của NGƯỜI trên cùng repo, khác đơn vị với teammate của vendor. MỞ LẠI khi harness có một chế độ hỏng mang hình dạng 'agent dừng quá sớm khi vẫn còn việc'."
+    },
+    "TaskCreated": {
+      "state": "khong-co-viec",
+      "at": "2026-08-09T13:57:39.635Z",
+      "why": "cùng họ với TaskCompleted (#131) nhưng ở đầu KIA, và đầu kia đã có gác: DoR nằm ở issue template của GitHub, nơi acceptance criteria bắt buộc verify được bằng máy. Task của phiên là đơn vị NHỎ HƠN issue; bắt nó khai DoR là dựng thủ tục thứ hai cho cùng một việc, và thủ tục thứ hai luôn là thủ tục bị bỏ. MỞ LẠI khi #131 chạy được và ĐO được rằng phần lớn 'mark done sớm' bắt nguồn từ task định nghĩa mơ hồ — lúc đó mới biết đầu nào đáng gác."
+    },
+    "Elicitation": {
+      "state": "khong-co-viec",
+      "at": "2026-08-09T13:57:39.713Z",
+      "why": "đo 2026-08-09: harness-size báo 'mcp servers: 0', và .mcp.json chưa tồn tại (chỉ có .mcp.json.example). Ô này chỉ bắn khi một MCP server HỎI người dùng; không server thì mẫu số bằng 0 DO CẤU TRÚC — đây đúng nghĩa n/a chứ không phải 'chưa đo'. MỞ LẠI khi repo khai MCP server đầu tiên (harness-doctor đã đếm sẵn qua mcp.maxServers)."
+    },
+    "ElicitationResult": {
+      "state": "khong-co-viec",
+      "at": "2026-08-09T13:57:39.793Z",
+      "why": "cùng lý do Elicitation: 0 MCP server, .mcp.json không tồn tại. Cặp đôi của nó, cùng điều kiện mở lại."
+    },
+    "CwdChanged": {
+      "state": "khong-co-viec",
+      "at": "2026-08-09T13:57:39.871Z",
+      "why": "mọi công cụ harness neo đường dẫn qua repoPath(), suy từ vị trí FILE chứ không từ cwd — nên đổi cwd không làm lệch phép đo nào. Đó là thiết kế có sẵn, không phải may. Hai thứ ô này thêm được là CLAUDE_ENV_FILE (đặt biến môi trường cho Bash sau đó) và watchPaths; harness không có biến môi trường nào phụ thuộc thư mục. MỞ LẠI khi có state neo vào cwd."
+    },
+    "FileChanged": {
+      "state": "khong-co-viec",
+      "at": "2026-08-09T13:57:39.932Z",
+      "why": "chỗ duy nhất nó phủ mà ConfigChange + protect-harness chưa phủ là NGƯỜI sửa harness.config.json bằng editor giữa phiên — mà đó là việc HỢP LỆ, đúng con đường DRI, không phải thứ cần gác. Mọi công cụ harness đọc lại config ở MỖI lần gọi, nên không state nào ôi thiu quá một lệnh. MỞ LẠI khi harness có tiến trình sống lâu hơn một lệnh."
+    },
+    "DirectoryAdded": {
+      "state": "khong-co-viec",
+      "at": "2026-08-09T13:57:40.014Z",
+      "why": "harness neo mọi phép đo vào MỘT repo root, và docs/MULTI-PROJECT.md giải bài toán nhiều repo bằng nhiều PHIÊN chứ không bằng nhiều thư mục trong một phiên. Ô này chỉ có việc nếu harness chuyển sang mô hình đa-root. MỞ LẠI khi MULTI-PROJECT.md đổi khuyến nghị sang /add-dir."
+    },
+    "MessageDisplay": {
+      "state": "khong-co-viec",
+      "at": "2026-08-09T13:57:40.089Z",
+      "why": "lớp TRÌNH BÀY thuần — schema nói thẳng 'Display-only: the stored message and what the model sees are untouched' — và nó bắn theo từng mẩu văn bản hiện ra, tức đường nóng nhất trong cả 31 ô. Harness không có phán đoán nào chỉ đúng ở lớp hiển thị; thứ gần nhất là output-style, vốn rẻ hơn và không phải hook. MỞ LẠI: không thấy."
     }
   }
 }
