@@ -11,6 +11,72 @@
 
 ---
 
+## 2.48.0 — 2026-08-09
+
+**minor.** `limits.prWarnFiles` có người đọc. Đóng #139 — phát hiện đầu tiên của máy dò
+#127 được **xử**, không chỉ được báo.
+
+### Vì sao CHO NGƯỜI ĐỌC chứ không CẮT
+
+`harness-doctor` cho hai lối. Cắt thì vứt bỏ một công hiệu chỉnh THẬT: `$comment_prWarnFiles`
+ghi lại đo trên 6 release (**19 · 15 · 21 · 10 · 25 · 35** file) và lý do nâng mốc 15 → 30
+(*"mốc 15 cũ cảnh báo ở 5/6 release — một cảnh báo nổ mọi lần là cảnh báo dạy người ta phớt
+lờ nó"*). Đó là con số đã trả giá để biết; nó xứng đáng có một cái cò.
+
+Và lối này **không cần tay DRI**: `.github/workflows/ci.yml` KHÔNG nằm trong `paths.harness`
+— chỉ `.github/CODEOWNERS` nằm trong đó.
+
+### MỘT phép diff, HAI con số
+
+```diff
+- LINES=$(git diff … --numstat -- . ':(exclude)…' | awk '{a+=$1; d+=$2} END {print a+d+0}')
++ NUMSTAT=$(git diff … --numstat -- . ':(exclude)…')
++ LINES=$(echo "$NUMSTAT" | awk '{a+=$1; d+=$2} END {print a+d+0}')
++ FILES=$(echo "$NUMSTAT" | awk 'NF{n++} END {print n+0}')
+```
+
+Gọi `git diff` lần thứ hai với một bản **chép** của danh sách loại trừ là cách hai ngưỡng
+lặng lẽ đo hai tập file khác nhau: sửa một bên, quên bên kia, và không gì báo. Cùng hình dạng
+với bug **v2.45.1** — hai bên đọc ngân sách tự lắp tham số nên một cái sổ ra hai câu trả lời.
+
+### HAI cảnh báo độc lập, không phải `elif`
+
+Dòng và file đo hai thứ khác nhau. Một PR **200 dòng rải trên 40 file** là *"đang gộp nhiều
+mục đích"*; một PR **1200 dòng trong 3 file** là *"một thay đổi lớn"*. Nhánh `elif` làm ca thứ
+nhất **không bao giờ được nói ra** — và đó chính là ca `prWarnFiles` được hiệu chỉnh để bắt.
+
+### Một cái bẫy `bash -e` bắt được lúc thử
+
+`FILES=$(… | grep -c .)` là cách viết tự nhiên hơn, và nó **hỏng**: `grep -c` thoát **1** khi
+đếm ra 0, bước CI chạy dưới `bash -e`, nên một PR không chạm file nào (sau khi loại tài liệu)
+làm **CI ĐỎ vì đúng cái nó đo được**. Đo tại chỗ trước khi commit:
+
+```
+$ echo "" | grep -c . ; echo "thoát $?"
+0
+thoát 1          ← bash -e ⇒ bước CI đỏ
+$ echo "" | awk 'NF{n++} END {print n+0}'
+0                ← thoát 0
+```
+
+Dùng `awk`, cùng công cụ dòng bên cạnh đã dùng.
+
+### Đo được ngay
+
+```
+$ node tooling/harness-doctor.mjs
+  ⚠️   config: 49 field · 1 không ai đọc · 1 đọc-mà-chưa-khai · 1 cố ý vắng
+```
+
+**2 → 1.** Còn lại `mcp.maxTools` (cắt) và `limits.sessionPresenceMinutes` (khai) — cả hai
+nằm trong `harness.config.json`, tức **vùng cấm**, tức tay DRI.
+
+### Đã đổi
+
+- `.github/workflows/ci.yml` — bước *"Kích thước PR"*
+
+---
+
 ## 2.47.0 — 2026-08-09
 
 **minor.** Nghi thức chạm bề mặt vendor chỉ hỏi **một nửa** câu hỏi suốt từ đầu. Nay có nửa
