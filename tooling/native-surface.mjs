@@ -40,7 +40,7 @@ import { readSync, openSync, closeSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { repoPath, readJson, writeJson, report, exists } from './lib/harness.mjs';
-import { claudeCodeVersionMeasured } from './rituals.mjs';
+import { claudeCodeVersionMeasured, nativeSlotState } from './rituals.mjs';
 
 const RECORD = process.argv.includes('--record');
 const BASELINE = repoPath('.claude', 'claude-code-baseline.json');
@@ -187,16 +187,36 @@ if (!events) {
   const empty = events.filter(e => !wired.has(e));
   // Cắm một sự kiện binary KHÔNG có nghĩa là hook đó KHÔNG BAO GIỜ chạy — và nó im lặng.
   const phantom = [...wired].filter(e => !events.includes(e));
+  const prev = readJson(BASELINE, {});
 
   ok.push(`${events.length} sự kiện trong binary${version ? ` (Claude Code ${version})` : ''}`);
   ok.push(`${inUse.length} đang cắm: ${inUse.join(' · ')}`);
-  na.push(`${empty.length} để trống — không phải thiếu sót, nội dung là đặc thù repo: ${empty.join(' · ')}`);
+
+  // ── BA RỔ, KHÔNG PHẢI MỘT ───────────────────────────────────────────────────
+  //
+  // Tới 2.46.0 dòng này là: `na.push('${empty.length} để trống — không phải thiếu sót, nội dung
+  // là đặc thù repo')`. Rổ `na`, theo đúng định nghĩa ở `report()` (`lib/harness.mjs`), nghĩa là
+  // **bằng không DO CẤU TRÚC**. 22 ô mà chưa ai xét thì không bằng-không-do-cấu-trúc: nó là 22
+  // câu hỏi chưa hỏi, tức rổ `unknown`. Câu *"không phải thiếu sót"* đúng cho những ô ĐÃ được
+  // xét và bác; áp nó cho cả tập là tự khai đã trả lời xong một câu chưa ai đặt ra — và nó đã
+  // đọc như một câu trả lời suốt nhiều version.
+  //
+  // Sổ `slotReview` (ghi bằng `rituals.mjs --slot`) chia đúng ba rổ mà `report()` đã có sẵn.
+  const slots = nativeSlotState({ events, wired: [...wired], ledger: prev.slotReview });
+  if (slots.hasWork.length) {
+    warn.push(`${slots.hasWork.length} ô để trống mà harness CÓ việc cho nó: ${slots.hasWork.join(' · ')}`
+      + (slots.issues.length ? ` (${slots.issues.join(' ')})` : ''));
+  }
+  if (slots.noWork.length) na.push(`${slots.noWork.length} ô để trống đã XÉT và bác: ${slots.noWork.join(' · ')}`);
+  if (slots.unexamined.length) {
+    unknown.push(`${slots.unexamined.length}/${empty.length} ô để trống CHƯA ai xét: ${slots.unexamined.join(' · ')}`
+      + ' — `node tooling/rituals.mjs --slots`');
+  }
   if (phantom.length) {
     warn.push(`${phantom.length} sự kiện ĐANG CẮM mà binary KHÔNG có: ${phantom.join(' · ')} — `
       + 'hook đó không bao giờ chạy, và nó im lặng. Vendor đã đổi tên hay bỏ sự kiện?');
   }
 
-  const prev = readJson(BASELINE, {});
   const before = prev.nativeEvents?.events;
   if (Array.isArray(before)) {
     const added = events.filter(e => !before.includes(e));

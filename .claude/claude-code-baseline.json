@@ -70,5 +70,42 @@
       "DirectoryAdded",
       "MessageDisplay"
     ]
+  },
+  "slotReview": {
+    "WorktreeCreate": {
+      "state": "khong-co-viec",
+      "at": "2026-08-09T13:12:29.106Z",
+      "why": "PROVISIONER, không phải observer — schema hook trong binary 2.1.221: \"Stdout should contain the absolute path to the created worktree\". Cắm bất cứ script advisory nào vào đây làm `claude --worktree` THROW cho cả đội. Muốn nghi thức lúc mở worktree thì dùng SessionStart. Hồ sơ: docs/adr/0002 + .claude/learnings/2026-W32-tai-phan-vai-native.md, và harness-doctor đã có gác riêng chặn đúng ca này."
+    },
+    "WorktreeRemove": {
+      "state": "khong-co-viec",
+      "at": "2026-08-09T13:12:29.180Z",
+      "why": "PROVISIONER — exit 0 nghĩa là \"đã xoá xong\", nên Claude Code BỎ QUA bước xoá của chính nó ⇒ rò rỉ worktree, im lặng. Cùng hồ sơ với WorktreeCreate: docs/adr/0002."
+    },
+    "PreCompact": {
+      "state": "co-viec",
+      "at": "2026-08-09T13:13:04.035Z",
+      "why": "0 byte được ghi trước khi context bị xoá — /handoff thủ công và rituals đo được nó CHƯA CHẠY lần nào. PreCompact chặn được, nên nó ghi kịp. #130"
+    },
+    "SessionEnd": {
+      "state": "co-viec",
+      "at": "2026-08-09T13:13:04.125Z",
+      "why": "nhánh còn lại của #130: phiên kết thúc mà không compact. Cùng cơ chế checkpoint. #130"
+    },
+    "TaskCompleted": {
+      "state": "co-viec",
+      "at": "2026-08-09T13:13:04.230Z",
+      "why": "'agent tự khen, mark done sớm' — README gọi là vấn đề trung tâm, hiện chỉ bắt ở Stop/CI tức SAU khi agent đã tin nó xong. Ô này CHẶN được, đúng khoảnh khắc lời tuyên bố được đưa ra. #131"
+    },
+    "PostToolUseFailure": {
+      "state": "co-viec",
+      "at": "2026-08-09T13:13:04.330Z",
+      "why": "tín hiệu CAPTURE miễn phí đứng cạnh fixlog — fixlog hiện là '3 giây người phải nhớ gõ', tức tầng capture của vòng học phụ thuộc trí nhớ. Quan sát, không chặn. #132"
+    },
+    "Notification": {
+      "state": "co-viec",
+      "at": "2026-08-09T13:13:04.438Z",
+      "why": "idle_prompt đo 'agent đợi người bao lâu' — chỉ số ma sát người-agent chưa ai có. Cùng chậu observe.mjs với #132. #132"
+    }
   }
 }

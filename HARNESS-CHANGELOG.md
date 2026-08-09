@@ -11,6 +11,152 @@
 
 ---
 
+## 2.47.0 — 2026-08-09
+
+**minor.** Nghi thức chạm bề mặt vendor chỉ hỏi **một nửa** câu hỏi suốt từ đầu. Nay có nửa
+còn lại, và nó có sổ. Đóng #129.
+
+### Nửa câu hỏi bị thiếu
+
+`claude-code-drift` hỏi câu **TRỪ**: *"vendor vừa ra sẵn thứ nào harness đang tự làm tay?"* —
+nó đi tìm cơ chế để **cắt**, nên nó chỉ nhìn được những chỗ harness **đã có mặt**. Chỗ vendor
+**gọi cho ta mà ta chưa bao giờ nhấc máy** thì không mục nào trong bảng nghi thức nhìn thấy.
+
+Ba mảnh đã tồn tại, mỗi mảnh làm đúng việc của nó, và **không mảnh nào hỏi câu còn lại**:
+
+```
+native-surface.mjs   ĐO từ binary → "31 sự kiện · 9 đang cắm · 22 để trống"
+claude-code-drift    HỎI          → "vendor ra sẵn thứ nào harness tự làm?"   ← TRỪ
+harness-doctor       LỌC          → NATIVE_SLOTS = 5 ô, cả 5 đã cắm
+```
+
+Con số **22** được **in ra** suốt nhiều version như một số đo. Không ai **xét** nó.
+
+### Rổ `na` là chỗ câu hỏi đi chết
+
+Dòng cũ của `native-surface`:
+
+```js
+na.push(`${empty.length} để trống — không phải thiếu sót, nội dung là đặc thù repo: …`)
+```
+
+Theo đúng định nghĩa ở `report()` (`lib/harness.mjs`), rổ `na` nghĩa là **bằng không DO CẤU
+TRÚC** — *"một hook không có đường exit 2 thì `fired` không thể nhúc nhích"*. 22 ô mà **chưa
+ai xét** không phải bằng-không-do-cấu-trúc; nó là 22 câu hỏi chưa hỏi, tức rổ `unknown`.
+
+Câu *"không phải thiếu sót"* **đúng** cho những ô đã được xét và bác. Áp nó cho cả tập là tự
+khai đã trả lời xong một câu chưa ai đặt ra — và nó đã đọc như một câu trả lời suốt nhiều
+version. Đây là cùng lớp lỗi mà chính `report()` ra đời để chặn, sống trong một bên gọi nó.
+
+### Ba trạng thái, và chúng trùng đúng ba rổ đã có
+
+| Sổ | Rổ `report()` | Nghĩa |
+|---|---|---|
+| `co-viec` | `warn` | có việc, **đã mở issue** |
+| `khong-co-viec` | `na` | đã xét và bác, có lý do |
+| `chua-xet` | `unknown` | chưa ai hỏi — **không phải 0** |
+
+### Sổ là PHẦN BÙ, không phải một danh sách
+
+`chua-xet = events − wired − ledger`. Vì là phần bù, một sự kiện **MỚI** vendor thêm vào
+binary **tự rơi vào `chua-xet`** ở lần `--record` kế tiếp — **không có bảng viết tay nào phải
+bảo trì**, và không có cách nào quên một ô mới.
+
+Khác cố ý với `NATIVE_SLOTS` ở `harness-doctor`: bảng đó là 5 ô mà **template** đã quyết là có
+việc, để repo tiêu thụ đối chiếu `settings.json` của **họ**. Nó viết tay và **cố ý không đổi
+theo binary**. Hai câu hỏi khác nhau, hai cơ chế — không gộp.
+
+### Đo được ngay khi cắm vào
+
+```
+$ node tooling/rituals.mjs --slots
+  OK   31 sự kiện (đo ở 2.1.226) · 9 đang cắm · 22 để trống
+  WARN 5 ô CÓ việc: PostToolUseFailure · Notification · SessionEnd · PreCompact · TaskCompleted
+  n/a  2 ô đã XÉT và bác: WorktreeCreate · WorktreeRemove
+  ?    15/22 ô CHƯA ai xét
+```
+
+Bảy ô được nạp trong chính PR này vì **repo đã có sẵn câu trả lời** cho chúng — không nạp thì
+nghi thức đi hỏi lại thứ `docs/adr/0002` và `.claude/learnings/` đã trả lời, và *"một sự thật
+ở hai chỗ là một LỖI"*. Năm ô `co-viec` sinh ra #130 · #131 · #132.
+
+**Mục này ĐỎ ngay khi merge, với 15 ô.** Đó là số thật, không phải lỗi.
+
+### `co-viec` bắt buộc có số issue
+
+Nghi thức XANH khi **mọi ô đã xét**, kể cả ô `co-viec`. Bắt nó đỏ cho tới lúc ô được cắm là
+bắt nó **đỏ vĩnh viễn**, và mục đỏ vĩnh viễn dạy người ta bỏ qua màu đỏ (`lessons/0003` tầng
+1 — cùng lý do `ui` phải khoá vào issue hiện tại thay vì quét cả repo).
+
+Ranh giới: mục này theo dõi **"đã HỎI chưa"**, không phải **"đã LÀM chưa"**. Đổi lại,
+`--slot … co-viec` **từ chối** một lý do không có `#N` — nếu không thì "có việc" là một câu
+ghi vào sổ rồi không ai đọc lại. Số issue được rút **từ chính lý do**, không có trường riêng
+để lệch, và in ở dòng `ok` mỗi lần `--all`.
+
+### Sổ đặt ở đâu — và vì sao KHÔNG theo đề xuất của chính mình
+
+Đề xuất trong `.claude/learnings/2026-W32-cau-hoi-cong-va-may-do-config.md` viết
+`.claude/state/native-slots-reviewed.json`. **Sai**: `.claude/state/` nằm trong `.gitignore`.
+
+Một phán đoán kiểu *"`WorktreeCreate` là provisioner, đừng cắm advisory vào"* là sự thật của
+**đội** — nó phải review được trong PR và phải sống qua một lần đổi máy. Sổ fixlog đã ở đúng
+chỗ gitignore đó và cái giá đã đo được: việc treo chỉ nằm trên **một** máy, người ở máy kia
+không biết nó tồn tại. Nên sổ nằm cạnh `nativeEvents` trong `.claude/claude-code-baseline.json`
+— file **được commit**, và là file mà nghĩa của sổ phụ thuộc vào (phép trừ cần `events`).
+
+Cái giá: baseline nay có **BA** người ghi. #120 là lần một người dựng lại object từ đầu và
+xoá đo của người kia, **im lặng**, phụ thuộc thứ tự chạy hai lệnh. Cả ba nay đọc-sửa-ghi trên
+`prev`, và bảng `mergeBaseline` khoá cả ba khoá.
+
+### Một nhánh đặt sai chỗ, tự bắt được bằng bài học của #127
+
+`wired` không đọc được (`settings.json` hỏng) phải ra `null` ⇒ `?`. Bản đầu để nhánh đó trong
+`collect()` — **không thuần, không test được**, đúng lớp mutant đã sống sót ở #127. Đẩy vào
+hàm thuần thì nó thành một dòng trong bảng ca. Rơi xuống `[]` ở vế đó thì **mọi** sự kiện
+thành "ô trống": nghi thức đỏ với 31 cái tên, dựng trên một file chưa đọc nổi.
+
+### Mutation — 8 mutant, 0 sống sót
+
+| # | Mutant | Ca giết nó |
+|---|---|---|
+| M1 | mọi mục trong sổ đều là "đã xét" (`if (led[e])`) | trạng thái gõ sai (`coviec`) phải vào `chua-xet` |
+| M2 | `wired` không đọc được ⇒ `[]` thay vì `null` | `wired: null` ⇒ `null` |
+| M3 | quên trừ ô ĐANG CẮM | sổ rỗng ⇒ đúng 2 ô trống |
+| M4 | `stale` luôn rỗng | phán đoán về sự kiện vendor đã bỏ |
+| M5 | `issues` lấy từ mọi trạng thái | lý do `khong-co-viec` nhắc `#999` |
+| M6 | `events` rỗng ⇒ object thay vì `null` | `events: []` ⇒ `null` |
+| M7 | nghi thức không đỏ khi còn ô chưa xét | `unexamined: ['B']` ⇒ `due` |
+| M8 | `native-surface` đẩy ô chưa xét về lại `na` | **neo cấu trúc** |
+
+M1 là chiều **SỬA QUÁ TAY** của L0007: chiều ồn ào (quên một ô ⇒ đỏ) thì ai cũng test; chiều
+này làm mẫu số `chua-xet` teo về 0 và nghi thức **xanh** trong khi chưa ai xét gì.
+
+M8 không chạy-để-test được — phần in nằm trong `runCli()` sau một phép quét binary 285 MB, và
+CI ba OS không có `CLAUDE_CODE_EXECPATH`. Neo vào **đúng câu lệnh**, có nhánh riêng báo *"neo
+đã trôi"* để người sau sửa neo thay vì xoá check (cùng khuôn với neo `blankStrings` của #127).
+
+### Độ trễ
+
+`collect() + evaluate()` đo 3 lần: **109 · 104 · 102 ms** — thêm đúng một phép đọc JSON
+(`settings.json`) so với trước. **Không quét binary ở đây**: 285 MB, ~0,5 s, và `rituals` chạy
+ở **mọi** `SessionStart`. Chỗ trả chi phí đó vẫn là `native-surface --record`, một lần mỗi
+version.
+
+### Điều kiện thoát
+
+Hai quý liên tiếp nghi thức này không đổi được ô nào từ `chua-xet` sang một việc thật ⇒ hạ
+xuống nhịp quý, hoặc bỏ.
+
+### Đã đổi
+
+- `tooling/rituals.mjs` — `nativeSlotState()` (thuần) · nghi thức thứ 14 `native-slot-review` ·
+  `--slot` / `--slots` · `collect()` đọc thêm `settings.json`
+- `tooling/native-surface.mjs` — ba rổ thay cho một
+- `tooling/test-hooks.mjs` — 13 ca hàm thuần + 4 ca tầng nghi thức + 1 neo cấu trúc (217 ca)
+- `.claude/claude-code-baseline.json` — khoá `slotReview`, 7 ô đã xét
+
+---
+
 ## 2.46.0 — 2026-08-08
 
 **minor.** Lớp lỗi *"field cấu hình không ai đọc"* đã bị sửa **bằng tay ba lần**; giờ nó có

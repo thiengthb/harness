@@ -1013,6 +1013,10 @@ for (const [env, expect, label, msg] of GATE_CASES) {
     // "Trạng thái ĐỦ" cho ngân sách = đã khai trần VÀ đã đo. Chỉ khai trần thôi là `?` —
     // ca ③ bên dưới khoá đúng điều đó.
     budget: { mode: 'ok', percent: 14, ageDays: 3, advice: null },
+    // "Trạng thái ĐỦ" cho sổ ô native = MỌI ô để trống đã được xét. `unexamined: []` là điều
+    // kiện duy nhất làm mục này xanh; ô `co-viec` KHÔNG giữ nó đỏ (xem chú thích của nghi thức
+    // `native-slot-review`: nó theo dõi "đã HỎI chưa", không phải "đã LÀM chưa").
+    nativeSlots: { empty: ['A', 'B'], hasWork: ['A'], noWork: ['B'], unexamined: [], stale: [], wiredJudged: [], issues: ['#130'] },
   };
   const get = (state, id) => evaluate({ ...base, ...state }).find(r => r.id === id);
 
@@ -3449,6 +3453,112 @@ if (repoRole() === 'template') {
   }
   if (bad.length) fail.push(`mergeBaseline${' '.repeat(15)} sai ${bad.length}/${cases.length} ca: ${bad.join(' · ')}`);
   else ok.push(`mergeBaseline${' '.repeat(15)} ${cases.length} ca — khoá của cơ chế KIA sống sót, và bản rà MỚI vẫn thắng (cả hai chiều)`);
+}
+
+// ─── sổ ô native: phép trừ tập hợp, và chiều SỬA QUÁ TAY của nó (#129) ───────
+//
+// `nativeSlotState` trả lời câu hỏi CỘNG — *"vendor gọi cho ta ở bao nhiêu chỗ mà ta không
+// nhấc máy?"* — bằng phần BÙ: `chua-xet = events − wired − ledger`. Bảng dưới khoá bốn ca mà
+// một bản "đơn giản hoá" sau này chắc chắn phá:
+//
+//   ⓵ Sự kiện MỚI của vendor tự vào `chua-xet`. Đây là toàn bộ lý do cơ chế dùng phần BÙ chứ
+//      không dùng danh sách. Không có ca này thì một bản đọc-danh-sách-viết-tay cũng xanh, và
+//      nó sẽ mù với đúng thứ nghi thức sinh ra để bắt.
+//   ⓶ CHIỀU SỬA QUÁ TAY (L0007): trạng thái gõ sai phải rơi vào `chua-xet`, KHÔNG vào "đã
+//      xét". Chiều ồn ào (quên một ô ⇒ đỏ) thì ai cũng test; chiều này làm mẫu số teo về 0 và
+//      nghi thức XANH trong khi chưa ai xét gì — im lặng, và không ca nào khác bắt được.
+//   ⓷ BA GIÁ TRỊ: `events` chưa đo và `wired` không đọc được đều ⇒ `null` ⇒ `?`. Rơi xuống
+//      `[]` ở vế `wired` thì MỌI sự kiện thành "ô trống": 31 cái tên vô nghĩa dựng trên một
+//      file chưa đọc nổi.
+//   ⓸ `issues` rút TỪ CHÍNH lý do và CHỈ từ `co-viec`. Một lý do `khong-co-viec` nhắc issue
+//      khác không được đọc thành việc đang mở.
+{
+  const { nativeSlotState, evaluate: ev } = await import('./rituals.mjs');
+  const L = ' '.repeat(13);
+  const CASES = [
+    ['sổ rỗng ⇒ mọi ô trống là chưa-xét',
+      { events: ['A', 'B', 'C'], wired: ['A'], ledger: {} },
+      r => r.empty.join() === 'B,C' && r.unexamined.join() === 'B,C' && !r.hasWork.length && !r.noWork.length],
+    ['ô ĐANG CẮM bị trừ khỏi cả ba rổ',
+      { events: ['A', 'B'], wired: ['A'], ledger: { A: { state: 'co-viec', why: '#1' } } },
+      r => r.empty.join() === 'B' && !r.hasWork.length && r.wiredJudged.join() === 'A'],
+    // ⓵
+    ['sự kiện MỚI của vendor tự vào chưa-xét',
+      { events: ['A', 'B', 'MoiToanh'], wired: ['A'], ledger: { B: { state: 'khong-co-viec', why: 'x' } } },
+      r => r.unexamined.join() === 'MoiToanh' && r.noWork.join() === 'B'],
+    ['phán đoán về sự kiện vendor ĐÃ BỎ ⇒ stale',
+      { events: ['A'], wired: [], ledger: { DaBo: { state: 'khong-co-viec', why: 'x' } } },
+      r => r.stale.join() === 'DaBo'],
+    // ⓶ — ca quan trọng nhất bảng này.
+    ['trạng thái gõ sai KHÔNG được tính là đã xét',
+      { events: ['A'], wired: [], ledger: { A: { state: 'coviec', why: 'gõ thiếu gạch' } } },
+      r => r.unexamined.join() === 'A' && !r.hasWork.length && !r.noWork.length],
+    ['mục sổ không có `state` ⇒ chưa-xét',
+      { events: ['A'], wired: [], ledger: { A: { why: 'quên khai state' } } },
+      r => r.unexamined.join() === 'A'],
+    // ⓷
+    ['events chưa đo ⇒ null (KHÔNG phải "0 ô trống")', { events: null, wired: ['A'], ledger: {} }, r => r === null],
+    ['events rỗng ⇒ null', { events: [], wired: [], ledger: {} }, r => r === null],
+    ['wired không đọc được ⇒ null, KHÔNG phải "mọi ô đều trống"',
+      { events: ['A', 'B'], wired: null, ledger: {} }, r => r === null],
+    ['không đối số ⇒ null, không ném', undefined, r => r === null],
+    // Sổ hỏng kiểu ⇒ coi như rỗng, KHÔNG ném: `rituals` chạy ở MỌI SessionStart.
+    ['ledger là mảng ⇒ coi như rỗng, không ném', { events: ['A'], wired: [], ledger: ['A'] }, r => r.unexamined.join() === 'A'],
+    ['ledger là chuỗi ⇒ coi như rỗng, không ném', { events: ['A'], wired: [], ledger: 'hỏng' }, r => r.unexamined.join() === 'A'],
+    // ⓸
+    ['issues: gộp trùng, sắp xếp, CHỈ từ co-viec',
+      { events: ['A', 'B', 'C'], wired: [], ledger: {
+        A: { state: 'co-viec', why: 'x #130' },
+        B: { state: 'co-viec', why: 'y #130 #131' },
+        C: { state: 'khong-co-viec', why: 'bác — xem #999' } } },
+      r => r.issues.join(' ') === '#130 #131'],
+  ];
+  const badSlot = [];
+  for (const [name, input, want] of CASES) {
+    let r; try { r = nativeSlotState(input); } catch (e) { badSlot.push(`${name} (ném: ${e.message})`); continue; }
+    try { if (!want(r)) badSlot.push(name); } catch { badSlot.push(`${name} (kết quả sai hình dạng)`); }
+  }
+  if (badSlot.length) fail.push(`nativeSlotState${L} sai ${badSlot.length}/${CASES.length} ca: ${badSlot.join(' · ')}`);
+  else ok.push(`nativeSlotState${L} ${CASES.length} ca — sự kiện MỚI tự vào \`chua-xet\`, và trạng thái gõ sai KHÔNG lọt thành "đã xét"`);
+
+  // Ở TẦNG NGHI THỨC: ba trạng thái phải đi đúng đường, và mục `due` phải kèm SỐ ĐO.
+  const R = (nativeSlots) => ev({ nativeSlots }).find(r => r.id === 'native-slot-review');
+  const RC = [
+    ['nativeSlots null ⇒ `?`', null, r => r.state === '?'],
+    ['còn ô chưa xét ⇒ due, kèm số',
+      { empty: ['A', 'B'], hasWork: [], noWork: [], unexamined: ['B'], stale: [], wiredJudged: [], issues: [] },
+      r => r.state === 'due' && /\d/.test(r.why)],
+    ['xét hết nhưng còn stale ⇒ VẪN due',
+      { empty: ['A'], hasWork: [], noWork: ['A'], unexamined: [], stale: ['DaBo'], wiredJudged: [], issues: [] },
+      r => r.state === 'due' && r.why.includes('DaBo')],
+    // Ô `co-viec` KHÔNG giữ mục này đỏ — nhưng số issue PHẢI in ra, nếu không thì việc vừa tìm
+    // ra biến mất ngay lúc câu hỏi được trả lời.
+    ['xét hết ⇒ ok, và IN số issue',
+      { empty: ['A'], hasWork: ['A'], noWork: [], unexamined: [], stale: [], wiredJudged: [], issues: ['#130'] },
+      r => r.state === 'ok' && r.why.includes('#130')],
+  ];
+  const badR = RC.filter(([, input, want]) => { try { return !want(R(input)); } catch { return true; } });
+  if (badR.length) fail.push(`native-slot-review${' '.repeat(10)} sai ${badR.length}/${RC.length} ca: ${badR.map(c => c[0]).join(' · ')}`);
+  else ok.push(`native-slot-review${' '.repeat(10)} ${RC.length} ca — \`?\` khi chưa đo, \`due\` khi còn ô chưa xét, \`ok\` vẫn in số issue`);
+
+  // NEO CẤU TRÚC — `native-surface` phải đẩy ô CHƯA XÉT vào rổ `unknown`, KHÔNG vào `na`.
+  //
+  // Tới 2.46.0 nó đẩy CẢ 22 ô trống vào `na` kèm lời *"không phải thiếu sót"*, và theo đúng
+  // định nghĩa ở `report()` rổ `na` nghĩa là **bằng không DO CẤU TRÚC**. Đó là bug đang được
+  // vá ở đây, và nó KHÔNG chạy-để-test được: phần in nằm trong `runCli()`, sau một phép quét
+  // binary 285 MB, mà CI ba OS không có `CLAUDE_CODE_EXECPATH`.
+  //
+  // Neo vào ĐÚNG câu lệnh, không grep cả file — và có nhánh riêng báo "neo đã trôi" để người
+  // sau sửa neo thay vì xoá check (cùng khuôn với neo `blankStrings` của #127).
+  {
+    const nsSrc = readFileSync(repoPath('tooling', 'native-surface.mjs'), 'utf8');
+    const m = nsSrc.match(/if\s*\(slots\.unexamined\.length\)\s*\{\s*(\w+)\.push/);
+    if (!m) fail.push(`native-surface${L} không tìm thấy nhánh \`if (slots.unexamined.length) { …push\` — NEO ĐÃ TRÔI, sửa neo đừng xoá check`);
+    else if (m[1] !== 'unknown') {
+      fail.push(`native-surface${L} ô CHƯA XÉT đang vào rổ \`${m[1]}\`, phải vào \`unknown\`. `
+        + `\`na\` nghĩa là bằng không DO CẤU TRÚC (định nghĩa ở report()); một ô chưa ai xét là câu hỏi CHƯA HỎI, không phải câu đã trả lời.`);
+    } else ok.push(`native-surface${L} ô chưa xét vào rổ \`unknown\` — "chưa hỏi" không bị đọc thành "không áp dụng"`);
+  }
 }
 
 // ─── devId: placeholder KHÔNG phải một cái tên, và "ai" ≠ "đã khai chưa" ─────
