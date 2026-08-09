@@ -1,0 +1,24 @@
+{
+  "$comment_fixture": "TRẠNG THÁI CŨ cho migration 2.49.0 — repo tiêu thụ ở bản trước 2.49.0. Ba thứ ở đây là CỐ Ý: (1) `maxTools` nằm CUỐI khối `mcp` nên cắt nó tạo dấu phẩy treo — nhánh nguy hiểm nhất của vá-TEXT; (2) `DuAnNayTuThem` là khoá project tự thêm, đứng NGAY CẠNH chỗ bị cắt, để bắt regex ăn quá tay; (3) có `$comment_*` để điều kiện ④ (không được mất chú thích) đo được thật.",
+  "project": {
+    "id": "fixture-2-49-0",
+    "integrationBranch": "origin/main"
+  },
+
+  "$comment_limits": "Con số. Sửa theo năng lực thật của đội, đừng để mặc định.",
+  "limits": {
+    "maxWorktrees": 4,
+    "prWarnLines": 400,
+    "reservationTtlHours": 8,
+    "staleLockMinutes": 5,
+    "docStaleDays": 90,
+    "maxSkills": 12
+  },
+
+  "$comment_mcp": "3–5 server/project. Tool definition ăn context ở MỌI request. CLI luôn rẻ hơn MCP về token — có CLI thì dùng CLI.",
+  "mcp": {
+    "maxServers": 5,
+    "DuAnNayTuThem": "khoá do project tự thêm — phải sống sót qua migration",
+    "maxTools": 20
+  }
+}

@@ -11,6 +11,76 @@
 
 ---
 
+## 2.49.0 — 2026-08-09
+
+**minor.** Hai phát hiện cuối của máy dò #127 được xử. Máy dò về **0 / 0**. Đóng #142.
+
+Chúng là **hai chiều của cùng một lớp lỗi**, nên chúng đi cùng một PR:
+
+| Field | Chiều | Xử |
+|---|---|---|
+| `limits.sessionPresenceMinutes` | **đọc mà chưa khai** — `session-start.mjs:156` gọi `limit(…, 240)`, config im lặng ⇒ 240 là hằng số cứng và người mở config để hiệu chỉnh **không thấy nó tồn tại** | khai, kèm `$comment_` |
+| `mcp.maxTools` | **khai mà không ai đọc** — 0 nơi đọc (`maxServers` thì có, `harness-doctor.mjs:157`) | cắt, để lại bia mộ |
+
+### `mcp.maxTools`: không chỉ chết, tiền đề của nó cũng hết hạn
+
+`$comment_mcp` viết *"Tool definition ăn context ở MỌI request"*. Câu đó **không còn đúng**:
+tool definition của MCP nay nạp **theo yêu cầu** (tool search), nên *"tổng tool phơi ra"* thôi
+là con số trả ở mỗi lượt. Cắt một field mà để nguyên tiền đề đã hết hạn ngay cạnh nó là **giữ
+lại một câu sai** — nên bia mộ `$comment_da_cat_maxTools` nói ra cả hai lý do. Phần nguyên lý
+còn đúng (3–5 server, CLI rẻ hơn MCP) ở lại `$comment_mcp`.
+
+Đây đúng câu hỏi mà nghi thức `claude-code-drift` tồn tại để hỏi, chỉ là lần này nó tới từ máy
+dò config chứ không từ bản rà vendor.
+
+### PHẢI có migration — và đây là chỗ 2.35.0 đã bỏ sót
+
+`harness.config.json` là lớp **SEED**: bước copy của `upgrade.mjs` KHÔNG chạm nó. Sửa ở template
+thì repo đã áp **không bao giờ nhận được**.
+
+Nửa THÊM là nửa quan trọng: consumer đang chạy `session-start.mjs` đọc field đó, và máy dò mới
+(2.46.0) sẽ báo đúng phát hiện này ở **mọi** repo con — một phát hiện họ không tự hiểu được nếu
+template im lặng.
+
+**Tiền lệ ngược:** 2.35.0 cắt `budget.maxToolCallsPerRun` mà **không** kèm migration, nên mọi
+consumer vẫn mang field chết đó tới hôm nay. Migration `012` không dọn hộ ca đó — nó ngoài
+phạm vi PR này — nhưng nó ghi lại rằng ca đó tồn tại.
+
+### Giá trị khai phải BẰNG ĐÚNG fallback đang chạy
+
+`240`, vì `session-start.mjs` đang chạy `limit('sessionPresenceMinutes', 240)`. Khai một số
+khác là dùng một migration mang danh *"làm cho config đọc được"* để lặng lẽ **đổi hành vi** —
+người nâng cấp không xin điều đó, và không gì báo cho họ.
+
+### Template và migration KHÔNG được lệch nhau
+
+Văn bản đích của `harness.config.json` được sinh ra **bằng chính migration 012** chạy trên bản
+cũ, rồi mới áp vào template. Hai đường — thứ consumer nhận và thứ template có — không thể lệch
+vì chúng là **một phép biến đổi**.
+
+### Bằng chứng
+
+```
+$ node tooling/test-migrations.mjs
+  OK  012-hai-chieu-cua-field-cau-hinh.mjs (v2.49.0): fixture CŨ→MỚI · ①②③④⑤ đạt · $comment 4→5
+
+$ (chạy thử khô trên config THẬT)
+  ✓ khai `limits.sessionPresenceMinutes` = 240
+  ✓ cắt `mcp.maxTools`
+  MÁY DÒ: 49 field · 0 không ai đọc · 0 đọc-mà-chưa-khai · 1 cố ý vắng
+```
+
+Fixture `tooling/fixtures/migration-2.49.0/` cố ý dựng **nhánh nguy hiểm nhất** của vá-TEXT:
+`maxTools` nằm **cuối** khối `mcp` (cắt nó tạo dấu phẩy treo), và một khoá do project tự thêm
+(`DuAnNayTuThem`) đứng **ngay cạnh** chỗ bị cắt để bắt regex ăn quá tay.
+
+### Đã đổi
+
+- `harness.config.json` — **vùng cấm**, cần `HARNESS_DRI=1` do DRI bật
+- `harness-migrations/012-hai-chieu-cua-field-cau-hinh.mjs` + fixture
+
+---
+
 ## 2.48.0 — 2026-08-09
 
 **minor.** `limits.prWarnFiles` có người đọc. Đóng #139 — phát hiện đầu tiên của máy dò
