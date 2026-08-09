@@ -41,7 +41,7 @@
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, readJson, readPacks, packPending, budgetSnapshot, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue } from './lib/harness.mjs';
+import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, readJson, writeJson, readPacks, packPending, budgetSnapshot, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue } from './lib/harness.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHẦN THUẦN — không đọc đĩa, không gọi git. Test khẳng định trực tiếp vào đây.
@@ -370,6 +370,50 @@ export const RITUALS = [
         + `, và tập sự kiện hook đã đo ở đúng version đó (${s.nativeEventsCount} sự kiện)` };
     },
   },
+  {
+    // ── CÂU HỎI **CỘNG** — cặp đôi của `claude-code-drift` ngay trên, và nửa còn thiếu của nó.
+    //
+    // Mục trên hỏi *"vendor có làm thứ harness tự viết thành thừa không"*: nó đi tìm cơ chế để
+    // CẮT, nên nó chỉ nhìn được những chỗ harness ĐÃ có mặt. Chỗ vendor **gọi cho ta mà ta chưa
+    // bao giờ nhấc máy** thì không mục nào trong bảng này nhìn thấy.
+    //
+    // Đo 2026-08-09: binary 2.1.226 có 31 sự kiện hook, `settings.json` cắm 9, còn **22 ô để
+    // trống** — và cả 22 nằm im trong rổ `na` của `native-surface` kèm lời *"không phải thiếu
+    // sót"*. Con số 22 được IN RA suốt nhiều version như một số đo; không ai XÉT nó.
+    //
+    // RANH GIỚI CỦA MỤC NÀY LÀ "ĐÃ HỎI CHƯA", KHÔNG PHẢI "ĐÃ LÀM CHƯA". Một ô `co-viec` làm mục
+    // này XANH — kèm số issue in ra mỗi lần `--all`. Bắt nó đỏ cho tới khi ô được cắm là bắt nó
+    // đỏ vĩnh viễn, và một mục đỏ vĩnh viễn dạy người ta bỏ qua màu đỏ (lessons/0003 tầng 1;
+    // cùng lý do `ui` phải khoá vào issue hiện tại thay vì quét cả repo). Phần THI HÀNH có nơi
+    // theo dõi riêng rồi: issue tracker. Đổi lại, `--slot … co-viec` TỪ CHỐI một lý do không có
+    // số issue — nếu không thì "có việc" là một câu ghi vào sổ rồi không ai đọc lại.
+    id: 'native-slot-review',
+    cmd: 'rituals.mjs --slots',
+    what: 'ô mở rộng native còn TRỐNG: ô nào harness CÓ việc cho nó? (câu hỏi CỘNG)',
+    check: (s) => {
+      const n = s.nativeSlots;
+      if (!n) {
+        return { state: '?', why: 'chưa có tập sự kiện hook trong `.claude/claude-code-baseline.json` (hoặc không đọc được '
+          + '`.claude/settings.json`) — không trừ được tập nào, nên KHÔNG biết còn ô nào trống. '
+          + '`node tooling/native-surface.mjs --record`' };
+      }
+      if (n.unexamined.length) {
+        const rest = n.unexamined.length - 3;
+        return { state: 'due', why: `${n.unexamined.length}/${n.empty.length} ô mở rộng native để TRỐNG mà chưa ai xét `
+          + `(${n.unexamined.slice(0, 3).join(' · ')}${rest > 0 ? ` … +${rest}` : ''}) — mỗi ô là một chỗ vendor GỌI cho bạn `
+          + 'mà harness không nhấc máy. Cả sổ: `node tooling/rituals.mjs --slots`' };
+      }
+      // Phán đoán cũ nói về một sự kiện vendor đã bỏ. Không nguy hiểm, nhưng nó chiếm chỗ của
+      // một câu hỏi: `khong-co-viec` về một sự kiện không tồn tại đọc y hệt một câu đã trả lời.
+      if (n.stale.length) {
+        return { state: 'due', why: `${n.stale.length} phán đoán trong sổ nói về sự kiện binary KHÔNG còn có `
+          + `(${n.stale.join(' · ')}) — vendor đã bỏ nó. Xoá: \`node tooling/rituals.mjs --slot <Event> chua-xet\`` };
+      }
+      return { state: 'ok', why: `${n.empty.length} ô để trống đã xét hết — ${n.hasWork.length} CÓ việc`
+        + (n.hasWork.length ? ` (${n.hasWork.join(' · ')}${n.issues.length ? ` → ${n.issues.join(' ')}` : ''})` : '')
+        + ` · ${n.noWork.length} không có việc` };
+    },
+  },
 ];
 
 /** `…/versions/2.1.221` → `2.1.221`. Trả `null` thay vì đoán — `null` chạy tiếp thành `?`. */
@@ -447,6 +491,65 @@ export function mergeBaseline(prev, { version, at, found }) {
     reviewedVersion: version,
     reviewedAt: at,
     history: [{ version, at, found }, ...history].slice(0, 20),
+  };
+}
+
+/**
+ * SỔ Ô MỞ RỘNG NATIVE — THUẦN, và nó là một **phép trừ tập hợp**, không phải một danh sách.
+ *
+ * `chua-xet = events − wired − ledger`. Nhờ là phần BÙ, một sự kiện MỚI vendor thêm vào binary
+ * **tự rơi vào `chua-xet`** ở lần `native-surface --record` kế tiếp — không có bảng viết tay nào
+ * phải bảo trì, và không có cách nào quên một ô mới. Đó là khác biệt cố ý với `NATIVE_SLOTS` ở
+ * `harness-doctor`: bảng đó là 5 ô mà TEMPLATE đã quyết là có việc, để repo tiêu thụ đối chiếu
+ * settings.json của HỌ; nó cố ý viết tay và cố ý KHÔNG đổi theo binary. Hai câu hỏi khác nhau.
+ *
+ * BA TRẠNG THÁI, trùng đúng ba rổ mà `report()` đã có sẵn (`lib/harness.mjs`):
+ *
+ *   co-viec        có việc, đã mở issue     → `warn`     đã đo, và đây là kết quả
+ *   khong-co-viec  đã xét và bác, có lý do  → `na`       bằng không DO CẤU TRÚC
+ *   chua-xet       chưa ai hỏi              → `unknown`  CHƯA ĐO ĐƯỢC — không phải 0
+ *
+ * Sự trùng đó không phải trang trí, nó là chỗ bản vá này bắt đầu: tới 2.46.0 `native-surface`
+ * đẩy **cả 22** ô trống vào `na` kèm lời *"không phải thiếu sót, nội dung là đặc thù repo"* —
+ * tức tự khai là đã trả lời xong một câu chưa ai đặt ra.
+ *
+ * `events` rỗng / không phải mảng ⇒ **`null`**, KHÔNG phải "0 ô trống". "Chưa quét binary lần
+ * nào" và "quét rồi, không ô nào trống" là hai câu khác hẳn nhau, và gộp chúng thì mục này xanh
+ * ở đúng repo chưa từng đo.
+ */
+export function nativeSlotState({ events, wired, ledger } = {}) {
+  if (!Array.isArray(events) || !events.length) return null;
+  // HAI đầu vào, HAI cách không đo được, và cả hai phải ra `null`. `wired` đọc không được mà
+  // rơi xuống `[]` thì MỌI sự kiện thành "ô trống": nghi thức đỏ với 31 cái tên, dựng trên một
+  // file chưa đọc nổi. Phép gộp đó cùng loại với `events` rỗng, nên nó phải chết ở CÙNG CHỖ —
+  // trong hàm THUẦN, nơi bảng ca khẳng định được. Để nhánh này ở `collect()` thì nó không thuần,
+  // không test được, và một mutant đổi nó sống sót im lặng (đúng ca đã gặp ở #127).
+  if (!Array.isArray(wired)) return null;
+  const w = new Set(wired);
+  const led = (ledger && typeof ledger === 'object' && !Array.isArray(ledger)) ? ledger : {};
+  const empty = events.filter(e => !w.has(e));
+  const hasWork = [], noWork = [], unexamined = [];
+  for (const e of empty) {
+    // GIÁ TRỊ LẠ RƠI VÀO `chua-xet`, không rơi vào "đã xét". Đây là chiều SỬA QUÁ TAY của bản
+    // vá này (L0007): một phép đọc rộng tay — `if (led[e]) đã-xét` — làm mẫu số `chua-xet` teo
+    // về 0 và nghi thức XANH trong khi chưa ai xét gì. Chiều ồn ào (quên một ô ⇒ đỏ) thì ai
+    // cũng test; chiều này im lặng, nên nó có ca riêng trong `test-hooks.mjs`.
+    const v = led[e]?.state;
+    if (v === 'co-viec') hasWork.push(e);
+    else if (v === 'khong-co-viec') noWork.push(e);
+    else unexamined.push(e);
+  }
+  return {
+    empty, hasWork, noWork, unexamined,
+    // Số issue rút từ CHÍNH lý do — không có trường riêng để lệch. In ở dòng `ok` để phần
+    // THI HÀNH không biến mất sau khi câu hỏi đã được trả lời.
+    issues: [...new Set(Object.values(led).filter(v => v?.state === 'co-viec')
+      .flatMap(v => String(v.why || '').match(/#\d+/g) || []))].sort(),
+    // Phán đoán còn trong sổ mà binary KHÔNG còn sự kiện đó — vendor đã bỏ nó.
+    stale: Object.keys(led).filter(e => !events.includes(e)),
+    // Đã xét RỒI mới cắm. Với `co-viec` nghĩa là việc đã làm xong; với `khong-co-viec` thì sổ
+    // và settings.json đang nói ngược nhau, và chỉ chỗ liệt kê mới phân biệt được hai ca.
+    wiredJudged: Object.keys(led).filter(e => w.has(e)),
   };
 }
 
@@ -622,16 +725,22 @@ export function collect() {
         ? `CLAUDE_CODE_EXECPATH = "${process.env.CLAUDE_CODE_EXECPATH}" (không có đoạn nào là version)`
         : 'CLAUDE_CODE_EXECPATH không được đặt'}, và không thấy package.json của @anthropic-ai/claude-code trong 5 tầng trên binary đó`,
     ...(() => {
-      try {
-        const b = JSON.parse(readFileSync(repoPath('.claude', 'claude-code-baseline.json'), 'utf8'));
-        return {
-          reviewedClaudeCode: b.reviewedVersion || null,
-          reviewedClaudeCodeAt: b.reviewedAt || null,
-          // Chỉ ĐỌC cache, không quét binary — xem lý do ở `check` của `claude-code-drift`.
-          nativeEventsVersion: b.nativeEvents?.version || null,
-          nativeEventsCount: Array.isArray(b.nativeEvents?.events) ? b.nativeEvents.events.length : null,
-        };
-      } catch { return { reviewedClaudeCode: null, reviewedClaudeCodeAt: null, nativeEventsVersion: null, nativeEventsCount: null }; }
+      // HAI LẦN ĐỌC TÁCH NHAU, cố ý. Gộp chúng vào một `try` thì một file hỏng nuốt luôn mọi
+      // khoá của file kia — và ở đây `settings.json` là file người dùng sửa tay thường xuyên
+      // nhất, còn `claude-code-baseline.json` giữ bản rà không dựng lại được.
+      let b = null, wired = null;
+      try { b = JSON.parse(readFileSync(repoPath('.claude', 'claude-code-baseline.json'), 'utf8')); } catch { /* chưa rà lần nào */ }
+      try { wired = Object.keys(JSON.parse(readFileSync(repoPath('.claude', 'settings.json'), 'utf8'))?.hooks ?? {}); } catch { /* ⇒ null, không phải [] */ }
+      return {
+        reviewedClaudeCode: b?.reviewedVersion || null,
+        reviewedClaudeCodeAt: b?.reviewedAt || null,
+        // Chỉ ĐỌC cache, không quét binary — xem lý do ở `check` của `claude-code-drift`.
+        nativeEventsVersion: b?.nativeEvents?.version || null,
+        nativeEventsCount: Array.isArray(b?.nativeEvents?.events) ? b.nativeEvents.events.length : null,
+        // `wired` là `null` khi không đọc được settings.json, và `nativeSlotState` biến nó
+        // thành `null` ⇒ `?`. Phán đoán đó nằm TRONG hàm thuần, cố ý — xem chú thích ở đó.
+        nativeSlots: nativeSlotState({ events: b?.nativeEvents?.events, wired, ledger: b?.slotReview }),
+      };
     })(),
   };
 }
@@ -733,6 +842,116 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     console.log(`✓ đã ghi: rà Claude Code ${version}`);
     console.log(`  thấy: ${found}`);
     console.log(`  Nghi thức claude-code-drift sẽ im cho tới lần Claude Code lên version tiếp theo.\n`);
+    process.exit(0);
+  }
+
+  // ── SỔ Ô MỞ RỘNG NATIVE ────────────────────────────────────────────────────
+  //
+  // NGƯỜI GHI THỨ BA của `.claude/claude-code-baseline.json`. Hai người kia:
+  // `--reviewed-claude-code` (khoá `reviewedVersion`/`reviewedAt`/`history`) và
+  // `native-surface.mjs --record` (khoá `nativeEvents`). Cả ba PHẢI đọc-sửa-ghi trên `prev` —
+  // #120 là lần một người dựng lại object từ đầu và xoá đo của người kia, IM LẶNG, phụ thuộc
+  // đúng thứ tự chạy hai lệnh. Ca test `mergeBaseline` khoá cả ba khoá đó.
+  //
+  // VÌ SAO Ở ĐÂY chứ không ở `.claude/state/` như đề xuất ban đầu trong `.claude/learnings/`:
+  // `.claude/state/` **nằm trong .gitignore**. Một phán đoán kiểu *"WorktreeCreate là
+  // provisioner, đừng cắm advisory vào"* là sự thật của ĐỘI — nó phải review được trong PR và
+  // phải sống qua một lần đổi máy. Sổ fixlog đã ở đúng chỗ gitignore đó, và cái giá đã đo được:
+  // việc treo chỉ nằm trên một máy, người ở máy kia không biết nó tồn tại.
+  const SLOT_STATES = ['co-viec', 'khong-co-viec', 'chua-xet'];
+  const BASELINE_PATH = repoPath('.claude', 'claude-code-baseline.json');
+  const readBaseline = () => readJson(BASELINE_PATH, {}) ?? {};
+  // `null` = KHÔNG ĐỌC ĐƯỢC, khác `[]` = đọc được và không cắm hook nào. Xem `collect()`.
+  const readWired = () => { try { return Object.keys(JSON.parse(readFileSync(repoPath('.claude', 'settings.json'), 'utf8'))?.hooks ?? {}); } catch { return null; } };
+
+  const si = process.argv.indexOf('--slot');
+  if (si > -1) {
+    const ev = process.argv[si + 1];
+    const st = process.argv[si + 2];
+    const why = process.argv.slice(si + 3).filter(a => !a.startsWith('--')).join(' ').trim();
+    const usage = () => {
+      console.error('Cách dùng: node tooling/rituals.mjs --slot <Event> <co-viec|khong-co-viec|chua-xet> "<vì sao>"');
+      console.error(`  Trạng thái: ${SLOT_STATES.join(' · ')}  — \`chua-xet\` XOÁ phán đoán, đưa ô về lại hàng chờ.`);
+      console.error('  Xem cả sổ: node tooling/rituals.mjs --slots');
+    };
+    if (!ev || !SLOT_STATES.includes(st)) { usage(); process.exit(1); }
+
+    const prev = readBaseline();
+    const events = prev.nativeEvents?.events;
+    if (!Array.isArray(events) || !events.length) {
+      console.error('Chưa đo tập sự kiện hook lần nào — không xét được một ô mà không biết nó có tồn tại không.');
+      console.error('  `node tooling/native-surface.mjs --record`');
+      process.exit(1);
+    }
+    // `chua-xet` ĐƯỢC PHÉP nói về sự kiện binary không còn có — đó đúng là ca dọn `stale`, và
+    // nếu chặn luôn ở đây thì mục `stale` của nghi thức không có đường đóng. Hai trạng thái kia
+    // thì không: xét một sự kiện không tồn tại là ghi câu trả lời cho câu hỏi không ai hỏi.
+    if (st !== 'chua-xet' && !events.includes(ev)) {
+      console.error(`\`${ev}\` KHÔNG có trong ${events.length} sự kiện đo được ở binary ${prev.nativeEvents?.version ?? '?'}.`);
+      console.error(`  Có: ${events.join(' · ')}`);
+      process.exit(1);
+    }
+    if (st !== 'chua-xet' && !why) {
+      console.error('Lý do là BẮT BUỘC — một ô đánh dấu "đã xét" mà không ghi vì sao thì không phân biệt được với chưa ai xét,');
+      console.error('  và lần sau không ai dựng lại được quyết định. Cùng luật với `--reviewed-claude-code` và `fixlog --close`.');
+      process.exit(1);
+    }
+    // `co-viec` ĐÒI số issue, và đó không phải thủ tục: nghi thức này XANH khi mọi ô đã xét, kể
+    // cả ô có việc — vì bắt nó đỏ tới lúc ô được cắm là bắt nó đỏ vĩnh viễn. Chỗ duy nhất còn
+    // theo dõi phần THI HÀNH là issue tracker. Không có số issue thì việc vừa tìm ra không ai giữ.
+    if (st === 'co-viec' && !/#\d+/.test(why)) {
+      console.error('`co-viec` phải kèm số issue (ví dụ `#131`) trong lý do.');
+      console.error('  Nghi thức này chỉ theo dõi "đã HỎI chưa"; "đã LÀM chưa" thuộc issue tracker.');
+      console.error('  Không có số issue thì ô này thành xanh mà việc vừa tìm ra không nằm trong hàng đợi nào.');
+      process.exit(1);
+    }
+
+    prev.slotReview ??= {};
+    if (st === 'chua-xet') {
+      const had = prev.slotReview[ev];
+      if (!had) { console.error(`\`${ev}\` không có phán đoán nào trong sổ — không có gì để xoá.`); process.exit(1); }
+      delete prev.slotReview[ev];
+      writeJson(BASELINE_PATH, prev);
+      console.log(`✓ đã xoá phán đoán \`${ev}\` (\`${had.state}\` — ${had.why})`);
+      console.log('  Ô này trở lại CHƯA XÉT, và nghi thức native-slot-review sẽ hỏi lại.\n');
+      process.exit(0);
+    }
+    prev.slotReview[ev] = { state: st, at: new Date().toISOString(), why };
+    writeJson(BASELINE_PATH, prev);
+    console.log(`✓ ${ev} → ${st}`);
+    console.log(`  ${why}`);
+    if (st === 'co-viec') {
+      console.log('  Sổ này nói cho RIÊNG repo này. Nếu ô này là việc của MỌI repo áp harness thì nó còn');
+      console.log('  phải vào `NATIVE_SLOTS` ở tooling/harness-doctor.mjs + một migration — `settings.json`');
+      console.log('  là lớp SEED nên bước copy của upgrade KHÔNG chạm nó.');
+    }
+    console.log('');
+    process.exit(0);
+  }
+
+  if (process.argv.includes('--slots')) {
+    const prev = readBaseline();
+    const wired = readWired();
+    const led = prev.slotReview ?? {};
+    const n = wired === null ? null : nativeSlotState({ events: prev.nativeEvents?.events, wired, ledger: led });
+    const row = (e, tail) => `${e.padEnd(22)}${tail}`;
+    report('SỔ Ô MỞ RỘNG NATIVE', n === null ? {
+      unknown: [wired === null
+        ? 'không đọc được .claude/settings.json — không biết ô nào đang cắm, nên không trừ được tập nào'
+        : 'chưa đo tập sự kiện hook lần nào (.claude/claude-code-baseline.json → nativeEvents). `node tooling/native-surface.mjs --record`'],
+    } : {
+      ok: [`${prev.nativeEvents.events.length} sự kiện (đo ở ${prev.nativeEvents.version ?? '?'}) · ${wired.length} đang cắm · ${n.empty.length} để trống`,
+        ...n.wiredJudged.filter(e => led[e]?.state === 'co-viec').map(e => row(e, `việc đã LÀM — ô đang cắm (${led[e].why})`))],
+      warn: [
+        ...n.hasWork.map(e => row(e, led[e]?.why ?? '')),
+        ...n.wiredJudged.filter(e => led[e]?.state === 'khong-co-viec')
+          .map(e => row(e, 'sổ ghi `khong-co-viec` nhưng ô này ĐANG CẮM — một trong hai sai')),
+        ...n.stale.map(e => row(e, `phán đoán \`${led[e]?.state}\` về sự kiện binary KHÔNG còn có — \`--slot ${e} chua-xet\``)),
+      ],
+      na: n.noWork.map(e => row(e, led[e]?.why ?? '')),
+      unknown: n.unexamined.map(e => row(e, 'chưa ai hỏi ô này có việc cho harness không')),
+    });
+    console.log('  Xét một ô: `node tooling/rituals.mjs --slot <Event> khong-co-viec "<vì sao không>"`\n');
     process.exit(0);
   }
 

@@ -1,4 +1,4 @@
-<!-- version: 2026-08-08-o -->
+<!-- version: 2026-08-09-a -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,19 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-09 — Nghi thức mới: 22 ô native để trống, ai đã xét ô nào? (v2.47.0)
+
+Bảng nghi thức có mục thứ 14: `rituals.mjs --slots`. Nó hỏi câu **CỘNG** — *"vendor gọi cho ta
+ở bao nhiêu chỗ mà harness không nhấc máy?"* — cặp đôi của `claude-code-drift`, vốn chỉ hỏi câu
+**TRỪ** (*"vendor có làm harness thành thừa không"*).
+
+`native-surface` trước đây khai cả 22 ô trống là `n/a` — *"không phải thiếu sót"*. Rổ `n/a`
+nghĩa là **bằng không do cấu trúc**; 22 câu chưa hỏi thì thuộc rổ `?`. Nay chia ba:
+`co-viec` / `khong-co-viec` / `chua-xet`.
+
+Xét một ô: `node tooling/rituals.mjs --slot <Event> khong-co-viec "<vì sao không>"`.
+Lý do BẮT BUỘC, và `co-viec` phải kèm số issue. Sự kiện MỚI vendor thêm vào **tự** vào hàng chờ.
 
 ## 2026-08-08 — Máy dò field cấu hình chết (v2.46.0)
 
