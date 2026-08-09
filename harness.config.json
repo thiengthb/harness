@@ -90,6 +90,8 @@
     "prWarnFiles": 30,
     "reservationTtlHours": 8,
     "staleLockMinutes": 5,
+    "$comment_sessionPresenceMinutes": "TTL của SỔ PHIÊN (.claude/state/sessions/). Phép kiểm chính là liveness thật (process.kill(pid,0)); TTL chỉ là LƯỚI CUỐI cho ca pid bị hệ điều hành cấp lại sau reboot. session-start.mjs ĐANG đọc field này; trước 2.49.0 nó không được khai ở đây nên 240 là hằng số cứng và người mở config để hiệu chỉnh không thấy nó tồn tại.",
+    "sessionPresenceMinutes": 240,
     "docStaleDays": 90,
     "$comment_maxSkills": "Đếm theo tầng DISCOVERY, không theo tổng số file: `disable-model-invocation: true` đưa chi phí context của một skill về 0, nên một skill nghi thức không còn cạnh tranh với skill khác. harness-doctor đọc field này.",
     "maxSkills": 12
@@ -118,8 +120,8 @@
 
   "$comment_mcp": "3–5 server/project. Tool definition ăn context ở MỌI request. Tổng tool phơi ra: mục tiêu ≤ 15–20. CLI luôn rẻ hơn MCP về token — có CLI thì dùng CLI. Chỉ dùng MCP khi cần session bền (browser) hoặc schema có cấu trúc mà CLI không cho.",
   "mcp": {
-    "maxServers": 5,
-    "maxTools": 20
+    "$comment_da_cat_maxTools": "CẮT ở 2.49.0 — 0 nơi đọc (`maxServers` thì CÓ: harness-doctor.mjs:157), và tiền đề của nó cũng đã hết hạn: tool definition của MCP nay nạp THEO YÊU CẦU (tool search) chứ không nạp hết ở mọi request, nên tổng-tool-phơi-ra thôi là một con số trả ở mỗi lượt. Nguyên lý còn đúng (3–5 server, CLI rẻ hơn MCP về token) ở lại `$comment_mcp` phía trên. Migration 012 cắt field này khỏi repo đã áp.",
+    "maxServers": 5
   },
 
   "$comment_evals": "Nối eval với agent. Để rỗng = chỉ chạy assertion tất định, KHÔNG gọi agent (gọi agent tốn tiền, phải là hành động chủ động). PROMPT ĐI QUA STDIN — placeholder {prompt} bị BỎ ở 2.7.8 vì JSON escaping không phải shell escaping: prompt nhiều dòng tới agent với \\n là hai ký tự literal, im lặng, và điểm eval sai theo hướng đọc y hệt 'model tụt hạng'. Placeholder còn lại: {maxTurns} {maxMinutes} {id} {promptFile}. Ví dụ: \"claude -p --max-turns {maxTurns} --permission-mode auto\". Runner được kiểm bằng agent GIẢ ở tooling/test-evals.mjs (tất định, không tốn token).",

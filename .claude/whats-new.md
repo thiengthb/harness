@@ -1,4 +1,4 @@
-<!-- version: 2026-08-09-a -->
+<!-- version: 2026-08-09-b -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,15 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-09 — Hai field cấu hình: một cái vừa hiện ra, một cái biến mất (v2.49.0)
+
+`limits.sessionPresenceMinutes` **nay khai được** (240 phút — TTL sổ phiên). Trước đây
+`session-start.mjs` vẫn đọc nó, nhưng config không khai nên bạn không thấy nó tồn tại để
+hiệu chỉnh. Giá trị không đổi, chỉ là giờ nhìn thấy được.
+
+`mcp.maxTools` **bị cắt** — 0 nơi đọc, và tiền đề hết hạn: MCP tool definition nay nạp theo
+yêu cầu. Repo đã áp harness nhận cả hai qua migration `012` khi chạy `upgrade`.
 
 ## 2026-08-09 — Nghi thức mới: 22 ô native để trống, ai đã xét ô nào? (v2.47.0)
 
