@@ -11,6 +11,62 @@
 
 ---
 
+## 2.57.0 — 2026-08-11
+
+**minor.** `test-hooks` phân biệt *"cây bị gỡ lớp harness CÓ CHỦ Ý"* với *"repo hỏng"*. Ratchet
+mẫu số **4 → 2**.
+
+### Một dòng, ba task
+
+`node evals/run.mjs --denominators` (v2.56.0) chỉ đúng thủ phạm: `node tooling/test-hooks.mjs`
+đỏ trên cây trần, và nó là assertion của `0005`, `0006`, `0007`. Đỏ vì 5 check đọc
+`.claude/settings.json` hoặc `.claude/rules/` — mà đó đúng là thứ `--bare` gỡ.
+
+Và thông điệp chúng in là *"neo của check này đã trôi, sửa neo thay vì xoá check"*. Câu đó
+**đúng** trong repo thật (ai đó vừa đổi tên một thứ) và **sai** ở đây (không ai đổi tên gì; file
+bị gỡ theo yêu cầu). Cùng lớp lỗi #155 và v2.54.0 đã dọn ở lớp eval, lần này ở lớp kiểm.
+
+Năm check đó nay là **`?`** trên cây trần: không phải `PASS` (chúng không chạy — biến khoảng
+trống thành dấu tick là L0005), không phải `FAIL` (chúng cũng không phát hiện ra gì).
+
+### Điều kiện là BẰNG CHỨNG, không phải sự vắng mặt
+
+```js
+const BARE_TREE = exists(repoPath('.claude', 'settings.json.bare-disabled'));
+```
+
+Neo vào cái xác `.bare-disabled` — thứ **chỉ `evalTree()` tạo ra**. KHÔNG neo vào
+`!exists(settings.json)`: một `settings.json` **biến mất** trong repo thật vẫn phải ĐỎ TO, vì
+đó là repo hỏng. Chỉ khi cái xác nằm ngay cạnh thì sự vắng mặt mới là **cố ý**.
+
+Đo cả hai chiều:
+
+| cây | `test-hooks` |
+|---|---|
+| repo thật | **exit 0** |
+| cây trần (có `.bare-disabled`) | **exit 0**, 5 check thành `?` |
+| `settings.json` bị xoá, KHÔNG có xác | **exit 1**, 4 FAIL |
+
+Có ca khoá chính cái neo đó (`BARE_TREE`), vì neo sai biến bản vá này thành cửa thoát: mọi repo
+áp template mất `settings.json` sẽ được chấm XANH, không triệu chứng. Ca dùng `codeOnly()`
+**không** `blankStrings` — neo cần kiểm chính là một hằng chuỗi, và xoá chuỗi đi thì ca đỏ oan
+(đã xảy ra khi viết nó).
+
+### Kết quả đo
+
+```
+trước:  5 task lệch · đầy đủ 24 · trần 13
+2.56.0: 4 task lệch · đầy đủ 24 · trần 16   (0002)
+2.57.0: 2 task lệch · đầy đủ 24 · trần 20   ← chiều trần chấm trên 83% phép đo
+```
+
+`0005` và `0006` **cân hẳn**. Còn `0001` (test-migrations · apply-to --audit · doctor --quick)
+và `0007` (test-evals) — **cùng một lớp**, bốn công cụ nữa cần cùng phép phân biệt đó. Khi công
+cụ thứ hai cần nó, `BARE_TREE` chuyển lên `lib/harness.mjs`; giờ chưa, vì một helper dựng cho
+người dùng chưa tồn tại là suy đoán.
+
+---
+
 ## 2.56.0 — 2026-08-10
 
 **minor.** `node evals/run.mjs --denominators` — điều kiện của phép trừ nay **đo được bằng một

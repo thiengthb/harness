@@ -1,4 +1,4 @@
-<!-- version: 2026-08-11-a -->
+<!-- version: 2026-08-11-b -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -9,6 +9,16 @@
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
 
+## 2026-08-11 — `test-hooks` phân biệt "cây bị gỡ có chủ ý" với "repo hỏng" (v2.57.0)
+
+Năm check đọc `.claude/settings.json` hoặc `.claude/rules/` từng báo **FAIL** khi không thấy
+file, kèm câu *"neo của check này đã trôi"*. Câu đó đúng trong repo thật và **sai** trên cây
+`eval --bare`, nơi file bị gỡ theo yêu cầu. Nay chúng là `?` ở đó — không PASS, không FAIL.
+
+Điều kiện là **bằng chứng**: có `settings.json.bare-disabled` nằm cạnh. Nếu `settings.json`
+của bạn **biến mất** mà không có cái xác đó, suite vẫn ĐỎ TO như trước — đó là repo hỏng.
+
+**Việc bạn phải làm khác đi:** không có. Ratchet mẫu số eval đi từ 4 xuống **2**.
 ## 2026-08-11 — Eval: điều kiện của phép trừ nay đo được bằng MỘT LỆNH (v2.56.0)
 
 ```
