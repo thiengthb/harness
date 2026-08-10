@@ -1,4 +1,4 @@
-<!-- version: 2026-08-10-b -->
+<!-- version: 2026-08-10-c -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,19 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-10 — Eval: agent chạy trong cây DÙNG MỘT LẦN, không trong repo bạn đang mở (v2.53.0)
+
+Khi `evals.command` đã khai, runner clone repo ra tmp và thả agent vào đó — **cả hai chiều**,
+không riêng `--bare`. Ba thứ đổi cho bạn:
+
+- Agent không còn sửa được cây bạn đang làm việc. Việc nó làm được **rút thành patch** và
+  runner in đường dẫn (kể cả khi task bị chấm `?`).
+- Bạn **ghi vào repo trong lúc eval chạy được rồi** — phép so vân tay nay gác cái clone.
+- Assertion nào đọc lịch sử git, `origin`, hoặc file chưa commit sẽ thành `n/a` kèm lý do:
+  clone là `--depth 1` và không có remote.
+
+`evals.command` rỗng thì **không đổi gì** — vẫn đo cây hiện tại như trước.
 
 ## 2026-08-10 — Eval: thêm `--output-format json` vào `evals.command` (v2.52.0)
 

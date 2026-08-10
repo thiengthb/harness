@@ -109,6 +109,9 @@ function runEval(command, mode, taskId = '9001', { flags = [], stateDir = null, 
       // người đang chạy nó — và một baseline bị ghi đè là một mốc so sánh mất vĩnh viễn.
       ...(stateDir ? { HARNESS_STATE_DIR: stateDir } : {}),
       ...(mode ? { FAKE_AGENT_MODE: mode } : {}),
+      // HÀNG RÀO của fixture: chế độ `writes` từ chối ghi khi nó đứng trong repo thật. Cần thiết
+      // vì một mutant phá cô lập sẽ đưa nó về đúng đó — đã xảy ra thật, xem fake-agent.mjs.
+      FAKE_AGENT_FORBID_CWD: repoPath(''),
       ...(extraEnv || {}),
     },
   });
@@ -654,6 +657,112 @@ ${assertions}
   } else {
     ok.push('㉖ phong bì khai "completed" ⇒ chữ ký trong CÂU TRẢ LỜI của agent không bị đọc thành cạn ngân sách');
   }
+}
+
+const NEUTRAL_155 = 'node -e "process.exit(0)"';
+
+// ── ㉗ Chiều ĐẦY ĐỦ cũng chạy trong cây dùng một lần (#155) ──────────────────
+//
+// `eval − eval --bare` là một phép trừ. Để hiệu số nói về HARNESS, hai lần chạy phải khác nhau
+// ở ĐÚNG MỘT THỨ. Tới 2.52.1 chiều trần chạy trong clone, chiều đầy đủ chạy trong **repo
+// SỐNG** — khác nhau thêm ở lịch sử git, ở `origin`, và ở mọi file chưa commit.
+//
+// Ca này là ⑰ soi gương: cùng phép khẳng định, chiều còn lại, và **vế thứ hai đảo dấu** —
+// cây đầy đủ phải GIỮ NGUYÊN lớp harness. Không có vế đó, một bản vá "cô lập cả hai chiều"
+// bằng cách gỡ file ở cả hai sẽ xanh, và phép trừ ra 0 do cấu trúc.
+{
+  const p = writeTask('9019', NEUTRAL_155);
+  const r = runEval(CMD, 'ok', '9019');
+  const got = received(r.out);
+  const HARNESS = ['AGENTS.md', 'CLAUDE.md', '.claude/settings.json', '.claude/rules'];
+  if (!got?.cwd) {
+    fail.push('㉗ không đọc được `FAKE_AGENT_CWD` — agent không chạy');
+  } else if (got.cwd === repoPath('')) {
+    fail.push('㉗ chiều ĐẦY ĐỦ vẫn chạy trong repo SỐNG — hai chiều của phép trừ khác nhau ở lịch sử git, `origin`, và file chưa commit, nên hiệu số chưa nói về harness (#155)');
+  } else if (!/CÂY ĐẦY ĐỦ \(dùng một lần\)/.test(r.out)) {
+    fail.push('㉗ cây cô lập rồi nhưng runner KHÔNG nói ra — người đọc tưởng agent vừa chạy trong repo của họ');
+  } else if (!Array.isArray(got.sees) || HARNESS.some(f => !got.sees.includes(f))) {
+    fail.push(`㉗ cây ĐẦY ĐỦ bị gỡ mất lớp harness: thiếu ${HARNESS.filter(f => !got.sees?.includes(f)).join(' · ')} — hai chiều nay giống nhau, phép trừ ra 0 DO CẤU TRÚC`);
+  } else {
+    ok.push('㉗ chiều ĐẦY ĐỦ cũng là cây dùng-một-lần, và nó GIỮ NGUYÊN lớp harness — hai chiều chỉ khác nhau ở `BARE_STRIP`');
+  }
+  rmSync(p, { force: true });
+}
+
+// ── ㉘ KHÔNG có agent ⇒ KHÔNG clone: giữ nghĩa "trạng thái HIỆN TẠI" ─────────
+//
+// Khi `evals.command` rỗng, runner cố ý đo cây bạn ĐANG làm việc — dòng cảnh báo của nó nói
+// đúng chữ đó. Clone lúc ấy bỏ mất mọi thứ chưa commit và đổi nghĩa của chính dòng nó in,
+// trong khi KHÔNG có agent nào để cô lập. Cô lập là câu trả lời cho một câu hỏi chưa được hỏi.
+{
+  const p = writeTask('9020', NEUTRAL_155);
+  const r = runEval('', null, '9020');
+  if (/dùng một lần/.test(r.out)) {
+    fail.push('㉘ dựng cây cô lập khi KHÔNG có agent — phép đo "trạng thái HIỆN TẠI" nay bỏ qua mọi thứ chưa commit, im lặng');
+  } else if (!/trạng thái HIỆN TẠI/.test(r.out)) {
+    fail.push('㉘ mất dòng nói rằng đang đo trạng thái hiện tại — neo của ca này đã trôi');
+  } else {
+    ok.push('㉘ `evals.command` rỗng ⇒ KHÔNG clone, vẫn đo cây đang làm việc như dòng nó in');
+  }
+  rmSync(p, { force: true });
+}
+
+// ── ㉙ Cây bị xoá, nhưng VIỆC AGENT LÀM thì không ────────────────────────────
+//
+// Hệ quả bắt buộc của ㉗. Hai lần thu hoạch thật của cả lớp eval đến từ việc agent sửa cây, và
+// cả hai lần điểm số nói ngược: PR #149 (7 ca test, task bị chấm FAIL vì cạn trần lượt) và
+// PR #157 (trạng thái `n/a` cho bảng nghi thức). Cô lập cây mà không rút patch ra thì bản vá
+// #155 **phá một thứ đang có giá trị**, và không ai biết — thứ bị mất chưa bao giờ có tên
+// trong báo cáo.
+//
+// Ca khẳng định BA điều, và điều thứ ba là điều đắt nhất:
+//   ① runner NÊU TÊN file patch;
+//   ② patch chứa đúng thay đổi (áp lại được);
+//   ③ repo THẬT không bị đụng — tức cây đúng là cô lập, không phải một cái nhãn (#91 lần nữa).
+{
+  const p = writeTask('9021', NEUTRAL_155);
+  const realAgents = readFileSync(repoPath('AGENTS.md'), 'utf8');
+  const r = runEval(CMD, 'writes', '9021');
+  const m = r.out.match(/patch: (\S+)/);
+  const patch = m ? (() => { try { return readFileSync(m[1], 'utf8'); } catch { return ''; } })() : '';
+  if (!m) {
+    fail.push('㉙ agent SỬA CÂY mà runner không nêu tên patch — cây bị xoá và việc agent làm biến mất không dấu vết (PR #149 và #157 đều ra đời từ đúng chỗ này)');
+  } else if (!/DÒNG DO AGENT GIẢ THÊM/.test(patch)) {
+    fail.push(`㉙ có file patch nhưng KHÔNG chứa thay đổi của agent — một patch rỗng tệ hơn không có patch, nó nói dối rằng đã cứu được việc`);
+  } else if (!/^\+\+\+ b\/AGENTS\.md$/m.test(patch)) {
+    fail.push('㉙ patch không ở dạng diff áp lại được — nó phải là thứ `git apply` nhận, không phải một bản chụp văn bản');
+  } else if (readFileSync(repoPath('AGENTS.md'), 'utf8') !== realAgents) {
+    fail.push('㉙ AGENTS.md của REPO THẬT vừa bị agent sửa — cây "cô lập" là một cái nhãn');
+  } else {
+    ok.push('㉙ agent sửa cây ⇒ patch được RÚT RA và nêu tên, áp lại được, và repo thật không đụng tới');
+  }
+  rmSync(p, { force: true });
+}
+
+// ── ㉚ Tiền kiểm chạy ở CẢ HAI chiều, và nói đúng tên cây ────────────────────
+//
+// Hệ quả thứ hai của ㉗, và nó KHÔNG phải đối xứng cho đẹp. Cây đầy đủ nay là clone
+// `--depth 1` **không remote**: một assertion đọc lịch sử git, đọc `origin`, hoặc đọc file
+// chưa commit sẽ ĐỎ ở đây mà XANH trong repo người ta đang mở. Đó là hỏng do **chính bản vá
+// #155 gây ra** — nếu để nó chấm thành FAIL thì #155 tự tạo ra một lớp FAIL giả.
+//
+// Vế thứ hai đắt ngang: thông điệp phải nói đúng **tên cây**. Câu "ĐỎ SẴN trên cây trần" ở
+// chiều đầy đủ là một lời khai SAI, và nó gửi người đọc đi tìm nguyên nhân ở lớp harness
+// trong khi nguyên nhân là hình dạng của cây.
+{
+  const ALWAYS_RED = 'node -e "process.exit(1)"';
+  const p = writeTask('9022', `${NEUTRAL_155}\n${ALWAYS_RED}`);
+  const r = runEval(CMD, 'ok', '9022');
+  if (/→ fail/.test(r.out)) {
+    fail.push('㉚ assertion ĐỎ TRƯỚC KHI agent chạy vẫn bị chấm FAIL ở chiều đầy đủ — tiền kiểm chỉ chạy một chiều, và cây clone tự sinh ra một lớp FAIL giả');
+  } else if (!/ĐỎ SẴN trên cây đầy đủ/.test(r.out)) {
+    fail.push('㉚ tiền kiểm ở chiều đầy đủ không nói đúng TÊN CÂY — "cây trần" ở đây là lời khai sai, nó gửi người đọc đi tìm ở lớp harness');
+  } else if (!/REGRESSION\s+\d/.test(r.out)) {
+    fail.push('㉚ tiền kiểm loại QUÁ TAY — task còn assertion trung lập chạy được thì vẫn phải ở trong mẫu số');
+  } else {
+    ok.push('㉚ tiền kiểm chạy ở CẢ chiều đầy đủ ⇒ assertion đỏ-sẵn là `n/a`, và câu giải thích nêu đúng tên cây');
+  }
+  rmSync(p, { force: true });
 }
 
 rmSync(WORK, { recursive: true, force: true });

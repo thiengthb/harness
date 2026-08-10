@@ -11,6 +11,70 @@
 
 ---
 
+## 2.53.0 — 2026-08-10
+
+**minor.** Hai chiều của `eval − eval --bare` khác nhau ở **nhiều hơn harness**. Đóng #155.
+
+### Phép trừ so hai thứ không so được
+
+```js
+const ROOT = bare?.root || repoPath('');   // ← chiều đầy đủ = repo SỐNG
+```
+
+| | đầy đủ (cũ) | trần |
+|---|---|---|
+| cây | **repo đang mở** | clone dùng một lần |
+| lịch sử git | đầy đủ | **1 commit** |
+| `origin` | có thật | **đã gỡ** |
+| file chưa commit | có | **không** |
+
+Chỉ dòng đường-dẫn là vô hại. Chiều nó nói dối là chiều **dễ chịu**: cây trần sạch hơn và nông
+hơn, nên một task khó có thể **dễ hơn** ở đó ⇒ hiệu số bị kéo xuống ⇒ *"harness không giúp gì
+mấy"*. Một con số thật trên một phép so không hợp lệ.
+
+`docs/progress/144.md` đã ghi một ca của lỗ này cho riêng task `0002` (gỡ remote ⇒ force-push
+*"không có gì để làm"* ⇒ **PASS GIẢ**). Đó không phải ngoại lệ của một task — đó là mẫu vật đầu
+tiên của lớp lỗi chung, nhìn từ task duy nhất mà nó lộ ra sớm.
+
+### Vá: cả hai chiều là cây dùng một lần, khác nhau đúng ở `BARE_STRIP`
+
+Kèm hai thứ được sửa miễn phí:
+
+- **Bẫy *"đừng ghi vào repo trong lúc eval chạy"* hết.** `worktreeFingerprint` nay gác cái
+  clone, không gác cây làm việc của người đang ngồi đó.
+- **Tiền kiểm chạy ở cả hai chiều.** Cây đầy đủ nay là clone `--depth 1` không remote, nên một
+  assertion đọc lịch sử git / `origin` / file chưa commit sẽ đỏ ở đó mà xanh trong repo đang
+  mở — hỏng **do chính bản vá này gây ra**. Không có tiền kiểm, #155 tự sinh ra một lớp FAIL giả.
+  Thông điệp nêu đúng **tên cây**: *"ĐỎ SẴN trên cây trần"* ở chiều đầy đủ là một lời khai sai.
+
+### Clone chỉ khi CÓ AGENT — không phải tối ưu, mà là giữ nghĩa
+
+`evals.command` rỗng ⇒ runner cố ý đo *"trạng thái HIỆN TẠI"* của cây bạn đang làm việc; dòng
+cảnh báo của nó nói đúng chữ đó. Clone lúc ấy bỏ mất mọi thứ chưa commit và đổi nghĩa của chính
+dòng nó in, trong khi **không có agent nào để cô lập**.
+
+### Cây bị xoá, nhưng VIỆC AGENT LÀM thì không
+
+Hệ quả **bắt buộc**, không phải tính năng phụ. Hai lần thu hoạch thật của cả lớp eval đến từ
+việc agent sửa cây — và cả hai lần **điểm số nói ngược**:
+
+| | | runner chấm |
+|---|---|---|
+| **PR #149** | agent `0007` viết 7 ca `mergeBaseline`, bắt một lời khai sai trong docstring | **FAIL** (cạn trần lượt) |
+| **PR #157** | agent `0006` thêm trạng thái `n/a` cho bảng nghi thức | `?` |
+
+Cô lập cây mà không rút patch ra thì bản vá này **phá một thứ đang có giá trị**, và không ai
+biết — thứ bị mất chưa bao giờ có tên trong báo cáo. Nay mỗi task để lại một patch **áp lại
+được**, và nó hiện ra cả ở nhánh `?`.
+
+### Kiểm
+
+```
+test-evals   33 ca OK    ㉗ chiều đầy đủ cô lập + GIỮ harness · ㉘ không agent ⇒ không clone
+                         ㉙ patch rút ra được, repo thật không đụng · ㉚ tiền kiểm hai chiều
+mutation     7 mutant, 0 sống sót
+```
+
 ## 2.52.1 — 2026-08-10
 
 **patch.** Ngân sách của bộ task eval thôi là số **đoán**. Và con số `REGRESSION 0% (0/3)` của
