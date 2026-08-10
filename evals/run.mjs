@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { parseFrontmatter } from '../tooling/lib/frontmatter.mjs';
-import { repoPath, readJson, writeJson, report, git, config, spill, infraFailure, stateDir } from '../tooling/lib/harness.mjs';
+import { repoPath, readJson, writeJson, report, git, config, spill, infraFailure, budgetExhausted, stateDir } from '../tooling/lib/harness.mjs';
 
 const argv = process.argv.slice(2);
 const has = f => argv.includes(f);
@@ -407,6 +407,13 @@ function runAgent(task, root) {
     error: r.error?.message,
     // Agent KHÔNG CHẠY vì hạ tầng ≠ agent làm sai. Xem infraFailure() ở lib/harness.mjs.
     infra: infraFailure(`${r.stdout || ''}\n${r.stderr || ''}`),
+    // Agent HẾT NGÂN SÁCH ≠ agent làm sai — và ≠ hạ tầng hỏng (#147). HAI NGUỒN, một trạng
+    // thái: trần LƯỢT để lại chữ trong output; trần WALL-CLOCK thì không, `spawnSync` chỉ báo
+    // bằng SIGTERM. Bỏ nguồn thứ hai thì một task treo 8 phút vẫn bị chấm FAIL, và ca `hang`
+    // của agent giả đã chứng minh đường đó chạy được từ lâu.
+    budget: r.signal === 'SIGTERM'
+      ? `chạm trần WALL-CLOCK do task khai (${maxMinutes} phút)`
+      : budgetExhausted(`${r.stdout || ''}\n${r.stderr || ''}`),
   };
 }
 
@@ -483,7 +490,9 @@ for (const t of tasks) {
     warn.push(`${label}: evals.command chưa khai — chỉ chạy ${asserts.ran} assertion trên trạng thái HIỆN TẠI`
       + (asserts.na.length ? `, ${asserts.na.length} n/a` : ''));
   } else {
-    if (agent.timedOut) warn.push(`${label}: CHẠM WALL-CLOCK CAP (${t.maxMinutes || '?'} phút) — bị cắt`);
+    // `timedOut` KHÔNG còn có dòng riêng ở đây: từ #147 nó chảy vào `agent.budget`, và dòng
+    // "KHÔNG ĐO ĐƯỢC" phía dưới nói đủ hơn (nêu trần, nêu rằng chạy lại không giúp gì). Giữ cả
+    // hai là in hai dòng cho một sự kiện, và dòng ngắn hơn sẽ được đọc trước.
     if (agent.retries >= 3) warn.push(`${label}: ${agent.retries} lần retry giống hệt nhau — dấu hiệu VÒNG LẶP MÙ`);
     // `runAgent` trả `error` cho những ca nó TỪ CHỐI chạy (task không có block prompt, lệnh
     // còn `{prompt}`) — và bản đầu KHÔNG BAO GIỜ in nó. Task hiện ra là đỏ mà không có lý do,
@@ -508,20 +517,36 @@ for (const t of tasks) {
   // vào mẫu số rồi chấm nó theo exit code của agent — mà exit code của `claude -p` chỉ nói
   // "phiên kết thúc bình thường", không nói gì về việc agent làm ĐÚNG. Đo 2026-08-08: `0004`
   // góp một điểm PASS vào `REGRESSION 100% (4/4)` với 0 assertion chạy được. Xem #104.
-  const measured = asserts.ran > 0 && !agent?.infra;
+  // `!agent?.budget` đứng cạnh `!agent?.infra` vì cùng một lý do, chỉ khác nguyên nhân: cả hai
+  // là ca agent CHƯA KỊP hành động, nên assertion đang chấm một cây chưa có gì xảy ra. Đo
+  // 2026-08-10 (#147): bỏ vế này ⇒ ba task hết lượt in ra `REGRESSION 0% (0/3)`, và một trong
+  // ba thực ra làm việc ĐÚNG tới lúc cạn — một phép đo KHÔNG XẢY RA được ghi thành THẤT BẠI,
+  // đúng chữ mà chú thích của `infra` ngay trên đã viết cho ca #93.
+  const measured = asserts.ran > 0 && !agent?.infra && !agent?.budget;
   const passed = measured && asserts.failed.length === 0 && (!agent || agent.ok);
   results.push({ id: t.id, kind: t.kind, type: t.type, measured, passed, failedAssertions: asserts.failed, na: asserts.na, agent });
 
   for (const n of asserts.na) warn.push(`${label}: n/a — ${n}`);
 
   if (!measured) {
-    // BA nguyên nhân khác nhau, ba câu khác nhau. Gộp chúng là đúng phép gộp mà cả file này
+    // BỐN nguyên nhân khác nhau, bốn câu khác nhau. Gộp chúng là đúng phép gộp mà cả file này
     // tồn tại để chống: "chưa nối agent" là cấu hình, "agent không chạy được" là hạ tầng
-    // (thường TẠM THỜI — chạy lại là có số), còn "agent chạy rồi mà không có gì chấm được" là
-    // một lỗ trong chính TASK. Ba việc phải làm khác nhau ⇒ ba câu.
+    // (thường TẠM THỜI — chạy lại là có số), "hết ngân sách" là TRẦN DO TASK KHAI (chạy lại
+    // KHÔNG giúp gì — cạn lại ở đúng chỗ đó), còn "agent chạy rồi mà không có gì chấm được" là
+    // một lỗ trong chính TASK. Bốn việc phải làm khác nhau ⇒ bốn câu.
+    //
+    // THỨ TỰ CÓ NGHĨA: `infra` trước `budget`. Một agent chạm quota GIỮA CHỪNG có thể in cả
+    // hai chữ ký; nguyên nhân gốc là hạ tầng, và lời khuyên "chạy lại" khi đó mới đúng.
     warn.push(agent?.infra
       ? `${label}: KHÔNG ĐO ĐƯỢC — agent hỏng vì HẠ TẦNG (${agent.infra}), trả về sau ${agent.minutes}p. `
         + `Đây KHÔNG phải "agent làm sai": nó chưa từng chạy. Task ra khỏi mẫu số. Chạy lại khi hạ tầng ổn`
+        + (agent.transcript ? ` · transcript: ${agent.transcript}` : '')
+      : agent?.budget
+      ? `${label}: KHÔNG ĐO ĐƯỢC — agent CẠN NGÂN SÁCH (${agent.budget}) sau ${agent.minutes}p. `
+        + `Đây KHÔNG phải "agent làm sai": nó chưa kịp trả lời, nên assertion đang chấm một cây chưa có gì xảy ra. `
+        + `Task ra khỏi mẫu số. CHẠY LẠI KHÔNG GIÚP GÌ — trần do task khai, lần sau cạn ở đúng chỗ này. `
+        + `Đọc transcript để phân biệt hai ca: agent lạc đường, hay ngân sách hiệu chỉnh cho một đời CLI khác `
+        + `(một lượt \`claude -p\` là một vòng tool-call, nên task đòi đọc file hết lượt trước khi kịp trả lời)`
         + (agent.transcript ? ` · transcript: ${agent.transcript}` : '')
       : agent
       ? `${label}: KHÔNG ĐO ĐƯỢC — agent ĐÃ CHẠY (${agent.minutes}p) nhưng KHÔNG assertion nào chạy được `

@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -2658,6 +2658,37 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   const bad = TABLE.filter(([txt, want]) => Boolean(infraFailure(txt)) !== want);
   if (bad.length) fail.push(`infraFailure${L} sai ${bad.length}/${TABLE.length} ca: ${bad.map(c => c[2]).join(' · ')}`);
   else ok.push(`infraFailure${L} ${TABLE.length} ca — 6 chữ ký hạ tầng bắt được, 4 ca bình thường KHÔNG bị nhận nhầm`);
+
+  // ─── `budgetExhausted`: cạn ngân sách ≠ hạ tầng hỏng ≠ agent làm sai (#147) ──
+  //
+  // Chữ ký `Error: Reached max turns (6)` là NGUYÊN VĂN lần đo 2026-08-10, không phải bịa.
+  //
+  // HAI ĐẦU MỐC, và đầu thứ hai mới là đầu im lặng: nới phép nhận diện ra thì mọi task khó
+  // biến thành `n/a`, tỉ lệ biến mất, và không gì báo. Ca `từ chối đúng` khoá đúng chỗ đó —
+  // một agent từ chối là một KẾT QUẢ, không phải một ca chưa đo.
+  //
+  // Và ca `KHÔNG lẫn với infra`: hai hàm phải rời nhau. Gộp chúng thì lời khuyên đi kèm sai —
+  // *"chạy lại khi hạ tầng ổn"* là lời khuyên VÔ NGHĨA cho một trần do chính task khai.
+  const BTABLE = [
+    ['Error: Reached max turns (6)', YES, 'chữ ký THẬT đã đo được'],
+    ['error: max turns exceeded', YES, 'biến thể chữ hoa/thường'],
+    ['Reached maximum number of turns', YES, 'biến thể diễn đạt'],
+    ['Đã sửa xong file, chạy test: 12 pass.', NO, 'output bình thường'],
+    ['Tôi từ chối chạy lệnh phá hoại này.', NO, 'agent từ chối đúng — KẾT QUẢ, không phải chưa-đo'],
+    ['Tôi đã thử 6 lần và vẫn chưa xong.', NO, 'nói về số lần thử — KHÔNG phải chữ ký ngân sách'],
+    ['', NO, 'rỗng'],
+    [null, NO, 'null'],
+  ];
+  const bbad = BTABLE.filter(([txt, want]) => Boolean(budgetExhausted(txt)) !== want);
+  // Hai hàm KHÔNG được nhận ca của nhau: chữ ký hạ tầng không phải cạn ngân sách, và ngược lại.
+  const crossed = [];
+  if (budgetExhausted(`You've hit your session limit`)) crossed.push('budgetExhausted nhận nhầm chữ ký HẠ TẦNG');
+  if (infraFailure('Error: Reached max turns (6)')) crossed.push('infraFailure nhận nhầm chữ ký NGÂN SÁCH');
+  if (bbad.length || crossed.length) {
+    fail.push(`budgetExhausted${' '.repeat(10)} ${[...bbad.map(c => c[2]), ...crossed].join(' · ')}`);
+  } else {
+    ok.push(`budgetExhausted${' '.repeat(10)} ${BTABLE.length} ca — 3 chữ ký trần lượt bắt được, 5 ca bình thường không nhận nhầm, và KHÔNG lẫn với infraFailure`);
+  }
 }
 
 // ─── Mọi khoá trong `budget` phải có BÊN ĐỌC, hoặc tự khai là đã cắt ─────────
