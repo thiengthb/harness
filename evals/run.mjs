@@ -546,6 +546,80 @@ function runAgent(task, root) {
 const ok = [], warn = [], fail = [];
 const results = [];
 
+// ── `--denominators`: đếm MẪU SỐ hai chiều, KHÔNG thả agent ─────────────────
+//
+// Điều kiện để `eval − eval --bare` nói về harness là hai chiều chấm trên CÙNG tập assertion
+// (v2.54.0). Trước bản này, cách duy nhất biết mình có thoả điều kiện đó là **chạy cả hai
+// chiều với agent** — tốn tiền, tốn quota, và trả lời một câu hỏi không cần agent để trả lời.
+//
+// Đếm mẫu số là phép TẤT ĐỊNH: dựng đúng hai cây, chạy tiền kiểm, so. Vài giây, 0 đồng.
+//
+// ── VÌ SAO KHÔNG PHẢI MỘT CA TRONG `test-evals.mjs` ─────────────────────────
+// Assertion của task `0007` chạy `node tooling/test-evals.mjs`. Tiền kiểm CHẠY assertion, nên
+// một ca trong test-evals gọi `--denominators` sẽ: test-evals → run.mjs --denominators →
+// tiền kiểm 0007 → test-evals (trong clone) → … **đệ quy không đáy**. Nó cũng không đặt được ở
+// gate `Stop`: hai lượt tiền kiểm gồm HAI bộ test đầy đủ, tính bằng phút, còn ngân sách Stop
+// là 30 giây. Đây là lệnh gõ tay, và ratchet dưới đây là thứ giữ cho nó không bị quên.
+//
+// ── RATCHET, KHÔNG PHẢI GATE ĐỎ ────────────────────────────────────────────
+// Đo lần đầu: 6/7 task lệch. Một gate đỏ từ ngày đầu là guard bắn nhầm, và guard bắn nhầm dạy
+// người ta lách (L0002). Nên: vượt mốc ⇒ ĐỎ; dưới mốc ⇒ đỏ kèm yêu cầu HẠ MỐC trong cùng
+// commit (không hạ thì backlog bị che); bằng mốc ⇒ xanh.
+const SKEW_RATCHET = {
+  n: 4,
+  since: '2026-08-10',
+  why: 'Đo lần đầu: 5 task lệch (`0001` `0002` `0005` `0006` `0007`); `0002` sửa cùng ngày ⇒ 4. '
+    + 'Nguyên nhân trội là MỘT dòng: `node tooling/test-hooks.mjs` đỏ trên cây trần vì `--bare` gỡ `.claude/settings.json`. '
+    + 'Về 0 khi task assert lên SẢN PHẨM thay vì lên file của chính harness — xem #163.',
+};
+
+if (has('--denominators')) {
+  const full = evalTree({ strip: false });
+  const nude = evalTree({ strip: true });
+  if (full.error || nude.error) {
+    console.error(`không dựng được cây eval: ${full.error || nude.error}`);
+    process.exit(1);
+  }
+  console.log('\n=== MẪU SỐ HAI CHIỀU (tất định, KHÔNG thả agent) ===\n');
+  let skewed = 0, liveFull = 0, liveBare = 0;
+  for (const t of tasks) {
+    const label = `${t.id} ${t.file.replace(/\.md$/, '')}`;
+    if (SETUP_SECTION.test(t.body)) {
+      console.log(`  n/a  ${label} — khai \`## Dựng cảnh\` ⇒ ra khỏi mẫu số ở CẢ HAI chiều`);
+      continue;
+    }
+    const cmds = assertionsOf(t.body).filter(c => !PLACEHOLDER.test(c.cmd));
+    const deadF = preflight(t.body, full.root), deadB = preflight(t.body, nude.root);
+    const nF = cmds.length - deadF.size, nB = cmds.length - deadB.size;
+    liveFull += nF; liveBare += nB;
+    if (nF === nB) { console.log(`  OK   ${label} — mẫu số ${nF} ở cả hai chiều`); continue; }
+    skewed++;
+    console.log(`  LỆCH ${label} — đầy đủ ${nF} · trần ${nB}`);
+    for (const c of [...deadB].filter(x => !deadF.has(x))) console.log(`         ↳ chỉ đỏ ở TRẦN:    ${c.split('\n')[0].slice(0, 62)}`);
+    for (const c of [...deadF].filter(x => !deadB.has(x))) console.log(`         ↳ chỉ đỏ ở ĐẦY ĐỦ: ${c.split('\n')[0].slice(0, 62)}`);
+  }
+  console.log(`\n  tổng assertion sống: đầy đủ ${liveFull} · trần ${liveBare}`
+    + `${liveFull ? ` (chiều trần chấm trên ${Math.round(liveBare / liveFull * 100)}% phép đo)` : ''}`);
+
+  let code = 0;
+  // Ratchet là lời khai về **bộ task THẬT của repo này**, không phải về phép đếm. Chạy trên
+  // `EVAL_TASKS_DIR` (chỉ test dùng) thì so với mốc đó là so hai thứ khác nhau — và nó sẽ luôn
+  // báo "hạ mốc", tức dạy người ta phớt lờ dòng đó. Đếm vẫn in; chỉ phán quyết là im.
+  if (process.env.EVAL_TASKS_DIR) {
+    console.log(`\n  ${skewed} task lệch — ratchet KHÔNG áp dụng: đang chạy trên \`EVAL_TASKS_DIR\`, không phải bộ task của repo.`);
+  } else if (skewed > SKEW_RATCHET.n) {
+    console.log(`\n  RATCHET VƯỢT MỐC — ${skewed} task lệch > mốc ${SKEW_RATCHET.n} (khai ${SKEW_RATCHET.since}). Số này chỉ được phép GIẢM.`);
+    code = 1;
+  } else if (skewed < SKEW_RATCHET.n) {
+    console.log(`\n  RATCHET xuống ${skewed} (mốc ${SKEW_RATCHET.n}) — HẠ MỐC trong CÙNG commit này, nếu không backlog bị che.`);
+    code = 1;
+  } else {
+    console.log(`\n  ratchet task-lech-mau-so: ${skewed} = mốc\n  ${SKEW_RATCHET.why}`);
+  }
+  for (const t of [full, nude]) { const e = rmTree(t.dir); if (e) console.log(`  WARN dọn cây: ${e}`); }
+  process.exit(code);
+}
+
 // ── `--bare` TỪ CHỐI in ra một con số nó không tạo ra được ───────────────────
 //
 // Ba trạng thái, và `?` ở đây phải là một lối ra CHẶN, không phải một dòng cảnh báo: người gõ
