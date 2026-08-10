@@ -60,11 +60,52 @@ const inferred = (s) => (s.issueFrom === 'bare'
   : '');
 
 /**
- * Mỗi nghi thức trả về `{ state, why }` với `state` ∈ `due` | `ok` | `?`.
+ * Mỗi nghi thức trả về `{ state, why }` với `state` ∈ `due` | `ok` | `n/a` | `?`.
  *
  * `why` là BẰNG CHỨNG, không phải lời khuyên — nó phải chứa con số hoặc đường dẫn. Một dòng
  * không có bằng chứng thì người đọc không kiểm được, và thứ không kiểm được sẽ bị bỏ qua đúng
  * như dòng nhắc tĩnh mà file này thay thế.
+ *
+ * ── VÌ SAO CÓ `n/a`, VÀ NÓ KHÔNG PHẢI MỘT CÁCH IM LẶNG ───────────────────────────────────
+ *
+ * Tới 2.52.0 bảng này chỉ có BA giá trị, nên mọi thứ không trả lời được đều rơi vào `?`. Hai
+ * thứ rất khác nhau bị gộp vào đó:
+ *
+ *   ① KHÔNG CÓ CHỦ NGỮ — câu hỏi không áp dụng. Nhánh `fix/learner-ability-legacy-id` không
+ *      mang số issue ⇒ `/claim` hỏi *"đã nhận issue nào chưa"* về một issue KHÔNG TỒN TẠI.
+ *      Đo được, kết quả là "không có gì để nhận", và đo lại kỹ hơn cũng không đổi.
+ *   ② PHÉP ĐO HỎNG — `fixlog` không đọc được, `git` không resolve được nhánh tích hợp. Ở đây
+ *      `?` là câu trả lời ĐÚNG và nó che một rủi ro thật.
+ *
+ * Gộp ① vào ② phải trả giá bằng nhiễu, và cái giá đó đã đo được: chú thích ở
+ * `.claude/hooks/session-start.mjs` ghi thẳng rằng **một nhánh không mang số issue làm BA
+ * nghi thức cùng ra `?`** (`/claim`, `/handoff`, `/verify-ui`). Ba dòng `?` mỗi phiên, cho một
+ * tình huống không ai sửa được bằng cách nào khác ngoài đổi tên nhánh — đúng tầng 1 của
+ * `knowledge/lessons/0003`: một tín hiệu không hành động được dạy người ta bỏ qua tín hiệu.
+ *
+ * `n/a` là rổ đã có sẵn ở `report()` (`lib/harness.mjs`) và nó nói ĐÚNG một câu: **bằng không
+ * DO CẤU TRÚC**. Nó KHÔNG phải `ok` — `ok` khẳng định nghi thức đã chạy và sạch. Và nó không
+ * làm báo cáo tự nhận là "xanh" theo cách khác: `report()` in riêng dòng đếm cho nó.
+ *
+ * RANH GIỚI ĐẮT NHẤT NẰM Ở `null` vs `undefined`:
+ *
+ *   s.issue === null       → đã đọc tên nhánh, nhánh KHÔNG mang số issue   ⇒ `n/a`
+ *   s.issue === undefined  → `collect()` rơi mất khoá này                  ⇒ `?`
+ *
+ * Một `collect()` bị refactor làm rơi khoá `issue` mà đi xuống nhánh `n/a` là bảng báo "không
+ * áp dụng" cho một phép đo **chưa từng chạy** — đúng lớp lỗi cả khối này ra đời để chống.
+ *
+ * CHỖ CHỊU LỰC LÀ GUARD `=== undefined` ĐỨNG TRƯỚC, không phải dấu `===` ở dòng `null`. Đo
+ * bằng mutation 2026-08-10, trong lượt review chính bản vá này:
+ *
+ *   đổi `=== null` → `== null` ở dòng `n/a`   → KHÔNG ca nào đỏ (mutant TƯƠNG ĐƯƠNG:
+ *                                               guard phía trên đã trả `?` cho `undefined` rồi)
+ *   BỎ HẲN guard `=== undefined`              → ca ⑤b ĐỎ ngay, đúng tên nghi thức
+ *
+ * Nên `=== null` ở đây là **dự phòng có chủ ý** (nó nói rõ nhánh này chỉ về ca `null`), và ca
+ * ⑤b là thứ thật sự canh. Bản đầu của chú thích này gán vai chịu lực cho `===` — một lời khai
+ * độ phủ không có độ phủ, và mutation là thứ duy nhất phân biệt được hai điều đó.
+ * `/verify-ui` đã dùng đúng khuôn này cho `s.ui` từ 2026-08-07.
  */
 export const RITUALS = [
   {
@@ -72,7 +113,12 @@ export const RITUALS = [
     cmd: '/claim',
     what: 'nhận việc: đọc nhật ký cũ, đặt chỗ vùng nóng, tạo docs/progress/<issue>.md',
     check: (s) => {
-      if (s.issue == null) return { state: '?', cause: 'branch-no-issue', why: 'nhánh không theo quy ước `<type>/<issue>-<slug>` nên không suy ra được issue — không đo được' };
+      if (s.issue === undefined) return { state: '?', why: '`collect()` không trả về khoá `issue` — phép suy chưa chạy, KHÔNG phải "nhánh không có issue"' };
+      // KHÔNG CÓ CHỦ NGỮ ⇒ `n/a`, không phải `?`. Phép suy ĐÃ chạy và kết quả là "nhánh này
+      // không mang số issue" — `/claim` tạo `docs/progress/<issue>.md`, và không có `<issue>`
+      // thì không có file để đòi. Đo lại kỹ hơn không đổi được câu trả lời, nên `?` ở đây chỉ
+      // sinh nhiễu: xem chú thích trạng thái ở đầu khối RITUALS.
+      if (s.issue === null) return { state: 'n/a', cause: 'branch-no-issue', why: `nhánh \`${s.branch || '?'}\` không mang số issue (\`<type>/<issue>-<slug>\`) — không có issue nào để nhận. Muốn bảng theo dõi thì đổi tên nhánh, hoặc khai \`project.issuePrefixes\`` };
       if (!s.issue) return { state: 'ok', why: 'đang ở nhánh tích hợp, không có issue để nhận' };
       // Solo vẫn cần nhật ký — chỉ khác NGƯỜI ĐỌC. "người sau" là lời khuyên rỗng khi bạn
       // là người duy nhất, và một lý do rỗng làm cả nghi thức đọc như thủ tục. Người đọc
@@ -92,7 +138,35 @@ export const RITUALS = [
       // vào một dòng `ok`, và nhật ký W32 đã bắt được đúng ca đó: *"/handoff OK — không có
       // gì để giao lại"* trong khi có 2 commit chưa push và người dùng sắp sang máy khác.
       // Nhánh không theo quy ước `<type>/<issue>-<slug>` là ca THƯỜNG GẶP, không phải ca lạ.
-      if (s.issue == null) return { state: '?', cause: 'branch-no-issue', why: 'không suy ra được issue từ tên nhánh — không đo được. Có việc dở hay không thì bảng này KHÔNG biết' };
+      if (s.issue === undefined) return { state: '?', why: '`collect()` không trả về khoá `issue` — phép suy chưa chạy' };
+      // ── MỤC DUY NHẤT KHÔNG ĐƯỢC IM KHI THIẾU SỐ ISSUE ────────────────────────────────
+      //
+      // Hai mục kia (`/claim`, `/verify-ui`) mất CHỦ NGỮ khi nhánh không mang số issue: không
+      // có issue thì không có nhật ký để đòi, không có feature để chụp. `/handoff` thì không —
+      // chủ ngữ của nó là **công việc sẽ mất**, và cái đó tồn tại độc lập với tên nhánh.
+      //
+      // Số issue chỉ là ĐƯỜNG TẮT để tra `docs/progress/<issue>.md`. Bản trước coi mất đường
+      // tắt là mất phép đo và trả `?`; bản trước nữa còn tệ hơn, trả `ok — không có gì để giao
+      // lại` (nhật ký W32 bắt được đúng ca đó: 2 commit chưa push, người dùng sắp sang máy
+      // khác). Cả hai đều sai cùng một kiểu — hỏi sai câu rồi báo cáo về câu đã hỏi.
+      //
+      // Câu đúng đo được mà không cần issue: cây có bẩn không, và có commit nào chưa vào nhánh
+      // tích hợp không. Hai tín hiệu đó CHÍNH LÀ thứ mất khi đổi máy hoặc hết quota giữa phiên.
+      if (s.issue === null) {
+        const bits = [];
+        if (s.dirtyFiles > 0) bits.push(`${s.dirtyFiles} file chưa commit`);
+        if (s.ahead > 0) bits.push(`${s.ahead} commit chưa vào ${s.integrationBranch}`);
+        // Có tín hiệu DƯƠNG thì kết luận được ngay, kể cả khi tín hiệu kia không đọc được —
+        // "biết chắc có việc dở" không cần cả hai phép đo. Thứ tự này cố ý: nó làm mục đỏ
+        // sống sót qua một phép đo hỏng, thay vì bị một `null` nuốt mất.
+        if (bits.length) {
+          return { state: 'due', why: `nhánh \`${s.branch || '?'}\` không mang số issue nên không có docs/progress/ để tra, nhưng ${bits.join(' và ')} — đó là thứ biến mất khi bạn đổi máy hoặc hết quota giữa phiên` };
+        }
+        if (s.dirtyFiles == null || s.ahead == null) {
+          return { state: '?', why: `nhánh không mang số issue, và ${s.dirtyFiles == null ? 'không đọc được cây làm việc (`git status`)' : `không resolve được ${s.integrationBranch}`} — không nói được là có việc dở hay không` };
+        }
+        return { state: 'n/a', cause: 'branch-no-issue', why: `nhánh \`${s.branch || '?'}\` không mang số issue, cây sạch và 0 commit đi trước ${s.integrationBranch} — không có gì để giao lại` };
+      }
       if (!s.issue) return { state: 'ok', why: 'đang ở nhánh tích hợp — không có gì để giao lại' };
       if (!s.progressExists) return { state: 'ok', why: '/claim đang tới hạn trước — nhật ký chưa tồn tại' };
       if (s.commitsSinceProgress > 0) {
@@ -180,7 +254,11 @@ export const RITUALS = [
       // không feature nào khai issue này (dòng dưới). Đổi thành `== null` làm dòng đó thành
       // mã chết. Đã thử và bị chính eval `0006` bắt, 2026-08-07.
       if (s.ui === null) return { state: '?', why: 'không đọc được features/ — không đo được' };
-      if (s.issue == null) return { state: '?', cause: 'branch-no-issue', why: 'không suy ra được issue từ tên nhánh — không biết có feature nào cần chụp không' };
+      if (s.issue === undefined) return { state: '?', why: '`collect()` không trả về khoá `issue` — phép suy chưa chạy' };
+      // Cùng lý do với `/claim`: `s.ui` được tra BẰNG số issue (`j.issue !== issue`), nên
+      // không có số thì không có feature nào để đối chiếu — bằng không do cấu trúc, không
+      // phải một phép đo còn nợ. Giữ `=== null` ở dòng `s.ui` phía trên: đó mới là ca `?` thật.
+      if (s.issue === null) return { state: 'n/a', cause: 'branch-no-issue', why: `nhánh \`${s.branch || '?'}\` không mang số issue — không tra được features/*.json theo issue, nên không có ảnh nào đang nợ` };
       if (!s.issue) return { state: 'ok', why: 'đang ở nhánh tích hợp — không có feature nào để chụp' };
       if (s.ui === undefined) return { state: 'ok', why: `không có features/*.json nào khai issue ${s.issue}${inferred(s)}` };
       if (s.ui.state === 'n/a') return { state: 'ok', why: `${s.ui.id}: web ngoài scope${s.ui.why ? ` (${s.ui.why})` : ''}` };
@@ -221,9 +299,15 @@ export const RITUALS = [
         return { state: '?', why: 'không đọc được telemetry của guard nhánh tích hợp — không đo được' };
       }
       const total = s.mainEditEscapes + s.mainEditBlocks;
-      // Chưa có ca nào ⇒ chưa đo được TỈ LỆ. Không phải "ổn": guard mới cắm thì mẫu số bằng 0,
-      // và một tỉ lệ trên mẫu số 0 là câu trả lời dễ chịu chứ không phải câu trả lời đúng (L0005).
-      if (total === 0) return { state: '?', why: 'guard nhánh tích hợp chưa gặp ca nào (0 chặn, 0 cửa thoát) — chưa có mẫu để nói nó đúng hay sai' };
+      // Chưa có ca nào ⇒ KHÔNG CÓ TỈ LỆ, vì không có mẫu số. Đây là `n/a` (bằng không do cấu
+      // trúc), không phải `?` — và tuyệt đối không phải `ok`.
+      //
+      // L0005 vẫn được giữ nguyên ở đây: bài học đó cấm trả lời "guard ổn" trên mẫu số 0, và
+      // `n/a` KHÔNG nói guard ổn. Cái đổi là chỗ khác — `?` hứa rằng đo lại sẽ ra số, nhưng ở
+      // một repo mới cắm guard thì phép đo ĐÃ chạy đúng và kết quả thật sự là "chưa có ca nào".
+      // Giữ nó ở `?` biến một sự thật vĩnh viễn-cho-tới-khi-ai-đó-chạm-main thành một dòng
+      // nhắc mỗi phiên mà không ai hành động được — trừ khi cố tình vi phạm để tạo mẫu.
+      if (total === 0) return { state: 'n/a', why: 'guard nhánh tích hợp chưa gặp ca nào (0 chặn, 0 cửa thoát) — chưa có mẫu số, nên chưa có tỉ lệ. KHÔNG đọc là "guard ổn": nó mới chỉ chưa được thử' };
       if (s.mainEditEscapes > s.mainEditBlocks) {
         return { state: 'due', why: `cửa thoát dùng ${s.mainEditEscapes} lần, chặn ${s.mainEditBlocks} lần — GUARD SAI. `
           + 'Điều kiện thoát của #44: cắt nó, ĐỪNG nới nó. Một guard bị đi vòng nhiều hơn được tuân theo là một guard đang dạy người ta đi vòng' };
@@ -636,6 +720,18 @@ export function collect() {
       return Number(r.stdout.trim());
     }),
 
+    // Số file cây làm việc đang bẩn. Tồn tại vì `/handoff` phải trả lời được "có việc dở
+    // không" trên một nhánh KHÔNG mang số issue — xem chú thích dài ở nghi thức đó. `null`
+    // khi `git status` không chạy được, và `null` ở đó KHÔNG được đọc là "cây sạch".
+    //
+    // `--porcelain` chứ không phải `--short`: định dạng porcelain được git cam kết ổn định
+    // giữa các version, còn `--short` thì không. Đây là thứ chạy ở MỌI SessionStart.
+    dirtyFiles: num(() => {
+      const r = git(['status', '--porcelain']);
+      if (r.status !== 0) return null;
+      return r.stdout.split('\n').filter(l => l.trim()).length;
+    }),
+
     // Lần chạy gate `preMerge` gần nhất, và commit gần nhất — so HAI MỐC, không so một.
     // Chạy gate rồi commit thêm thì lần chạy đó không còn nói gì về cây hiện tại, nên
     // "đã chạy rồi" phải nghĩa là "đã chạy SAU commit cuối". Cả hai đều `null` được, và
@@ -969,10 +1065,14 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
 
   const due = results.filter(r => r.state === 'due');
   const unknown = results.filter(r => r.state === '?');
+  const na = results.filter(r => r.state === 'n/a');
 
   if (!ALL) {
     // Bản NGẮN cho SessionStart: chỉ việc tới hạn. Không có gì tới hạn thì IM LẶNG —
     // một dòng "không có gì cần làm" mỗi phiên là chính loại nhiễu file này thay thế.
+    //
+    // `n/a` KHÔNG in ở đây, cố ý. Nó là câu trả lời đã có ("không áp dụng"), không phải một
+    // việc — và bản ngắn này chỉ được dùng cho thứ đòi hành động. Nó vẫn hiện đầy đủ ở `--all`.
     for (const r of due) console.log(`   ▸ ${r.cmd.padEnd(20)} ${r.why}`);
     // NÊU TÊN, không nêu số lượng. Bản cũ in `? 2 nghi thức KHÔNG đo được` rồi bảo chạy
     // `--all` để biết thêm — và gặp thật 2026-08-06: một mục `?` xuất hiện ở SessionStart rồi
@@ -987,6 +1087,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   report('NGHI THỨC', {
     fail: due.map(r => `${r.cmd.padEnd(20)} ${r.why}`),
     unknown: unknown.map(r => `${r.cmd.padEnd(20)} ${r.why}`),
+    na: na.map(r => `${r.cmd.padEnd(20)} ${r.why}`),
     ok: results.filter(r => r.state === 'ok').map(r => `${r.cmd.padEnd(20)} ${r.why}`),
   });
   console.log('  Mọi năng lực của harness đều nằm ở bảng trên — không có cái nào chỉ tồn tại');
