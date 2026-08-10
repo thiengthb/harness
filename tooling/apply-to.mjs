@@ -163,6 +163,12 @@ if (AUDIT) {
     // worktree) ⇒ không có `$` thì check này đỏ-giả cho gần như mọi người, và eval
     // `0001-harness-tu-kiem` đỏ theo. Cùng lớp với knowledge/lessons/0003.
     /^\.git(\/|$)/, /^node_modules\//, /^\.harness-pack\//, /^knowledge\/incoming\//,
+    // Xác do `evals/run.mjs --bare` để lại khi nó gỡ lớp harness ra khỏi một cây DÙNG MỘT LẦN.
+    // Chúng là bản gốc đã đổi tên, không phải file mới của repo — audit liệt chúng ra là mô tả
+    // CÁI CÂY, không phải phát hiện về template. Đo 2026-08-11: 9 mục `.bare-disabled` làm
+    // `apply-to --audit` exit 1 trên cây trần ⇒ task `0001` lệch mẫu số. Không cần
+    // `harnessStripped()` ở đây: hậu tố này không bao giờ hợp lệ trong một repo thật.
+    /\.bare-disabled(\/|$)/,
     /^\.claude\/(telemetry|state)\//, /^\.vscode\//,
     /^README\.md$/,                                   // README của chính template
     // `package.json` của TEMPLATE tồn tại chỉ để `npx github:...` chạy được. Project đích

@@ -2225,6 +2225,32 @@ export function exists(p) {
   return existsSync(p);
 }
 
+/** Hậu tố `evalTree()` đóng lên mọi thứ nó gỡ. Một hằng, vì bốn công cụ đọc nó. */
+export const BARE_SUFFIX = '.bare-disabled';
+
+/**
+ * CÂY NÀY VỪA BỊ GỠ LỚP HARNESS **CÓ CHỦ Ý** — và nó tự khai điều đó.
+ *
+ * `evals/run.mjs --bare` đổi tên `.claude/settings.json` → `…${BARE_SUFFIX}` để đo
+ * `eval − eval --bare`. Trên cây đó, mọi công cụ đọc `settings.json` / `.claude/rules` đều đỏ,
+ * và thông điệp của chúng nói *"neo đã trôi"* hoặc *"repo có đường dẫn chết"*. Câu đó ĐÚNG trong
+ * repo thật (ai đó vừa đổi tên một thứ) và **SAI** ở đây (không ai đổi tên gì; file bị gỡ theo
+ * yêu cầu). Cùng lớp lỗi #155 và v2.54.0 đã dọn ở lớp eval — một thông điệp đúng cho ca này gửi
+ * người đọc đi sai hướng ở ca kia.
+ *
+ * Hậu quả ĐO ĐƯỢC: công cụ đỏ ⇒ assertion gọi nó bị chấm `n/a` ở chiều trần ⇒ task **lệch mẫu
+ * số** ⇒ rơi khỏi phép trừ. `node evals/run.mjs --denominators` đếm đúng con số đó.
+ *
+ * ĐIỀU KIỆN LÀ **BẰNG CHỨNG**, KHÔNG PHẢI SỰ VẮNG MẶT — và đó là toàn bộ giá trị của hàm này.
+ * Neo vào cái xác `${BARE_SUFFIX}`, thứ chỉ `evalTree()` tạo ra. Neo vào `!exists(settings.json)`
+ * biến nó thành **cửa thoát**: mọi repo áp template mất `settings.json` sẽ được mọi suite chấm
+ * XANH, không một triệu chứng nào. Có ca test khoá đúng dòng dưới đây (`tooling/test-hooks.mjs`,
+ * ca `harnessStripped`), vì một hằng chuỗi im lặng là chỗ dễ sửa sai nhất trong file này.
+ */
+export function harnessStripped() {
+  return exists(repoPath('.claude', `settings.json${BARE_SUFFIX}`));
+}
+
 /**
  * In báo cáo NGẮN, có hành động. Dùng cho mọi script trong tooling/.
  *

@@ -1,4 +1,4 @@
-<!-- version: 2026-08-11-b -->
+<!-- version: 2026-08-11-c -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,20 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-11 — `harnessStripped()` lên lib; ba công cụ nữa thôi báo oan trên cây trần (v2.58.0)
+
+`test-migrations` · `apply-to --audit` · `test-evals` từng đỏ — hoặc **crash** — trên cây
+`eval --bare` vì lý do không liên quan gì tới thứ chúng kiểm. Nay chúng dùng chung
+`harnessStripped()` từ `tooling/lib/harness.mjs`.
+
+Ratchet mẫu số eval **2 → 1**; chiều trần chấm trên **96%** phép đo. Phép trừ
+`eval − eval --bare` nay so được **5/6 task**, thay vì 1.
+
+**Việc bạn phải làm khác đi:** viết công cụ đọc `.claude/settings.json` hoặc `.claude/rules`
+thì dùng `harnessStripped()` để phân biệt "bị gỡ có chủ ý" với "repo hỏng" — và **neo vào bằng
+chứng** (`.bare-disabled`), đừng neo vào sự vắng mặt. Neo sai là cửa thoát: repo mất
+`settings.json` sẽ được mọi suite chấm xanh, không một triệu chứng nào.
 
 ## 2026-08-11 — `test-hooks` phân biệt "cây bị gỡ có chủ ý" với "repo hỏng" (v2.57.0)
 
