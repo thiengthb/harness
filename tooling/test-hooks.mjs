@@ -367,6 +367,63 @@ const ok = [], fail = [];
 const naEntries = [];
 const declareNa = (count, msg) => naEntries.push({ count, msg });
 
+/**
+ * CÂY ĐÃ BỊ GỠ LỚP HARNESS CÓ CHỦ Ý — và nó tự khai điều đó.
+ *
+ * `evals/run.mjs --bare` đổi tên `.claude/settings.json` → `.claude/settings.json.bare-disabled`
+ * để đo `eval − eval --bare`. Trên cây đó, mọi check đọc `settings.json` hoặc `.claude/rules/`
+ * đều đỏ — và thông điệp của chúng nói *"neo của check này đã trôi, sửa neo thay vì xoá check"*.
+ * Câu đó ĐÚNG trong repo thật (ai đó vừa đổi tên một thứ) và **SAI** ở đây (không ai đổi tên gì;
+ * file bị gỡ theo yêu cầu). Cùng lớp lỗi mà #155 và v2.54.0 đã dọn ở lớp eval: một thông điệp
+ * đúng cho ca này gửi người đọc đi sai hướng ở ca kia.
+ *
+ * Hậu quả ĐO ĐƯỢC (`node evals/run.mjs --denominators`, 2026-08-11): `test-hooks` đỏ trên cây
+ * trần ⇒ assertion `node tooling/test-hooks.mjs` bị chấm `n/a` ở chiều trần ⇒ **`0005`, `0006`,
+ * `0007` lệch mẫu số** ⇒ ba task rơi khỏi phép trừ. Một dòng, ba task.
+ *
+ * `?` chứ không `PASS`: các check này KHÔNG chạy, và biến một khoảng trống thành dấu tick là
+ * đúng L0005. `?` chứ không `FAIL`: chúng cũng không phát hiện ra điều gì.
+ *
+ * ĐIỀU KIỆN LÀ **BẰNG CHỨNG**, KHÔNG PHẢI SUY ĐOÁN. Neo vào hậu tố `.bare-disabled` — thứ chỉ
+ * `evalTree()` tạo ra — chứ KHÔNG neo vào `!exists(settings.json)`. Khác biệt đó là toàn bộ giá
+ * trị của bản vá: một `settings.json` **biến mất** trong repo thật vẫn phải ĐỎ TO, vì đó là repo
+ * hỏng. Chỉ khi cái xác `.bare-disabled` nằm ngay cạnh thì sự vắng mặt mới là **cố ý**.
+ */
+const BARE_TREE = exists(repoPath('.claude', 'settings.json.bare-disabled'));
+
+// NEO CỦA `BARE_TREE` LÀ THỨ DUY NHẤT GIỮ BẢN VÁ NÀY KHỎI THÀNH MỘT CỬA THOÁT.
+//
+// Neo vào `.bare-disabled` = "sự vắng mặt này CÓ NGƯỜI KHAI". Neo vào `!exists(settings.json)`
+// = "thiếu file thì thôi bỏ qua" — tức mọi repo áp template mà mất `settings.json` sẽ được
+// suite chấm XANH, đúng chiều SỬA QUÁ TAY của L0007, và không có triệu chứng nào.
+//
+// `codeOnly()` chứ không regex trần: khối chú thích ngay trên có chứa đúng chuỗi
+// `!exists(settings.json)` như một phản ví dụ, và một phép quét đọc cả chú thích sẽ báo oan.
+// Đây là lần thứ tư của lớp lỗi đó trong repo — xem `configCoverage` / `lib-import`.
+//
+// KHÔNG `blankStrings`: ở đây neo cần kiểm CHÍNH LÀ một string literal (`'…bare-disabled'`).
+// Xoá chuỗi đi thì khai báo còn `exists(repoPath('', ''))` và ca này đỏ oan — đã xảy ra thật
+// khi viết nó. `blankStrings` đúng cho ca đi tìm TÊN HÀM; sai cho ca đi tìm HẰNG CHUỖI.
+{
+  const selfCode = codeOnly(readFileSync(repoPath('tooling', 'test-hooks.mjs'), 'utf8'));
+  const decl = selfCode.match(/const BARE_TREE = [^\n]*/)?.[0] ?? '';
+  if (!decl) {
+    fail.push(`BARE_TREE${' '.repeat(19)} không tìm thấy khai báo — neo của ca này đã trôi, sửa neo thay vì xoá check`);
+  } else if (!decl.includes('bare-disabled')) {
+    fail.push(`BARE_TREE${' '.repeat(19)} KHÔNG còn neo vào \`.bare-disabled\`: \`${decl.trim().slice(0, 70)}\` — `
+      + 'sự vắng mặt trở thành cửa thoát, và một repo mất `settings.json` sẽ được chấm XANH mà không có triệu chứng');
+  } else {
+    ok.push(`BARE_TREE${' '.repeat(19)} neo vào BẰNG CHỨNG (\`.bare-disabled\`), không vào sự vắng mặt — repo mất settings.json vẫn ĐỎ`);
+  }
+}
+const naIfBare = (count, what) => {
+  if (!BARE_TREE) return false;
+  declareNa(count, `${what} — cây này bị GỠ lớp harness có chủ ý (\`.bare-disabled\` nằm cạnh). `
+    + 'Check đọc `settings.json`/`.claude/rules` không chạy được ở đây: `?`, không phải PASS và không phải FAIL. '
+    + 'Trong repo THẬT, cùng sự vắng mặt đó vẫn ĐỎ.');
+  return true;
+};
+
 if (!CUR_BRANCH) {
   declareNa(3, 'protect-integration-branch: 3 ca cần một NHÁNH đang đứng — HEAD đang detached '
     + '(bình thường ở CI `pull_request`). Chạy suite ở máy để phủ chúng.');
@@ -396,7 +453,7 @@ const preToolUseHooks = (() => {
   }
   return out;
 })();
-if (!preToolUseHooks.size) {
+if (!preToolUseHooks.size && !naIfBare(1, 'settings.json: không bóc được hook PreToolUse nào')) {
   fail.push('settings.json: không bóc được hook nào của PreToolUse — neo của hợp đồng output đã trôi, sửa neo thay vì xoá check');
 }
 
@@ -917,7 +974,11 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   const lying = [...LAYER1].filter(([, p]) => p && !deny.has(p)).map(([w]) => w);
   const uncovered = whys.filter(w => LAYER1.get(w) == null);
 
-  if (!whys.length) {
+  if (naIfBare(1, 'dcg ↔ permissions.deny: không đối chiếu được hai tầng')) {
+    // `LAYER1` đọc `permissions.deny` từ `settings.json` — không có file thì mọi mục đều
+    // trông như "khai một pattern tầng một KHÔNG có trong settings.json", tức lời buộc tội
+    // nặng nhất của check này, dựa trên một bảng rỗng.
+  } else if (!whys.length) {
     fail.push(`dcg ↔ permissions.deny${' '.repeat(6)} không rút được mục \`why\` nào từ dcg.mjs — neo của check này đã trôi, sửa neo thay vì xoá check`);
   } else if (missing.length) {
     fail.push(`dcg ↔ permissions.deny${' '.repeat(6)} ${missing.length} điều cấm trong dcg KHÔNG khai tầng một: ${missing.join(' · ')}`
@@ -2610,6 +2671,9 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
 
   if (!listed.length) {
     fail.push(`entropy-scan.mjs${' '.repeat(12)} không rút được \`GLOBAL_OK\` — neo của check này đã trôi, sửa neo thay vì xoá check`);
+  } else if (!present.length && naIfBare(1, 'entropy-scan GLOBAL_OK: không file rule nào còn tồn tại')) {
+    // `GLOBAL_OK` liệt kê file trong `.claude/rules/` — cả thư mục vừa bị đổi tên, nên
+    // "MẤT PHẠM VI" ở đây là hệ quả của việc gỡ, không phải của một allowlist đã mục.
   } else if (!present.length) {
     fail.push(`entropy-scan.mjs${' '.repeat(12)} không file nào trong GLOBAL_OK còn tồn tại ⇒ ca này MẤT PHẠM VI, nó sẽ xanh mãi mà không kiểm gì`);
   } else if (leaked.length) {
@@ -3139,7 +3203,12 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   // PHẠM VI: nó phải quét qua `git ls-files`, không phải một danh sách thư mục cứng. Bản của
   // `sakubun` dùng `['app','components','lib','e2e','tooling']` — đúng ở đó, mục ở đây.
   if (!/git\(\['ls-files'\]\)/.test(esSrc)) bad.push('§9b không còn quét theo `git ls-files` — danh sách thư mục cứng sẽ mục');
-  if (/KHÔNG TỒN TẠI/.test(out)) bad.push(`repo có đường dẫn chết: ${out.split('\n').find(l => l.includes('KHÔNG TỒN TẠI'))?.trim().slice(0, 90)}`);
+  // Đường dẫn chết CHỈ có nghĩa khi cây còn nguyên. Trên cây trần, `knowledge/lessons/0002`
+  // trỏ `artifacts: .claude/rules/danger-zones.md` — file vừa bị đổi tên theo yêu cầu, nên
+  // "repo có đường dẫn chết" là mô tả cây, không phải phát hiện về repo.
+  if (/KHÔNG TỒN TẠI/.test(out) && !naIfBare(1, '§9b đường dẫn chết: bài học trỏ vào `.claude/rules/` vừa bị gỡ')) {
+    bad.push(`repo có đường dẫn chết: ${out.split('\n').find(l => l.includes('KHÔNG TỒN TẠI'))?.trim().slice(0, 90)}`);
+  }
 
   // Mỗi loại trừ phải CÒN LÝ DO tồn tại. Loại trừ không còn ca nào là loại trừ đã thành
   // cửa thoát trống — nó không miễn gì cả, nhưng nó vẫn nới phạm vi cho ca tương lai.
@@ -3334,7 +3403,8 @@ if (repoRole() === 'template') {
   // thật là: có migration nào đọc `hooks` của template không.
   const generic = /Object\.keys\(\s*tpl\.hooks\s*\)/.test(migText);
   const orphan = events.filter(ev => !BASELINE.includes(ev) && !generic && !migText.includes(ev));
-  if (!events.length) fail.push('settings.json không khai sự kiện hook nào — không có gì để kiểm');
+  if (!events.length && naIfBare(1, 'sự kiện hook → migration: settings.json không khai sự kiện nào')) { /* `?` */ }
+  else if (!events.length) fail.push('settings.json không khai sự kiện hook nào — không có gì để kiểm');
   else if (orphan.length) {
     fail.push(`${orphan.length} sự kiện hook KHÔNG có đường tới repo đã áp template: ${orphan.join(' · ')}`
       + '\n         settings.json là SEED, upgrade.mjs không ghi đè nó. Viết migration cắm chúng vào'

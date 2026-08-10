@@ -566,11 +566,12 @@ const results = [];
 // người ta lách (L0002). Nên: vượt mốc ⇒ ĐỎ; dưới mốc ⇒ đỏ kèm yêu cầu HẠ MỐC trong cùng
 // commit (không hạ thì backlog bị che); bằng mốc ⇒ xanh.
 const SKEW_RATCHET = {
-  n: 4,
-  since: '2026-08-10',
-  why: 'Đo lần đầu: 5 task lệch (`0001` `0002` `0005` `0006` `0007`); `0002` sửa cùng ngày ⇒ 4. '
-    + 'Nguyên nhân trội là MỘT dòng: `node tooling/test-hooks.mjs` đỏ trên cây trần vì `--bare` gỡ `.claude/settings.json`. '
-    + 'Về 0 khi task assert lên SẢN PHẨM thay vì lên file của chính harness — xem #163.',
+  n: 2,
+  since: '2026-08-11',
+  why: '5 (đo lần đầu) → 4 (`0002` thôi hỏi về `AGENTS.md`) → 2 (`test-hooks` phân biệt "cây bị gỡ có chủ ý" '
+    + 'với "repo hỏng": `0005` và `0006` cân hẳn). Còn `0001` (test-migrations · apply-to --audit · doctor --quick) '
+    + 'và `0007` (test-evals) — CÙNG một lớp, bốn công cụ nữa cần cùng phép phân biệt đó. '
+    + 'Khi có công cụ thứ hai cần nó, `BARE_TREE` chuyển lên `lib/harness.mjs`. Về 0 ⇒ đóng #163.',
 };
 
 if (has('--denominators')) {
