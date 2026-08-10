@@ -1,4 +1,4 @@
-<!-- version: 2026-08-10-c -->
+<!-- version: 2026-08-10-d -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,17 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-10 — Eval: `eval − eval --bare` nay TỪ CHỐI trừ hai vế không cùng mẫu số (v2.54.0)
+
+Chiều trần bị gỡ lớp harness, nên assertion nào đọc file của harness sẽ **đỏ sẵn** ở đó và bị
+chấm `n/a`. Đúng — nhưng hệ quả là hai vế chấm trên hai tập assertion khác nhau. Đo trên 7 task
+thật: **22 assertion sống ở chiều đầy đủ, 13 ở chiều trần**, và lệch luôn dồn về phía
+*"harness không giúp gì"*.
+
+Từ nay task nào lệch mẫu số sẽ **ra khỏi phép trừ**, kèm cặp số. Nếu bạn thấy nó: sửa ở **task**
+— assertion phải hỏi về **sản phẩm**, không hỏi về file của harness. Baseline cũ chưa có mẫu số
+⇒ `?`, chạy lại cả hai chiều.
 
 ## 2026-08-10 — Eval: agent chạy trong cây DÙNG MỘT LẦN, không trong repo bạn đang mở (v2.53.0)
 

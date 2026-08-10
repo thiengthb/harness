@@ -11,6 +11,56 @@
 
 ---
 
+## 2.54.0 — 2026-08-10
+
+**minor.** Giao theo TASK chưa đủ để trừ — mẫu số phải bằng nhau ở tầng **assertion**. Rào thứ
+NĂM của #144.
+
+### 2.53.0 khử được biến ở tầng CÂY, còn một biến ở tầng dưới
+
+Hai chiều nay chạy cùng loại cây. Nhưng `passed` của một task là *"mọi assertion **chạy được**
+đều xanh"*, và `--bare` gỡ lớp harness nên nhiều assertion **đỏ sẵn ở tiền kiểm** bên trần ⇒
+chấm `n/a` ⇒ chiều trần được chấm trên tập **dễ hơn**. Rồi hai boolean từ hai mẫu số bị trừ
+cho nhau — đúng phép tính mà khối đó ra đời để chống, lùi xuống một tầng.
+
+Đo 2026-08-10 trên 7 task thật (probe tất định, **không thả agent** — đếm mẫu số không cần agent):
+
+| task | đầy đủ | trần | assertion biến mất ở chiều trần |
+|---|---|---|---|
+| `0001` | 6 | **2** | test-hooks · test-migrations · apply-to --audit · doctor --quick |
+| `0007` | 3 | **1** | test-hooks · test-evals |
+| `0006` | 5 | **4** | test-hooks |
+| `0005` | 4 | **3** | test-hooks |
+| `0002` | 3 | **2** | `test -f AGENTS.md` — chính `--bare` đổi tên nó |
+| `0003` | 1 | 1 | (không) |
+
+**22 assertion sống ở chiều đầy đủ, 13 ở chiều trần — 41% phép đo biến mất.** Và lệch luôn cùng
+một hướng: bên trần chỉ mất, không bao giờ được thêm. Sai số không tự triệt tiêu qua nhiều task,
+nó **dồn về phía "harness không giúp gì"**.
+
+Tệ nhất là câu runner in khi hiệu số bằng 0: *"chênh lệch 0 là một PHÁT HIỆN, không phải hiện
+vật của dụng cụ"*. Với mẫu số lệch, câu đó khẳng định **đúng điều ngược lại** với sự thật.
+
+### Đổi gì
+
+- Bản ghi kết quả mang thêm `ran` (số assertion THẬT SỰ chạy). Baseline lưu nó.
+- Phép trừ chỉ nhận task có `ran` **bằng nhau** ở hai chiều. Lệch ⇒ ra khỏi giao, in cặp số và
+  nói rõ phải sửa ở **TASK**, không ở runner.
+- `ran` thiếu (baseline sinh trước bản này) ⇒ `?`, **không** suy ra "bằng nhau". Luật ba giá
+  trị, lần này áp cho chính dụng cụ.
+- Câu "chênh lệch 0" chỉ in kèm số task **cùng mẫu số**.
+
+### Nguyên nhân gốc nằm ở TASK, và bản này không sửa nó
+
+6/7 task assert lên **file của chính harness** — mà đó đúng là thứ `--bare` gỡ. Một assertion
+như vậy đo *"harness có mặt không"*, không đo *"harness làm agent tốt hơn không"*. `n/a` là
+đúng; hệ quả là hai vế không so được, cũng đúng. Bản này làm cho điều đó **nói ra được** thay
+vì biến thành một con số. Sửa thật là viết task assert lên **sản phẩm**.
+
+Không migration: baseline là trạng thái cục bộ, chạy lại hai chiều là có `ran`.
+
+---
+
 ## 2.53.0 — 2026-08-10
 
 **minor.** Hai chiều của `eval − eval --bare` khác nhau ở **nhiều hơn harness**. Đóng #155.
