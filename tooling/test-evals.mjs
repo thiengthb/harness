@@ -488,16 +488,55 @@ ${assertions}
     rmSync(p, { force: true });
   }
 
-  // ⑲ PHÉP TRỪ chỉ tính trên GIAO của hai tập ĐO ĐƯỢC. Task có cả assertion trung lập lẫn
-  //    assertion đọc harness ⇒ đo được ở CẢ HAI lần ⇒ so được.
+  // ⑲ ĐO ĐƯỢC Ở CẢ HAI CHIỀU **KHÔNG** ĐỦ ĐỂ TRỪ — mẫu số phải bằng nhau.
+  //
+  //    Ca này TRƯỚC ĐÂY khẳng định điều ngược lại (*"task có cả assertion trung lập lẫn
+  //    assertion đọc harness ⇒ so được"*), và nó đã xanh suốt. Nó xanh vì nó khoá đúng cái
+  //    lỗi: `passed` là "mọi assertion CHẠY ĐƯỢC đều xanh", nên task này được chấm trên 2
+  //    assertion ở chiều đầy đủ và **1** ở chiều trần. Hai boolean sinh ra từ hai mẫu số,
+  //    rồi bị trừ cho nhau.
+  //
+  //    Chiều lệch luôn cùng một hướng — bên trần LUÔN mất assertion, không bao giờ được thêm —
+  //    nên sai số không tự triệt tiêu qua nhiều task: nó dồn về phía *"harness không giúp gì"*.
+  //    Đo 2026-08-10 trên 7 task thật: 22 assertion sống ở chiều đầy đủ, 13 ở chiều trần.
   {
     const p = writeTask('9018', `${NEUTRAL}\n${READS_HARNESS}`);
     runEval(CMD, 'ok', '9018', { flags: ['--baseline'], stateDir: BARE_STATE });
     const r = runEval(CMD, 'ok', '9018', { flags: ['--bare'], stateDir: BARE_STATE });
-    if (!/GIÁ TRỊ ĐO ĐƯỢC CỦA HARNESS/.test(r.out)) fail.push('⑲ runner KHÔNG tự làm phép trừ — người đọc phải trừ hai con số bằng mắt, mà hai con số đó có hai mẫu số khác nhau');
-    else if (!/đầy đủ \d+%\s+−\s+trần \d+%\s+=\s+[+-]?\d+pp/.test(r.out)) fail.push('⑲ có tiêu đề phép trừ nhưng không có phép trừ');
-    else if (!/trên 1 task so được/.test(r.out)) fail.push('⑲ phép trừ không nói MẪU SỐ — "chênh 0" trên 1 task khác hẳn "chênh 0" trên 5');
-    else ok.push('⑲ runner tự trừ, và nói ra số task SO ĐƯỢC (giao của hai tập đo được)');
+    if (/đầy đủ \d+%\s+−\s+trần \d+%\s+=\s+[+-]?\d+pp/.test(r.out)) fail.push('⑲ trừ hai vế chấm trên HAI MẪU SỐ khác nhau (2 assertion vs 1) — con số ra là hiện vật của dụng cụ, và nó nói dối theo chiều dễ chịu');
+    else if (!/MẪU SỐ LỆCH/.test(r.out)) fail.push('⑲ loại task đúng nhưng KHÔNG nói vì sao — người đọc thấy task biến mất khỏi phép trừ mà không biết phải sửa ở TASK');
+    else if (!/đầy đủ 2 · trần 1 assertion/.test(r.out)) fail.push('⑲ không nêu CẶP SỐ mẫu số — "lệch" mà không nói lệch bao nhiêu thì không hành động được');
+    else ok.push('⑲ mẫu số lệch ⇒ task ra khỏi phép trừ, kèm cặp số và chỗ phải sửa (task, không phải runner)');
+    rmSync(p, { force: true });
+  }
+
+  // ⑲b CHIỀU NGƯỢC — BẮT BUỘC. Không có ca này, một bản vá loại SẠCH mọi task vẫn xanh ở ⑲,
+  //     và phép trừ chết im lặng: mẫu số về 0 thì không gì đỏ được nữa (L0007).
+  //     Hai assertion TRUNG LẬP ⇒ mẫu số 2 ở cả hai chiều ⇒ PHẢI vẫn trừ được.
+  {
+    const p = writeTask('9020', `${NEUTRAL}\n${NEUTRAL}`);
+    runEval(CMD, 'ok', '9020', { flags: ['--baseline'], stateDir: BARE_STATE });
+    const r = runEval(CMD, 'ok', '9020', { flags: ['--bare'], stateDir: BARE_STATE });
+    if (/MẪU SỐ LỆCH/.test(r.out)) fail.push('⑲b hai chiều CÙNG mẫu số mà vẫn bị loại — bản vá cắt quá tay, phép trừ không bao giờ ra số nữa');
+    else if (!/đầy đủ \d+%\s+−\s+trần \d+%\s+=\s+[+-]?\d+pp/.test(r.out)) fail.push('⑲b task so được mà runner không trừ — mẫu số đã về 0, không gì đỏ được nữa');
+    else if (!/trên 1 task so được/.test(r.out)) fail.push('⑲b phép trừ không nói MẪU SỐ — "chênh 0" trên 1 task khác hẳn "chênh 0" trên 5');
+    else ok.push('⑲b cùng mẫu số ⇒ VẪN trừ, và nói ra số task so được — bản vá ⑲ không cắt quá tay');
+    rmSync(p, { force: true });
+  }
+
+  // ⑲c Baseline KHÔNG ghi `ran` (bản cũ) ⇒ `?`, không phải "bằng nhau". Trạng thái thứ ba, áp
+  //     cho chính dụng cụ: chưa biết mẫu số có bằng nhau không thì chưa trừ được.
+  {
+    const p = writeTask('9021', NEUTRAL);
+    runEval(CMD, 'ok', '9021', { flags: ['--baseline'], stateDir: BARE_STATE });
+    const bp = join(BARE_STATE, 'eval-baseline.json');
+    const b = JSON.parse(readFileSync(bp, 'utf8'));
+    for (const x of b.results) delete x.ran;          // giả lập baseline sinh trước bản vá này
+    writeFileSync(bp, JSON.stringify(b));
+    const r = runEval(CMD, 'ok', '9021', { flags: ['--bare'], stateDir: BARE_STATE });
+    if (/đầy đủ \d+%\s+−\s+trần \d+%/.test(r.out)) fail.push('⑲c baseline cũ không ghi mẫu số mà runner vẫn trừ — nó đang GIẢ ĐỊNH hai vế bằng nhau, đúng giả định bản vá này ra đời để gỡ');
+    else if (!/chưa biết mẫu số/.test(r.out)) fail.push('⑲c bỏ qua baseline cũ mà không nói lý do — người đọc tưởng task không đo được, và sẽ đi sửa nhầm chỗ');
+    else ok.push('⑲c baseline cũ thiếu `ran` ⇒ `?` kèm cách đi tiếp, KHÔNG suy ra "mẫu số bằng nhau"');
     rmSync(p, { force: true });
   }
 
@@ -509,7 +548,7 @@ ${assertions}
     runEval(CMD, 'ok', '9019', { flags: ['--baseline'], stateDir: BARE_STATE });
     const r = runEval(CMD, 'ok', '9019', { flags: ['--bare'], stateDir: BARE_STATE });
     if (/đầy đủ \d+%\s+−\s+trần \d+%/.test(r.out)) fail.push('⑳ trừ hai lần chạy KHÔNG có task nào chung — con số in ra không nói về cái gì cả');
-    else if (!/không task nào ĐO ĐƯỢC ở CẢ HAI/.test(r.out)) fail.push('⑳ giao rỗng mà runner không nói `?` — im lặng ở đây đọc thành "chưa chạy phép trừ"');
+    else if (!/không task nào SO ĐƯỢC/.test(r.out)) fail.push('⑳ giao rỗng mà runner không nói `?` — im lặng ở đây đọc thành "chưa chạy phép trừ"');
     else ok.push('⑳ giao rỗng ⇒ `?` kèm số task mỗi bên, KHÔNG bịa ra một hiệu số');
     rmSync(p, { force: true });
   }

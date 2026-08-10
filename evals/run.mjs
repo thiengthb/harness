@@ -668,7 +668,9 @@ for (const t of tasks) {
   // đúng chữ mà chú thích của `infra` ngay trên đã viết cho ca #93.
   const measured = asserts.ran > 0 && !agent?.infra && !agent?.budget;
   const passed = measured && asserts.failed.length === 0 && (!agent || agent.ok);
-  results.push({ id: t.id, kind: t.kind, type: t.type, measured, passed, failedAssertions: asserts.failed, na: asserts.na, agent });
+  // `ran` đi vào bản ghi vì PHÉP TRỪ ở cuối file cần nó: `passed` là một boolean, và hai
+  // boolean sinh ra từ hai MẪU SỐ khác nhau không trừ được cho nhau. Xem khối "PHÉP TRỪ".
+  results.push({ id: t.id, kind: t.kind, type: t.type, measured, passed, ran: asserts.ran, failedAssertions: asserts.failed, na: asserts.na, agent });
 
   for (const n of asserts.na) warn.push(`${label}: n/a — ${n}`);
 
@@ -761,30 +763,90 @@ if (has('--baseline')) {
 // về hai tập task.
 //
 // Nên chỉ trừ trên **giao** của hai tập ĐO ĐƯỢC, và in luôn số task bị loại. Giao rỗng ⇒ `?`.
+//
+// ── VÀ GIAO THEO TASK CHƯA ĐỦ: mẫu số lệch ở tầng ASSERTION ──────────────────
+//
+// Phiên bản trước khử trùng lặp ở đúng MỘT tầng — tầng task — rồi trừ hai `passed` boolean.
+// Nhưng `passed` của một task là "mọi assertion CHẠY ĐƯỢC đều xanh", và `--bare` gỡ lớp harness
+// nên nhiều assertion ĐỎ SẴN ở tiền kiểm bên trần ⇒ chấm `n/a` ⇒ **chiều trần được chấm trên
+// tập assertion DỄ HƠN**. Cùng lớp lỗi mà khối này ra đời để chống, chỉ lùi xuống một tầng.
+//
+// Đo 2026-08-10 trên chính repo này (probe tất định, KHÔNG thả agent — mẫu số không cần agent
+// để đếm), 22 assertion sống ở chiều đầy đủ còn **13** ở chiều trần:
+//
+//   | task | đầy đủ | trần | assertion biến mất ở trần |
+//   |---|---|---|---|
+//   | `0001` | 6 | **2** | test-hooks · test-migrations · apply-to --audit · doctor --quick |
+//   | `0007` | 3 | **1** | test-hooks · test-evals |
+//   | `0006` | 5 | **4** | test-hooks |
+//   | `0005` | 4 | **3** | test-hooks |
+//   | `0002` | 3 | **2** | `test -f AGENTS.md` — chính `--bare` đổi tên nó |
+//   | `0003` | 1 | 1 | (không) |
+//
+// Chiều lệch LUÔN cùng một hướng vì nguyên nhân là một: 6/7 task assert lên **file của chính
+// harness**, mà đó đúng là thứ `--bare` gỡ. Một assertion như vậy đo *"harness có mặt không"*,
+// không đo *"harness làm agent tốt hơn không"* — nên `n/a` là ĐÚNG, và hệ quả của nó là hai vế
+// không so được, cũng ĐÚNG. Hai điều đó cùng đúng một lúc.
+//
+// Hậu quả nếu cứ trừ: `nude` bị thổi lên ⇒ hiệu số bị kéo xuống. Và câu *"chênh lệch 0 là một
+// PHÁT HIỆN, không phải hiện vật của dụng cụ"* ở dưới sẽ khẳng định ĐÚNG ĐIỀU NGƯỢC LẠI với
+// sự thật. In một con số sai còn tệ hơn không in gì — cùng câu mà dòng 535 đã viết cho `--bare`.
+//
+// Nên: task chỉ vào giao khi `ran` BẰNG NHAU ở hai chiều. `ran` thiếu (baseline cũ) ⇒ không
+// phải "bằng nhau", mà là **chưa biết** ⇒ cũng ra khỏi giao. Luật ba giá trị, áp cho dụng cụ.
 const otherPath = join(stateDir(), `eval-baseline${BARE ? '' : '-bare'}.json`);
 const other = readJson(otherPath);
 if (other) {
-  const mine = new Map(results.filter(r => r.measured).map(r => [String(r.id), r.passed]));
-  const theirs = new Map((other.results || []).filter(r => r.measured).map(r => [String(r.id), r.passed]));
-  const common = [...mine.keys()].filter(id => theirs.has(id));
-  const pct = (m) => Math.round(common.filter(id => m.get(id)).length / common.length * 100);
+  const mine = new Map(results.filter(r => r.measured).map(r => [String(r.id), r]));
+  const theirs = new Map((other.results || []).filter(r => r.measured).map(r => [String(r.id), r]));
+  const skew = [], unknownDen = [];
+  const common = [...mine.keys()].filter(id => {
+    if (!theirs.has(id)) return false;
+    const a = mine.get(id).ran, b = theirs.get(id).ran;
+    if (typeof a !== 'number' || typeof b !== 'number') { unknownDen.push(id); return false; }
+    if (a !== b) {
+      skew.push(`${id} (đầy đủ ${BARE ? b : a} · trần ${BARE ? a : b} assertion)`);
+      return false;
+    }
+    return true;
+  });
+  const pct = (m) => Math.round(common.filter(id => m.get(id).passed).length / common.length * 100);
 
   console.log('\n=== GIÁ TRỊ ĐO ĐƯỢC CỦA HARNESS ===');
+  for (const s of skew) {
+    console.log(`  ⚠  ${s} — MẪU SỐ LỆCH, task ra khỏi phép trừ.`);
+  }
+  if (skew.length) {
+    console.log('     Assertion đỏ sẵn ở tiền kiểm bên trần được chấm `n/a` (đúng — nó đo lớp harness,');
+    console.log('     không đo agent), nên hai vế chấm trên hai tập khác nhau và không trừ được.');
+    console.log('     Sửa ở TASK, không ở đây: assertion phải hỏi về sản phẩm, không hỏi về file của harness.');
+  }
+  for (const id of unknownDen) {
+    console.log(`  ?  ${id} — baseline kia không ghi \`ran\`, chưa biết mẫu số có bằng nhau không. Chạy lại cả hai chiều.`);
+  }
   if (!common.length) {
-    console.log('  ?  không task nào ĐO ĐƯỢC ở CẢ HAI lần chạy — chưa trừ được gì.');
-    console.log(`     lần này: ${mine.size} task · baseline ${BARE ? 'đầy đủ' : 'trần'}: ${theirs.size} task`);
+    console.log('  ?  không task nào SO ĐƯỢC ở cả hai lần chạy — chưa trừ được gì.');
+    console.log(`     lần này: ${mine.size} task đo được · baseline ${BARE ? 'đầy đủ' : 'trần'}: ${theirs.size} task đo được`
+      + `${skew.length ? ` · ${skew.length} task loại vì mẫu số lệch` : ''}`);
   } else {
     const full = BARE ? pct(theirs) : pct(mine);
     const nude = BARE ? pct(mine) : pct(theirs);
-    const dropped = results.filter(r => r.measured).length - common.length;
+    // HAI nguyên nhân loại, hai con số. Gộp chúng lại là gộp "chưa đo được bên kia" (chạy lại
+    // là có) với "đo được cả hai bên mà không so được" (chạy lại KHÔNG giúp — phải sửa task).
+    const absent = mine.size - common.length - skew.length - unknownDen.length;
+    const why = [absent && `${absent} không đo được ở lần kia`, skew.length && `${skew.length} mẫu số lệch`,
+      unknownDen.length && `${unknownDen.length} chưa biết mẫu số`].filter(Boolean).join(' · ');
     console.log(`  đầy đủ ${full}%  −  trần ${nude}%  =  ${full - nude >= 0 ? '+' : ''}${full - nude}pp`
-      + `   trên ${common.length} task so được${dropped ? ` (${dropped} task loại: không đo được ở lần kia)` : ''}`);
+      + `   trên ${common.length} task so được${why ? ` (loại: ${why})` : ''}`);
     if (other.env?.commit && other.env.commit !== env.commit) {
       warn.push(`Phép trừ đang so hai COMMIT KHÁC NHAU (${other.env.commit} vs ${env.commit}) — chênh lệch gồm cả thay đổi code giữa hai commit, không chỉ lớp harness.`);
     }
     if (full - nude === 0) {
-      console.log('     Chênh lệch 0 ở đây là một PHÁT HIỆN, không phải hiện vật của dụng cụ:');
-      console.log('     cây trần thật sự đã bị gỡ lớp harness. Bật lại từng mảnh, đo delta từng mảnh.');
+      // Câu này chỉ ĐÚNG khi hai vế cùng mẫu số — nếu không, số 0 chính là hiện vật của dụng
+      // cụ, và khẳng định ngược lại là lời khai sai. Bộ lọc `skew` phía trên là điều kiện của
+      // câu này, không phải một tiện ích cạnh nó.
+      console.log(`     Chênh lệch 0 trên ${common.length} task CÙNG MẪU SỐ là một PHÁT HIỆN, không phải hiện vật`);
+      console.log('     của dụng cụ: cây trần thật sự đã bị gỡ lớp harness. Bật lại từng mảnh, đo delta từng mảnh.');
     }
   }
 } else if (BARE) {
