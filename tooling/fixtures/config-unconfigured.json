@@ -41,6 +41,8 @@
   },
   "gates": {
     "stop": ["gen-clean", "typecheck", "test"],
+    "$comment_subagent": "PHẢI CÓ, và phải KHÔNG chứa gate tổng hợp. `config()` chỉ mặc định `stage`/`preMerge`, nên nếu fixture không khai `subagent` thì `--list --timing` không in dòng nào cho nó — và ca `gates sàn runner` ở test-hooks.mjs neo đúng vào dòng đó. Không chứa `gen-clean` vì gate TỔNG HỢP luôn được tính là 'có lệnh' (`COMPOSITE[n]` truthy), làm `ran > 0` và stage không còn báo sàn.",
+    "subagent": ["typecheck"],
     "preMerge": ["gen-clean", "typecheck", "lint", "test", "build"]
   },
   "budget": { "maxTurnsPerRun": 25, "maxWallClockMinutes": 90, "monthlyUsdCap": 0 },

@@ -1,4 +1,4 @@
-<!-- version: 2026-08-09-b -->
+<!-- version: 2026-08-10-a -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,18 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-10 — `upgrade` thôi khởi động dev server trên máy bạn (v2.51.1)
+
+Bước Verify của `upgrade.mjs` gọi `gates.mjs --list --timing`, và lệnh đó đo độ trễ bằng cách
+**chạy thật từng gate**. Ở repo đã áp template, đó là cả `preMerge` — gồm `e2e`, tức Playwright
+và một `next dev` trên cổng 3799. Đo ở canary: 26 giây ở template, **hơn 20 phút** ở repo thật.
+
+Ba thứ hết theo: nâng cấp không còn đọc-như-treo, không còn mở dev server/trình duyệt mà không
+báo, và không còn in *"hook test ĐỎ"* khi thứ đỏ là `e2e` của chính bạn.
+
+Bạn gõ tay `node tooling/gates.mjs --list --timing` thì **không đổi gì** — chạy gate thật là
+việc của nó.
 
 ## 2026-08-09 — Hai field cấu hình: một cái vừa hiện ra, một cái biến mất (v2.49.0)
 
