@@ -851,7 +851,15 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   // `--reviewed-claude-code` (khoá `reviewedVersion`/`reviewedAt`/`history`) và
   // `native-surface.mjs --record` (khoá `nativeEvents`). Cả ba PHẢI đọc-sửa-ghi trên `prev` —
   // #120 là lần một người dựng lại object từ đầu và xoá đo của người kia, IM LẶNG, phụ thuộc
-  // đúng thứ tự chạy hai lệnh. Ca test `mergeBaseline` khoá cả ba khoá đó.
+  // đúng thứ tự chạy hai lệnh.
+  //
+  // DÒNG NÀY TỪNG KHAI SAI (#148). Nó viết *"ca test `mergeBaseline` khoá cả ba khoá đó"*, và
+  // tới lúc đó bảng chỉ có ca cho `nativeEvents` — `slotReview`, khoá do chính bản vá này thêm
+  // vào, không có ca nào. Một lời khai nằm trong chú thích thì không gì đối chiếu nó với bảng
+  // ca, nên nó sống được bao lâu cũng được.
+  //
+  // Nay bất biến được khoá ở dạng TỔNG QUÁT chứ không theo danh sách tên: bảng có ca cho một
+  // khoá của "cơ chế CHƯA TỒN TẠI", nên người ghi thứ TƯ không cần ai nhớ thêm ca cho họ.
   //
   // VÌ SAO Ở ĐÂY chứ không ở `.claude/state/` như đề xuất ban đầu trong `.claude/learnings/`:
   // `.claude/state/` **nằm trong .gitignore**. Một phán đoán kiểu *"WorktreeCreate là

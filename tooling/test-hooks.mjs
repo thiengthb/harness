@@ -3486,22 +3486,79 @@ if (repoRole() === 'template') {
     ['history cũ được nối sau mục mới',
       { history: [{ version: '1.0.0', at: 'cũ', found: 'cũ' }] },
       (r) => r.history.length === 2 && r.history[1].version === '1.0.0'],
-    // ④ Trần 20 vẫn giữ.
-    ['trần 20 mục lịch sử',
+    // ④ Trần 20 — và trần cắt ĐẦU NÀO. `history.length === 20` một mình KHÔNG đủ: đo được
+    //    `.slice(-20)` cho ra ĐÚNG 20 mục trên cùng fixture này, chỉ khác là nó giữ 20 mục CŨ
+    //    và vứt bản rà vừa viết. Đó lại đúng chế độ hỏng của #120 (bản đo mới biến mất im
+    //    lặng), nên trần phải khẳng định VỊ TRÍ, không chỉ khẳng định số lượng.
+    //    25 cũ + 1 mới ⇒ [MỚI, 0.0.0 … 0.0.18]; `0.0.19`…`0.0.24` là phần bị cắt.
+    ['trần 20 mục lịch sử — cắt đuôi CŨ, không cắt mục MỚI',
       { history: Array.from({ length: 25 }, (_, i) => ({ version: `0.0.${i}`, at: 'x', found: 'x' })) },
-      (r) => r.history.length === 20],
-    // ⑤ Lần đầu: `prev` rỗng ⇒ không ném, và history có đúng một mục.
+      (r) => r.history.length === 20 && r.history[0].version === '9.9.9'
+        && r.history[1].version === '0.0.0' && r.history[19].version === '0.0.18'],
+    // ⑤ Biên của trần, chiều KHÔNG cắt. ④ bắt được `slice(0, 19)` nhờ đếm, nhưng chỉ ở
+    //    phía tràn; ca này khoá phía dưới: vừa đủ 20 thì không mục nào được rụng.
+    ['đúng 20 mục (19 cũ + 1 mới) ⇒ không cắt gì',
+      { history: Array.from({ length: 19 }, (_, i) => ({ version: `0.0.${i}`, at: 'x', found: 'x' })) },
+      (r) => r.history.length === 20 && r.history[19].version === '0.0.18'],
+    // ⑥ Lần đầu: `prev` rỗng ⇒ không ném, và history có đúng một mục.
     ['prev rỗng (lần đầu) ⇒ không ném', {}, (r) => r.history.length === 1 && r.reviewedVersion === '9.9.9'],
-    // ⑥ `prev.history` KHÔNG phải mảng ⇒ bỏ qua, không ném.
+    // ⑦ `prev.history` KHÔNG phải mảng ⇒ bỏ qua, không ném.
     ['history hỏng kiểu ⇒ bỏ qua, không ném', { history: 'hỏng' }, (r) => r.history.length === 1],
+    // ⑧ `prev` không đọc được. Hôm nay ba người gọi đều chặn sẵn (`readJson(…, {}) ?? {}`,
+    //    `let prev = {}` + try/catch), nên đây là ca khoá HỢP ĐỒNG của hàm thuần, không phải
+    //    ca của người gọi: người ghi thứ tư không có nghĩa vụ đọc lại ba chỗ kia mới biết
+    //    `null` có ném hay không.
+    ['prev = null ⇒ không ném, ra baseline lần đầu', null,
+      (r) => r.history.length === 1 && r.reviewedVersion === '9.9.9'],
+    ['prev = undefined ⇒ không ném, ra baseline lần đầu', undefined,
+      (r) => r.history.length === 1 && r.reviewedVersion === '9.9.9'],
+    // ⑨ NGƯỜI GHI THỨ BA. Docstring ở `rituals.mjs` nói *"Ca test `mergeBaseline` khoá cả ba
+    //    khoá đó"* — `slotReview` (sổ ô native, `rituals.mjs --slot`) là khoá thứ ba, và tới
+    //    trước bảng này chỉ `nativeEvents` có ca. Một câu trong docstring không phải một ca.
+    ['giữ `slotReview` của sổ ô native',
+      { slotReview: { WorktreeCreate: { state: 'khong-co-viec', at: 'x', why: 'provisioner, không cắm advisory' } } },
+      (r) => r.slotReview?.WorktreeCreate?.state === 'khong-co-viec'
+        && r.slotReview.WorktreeCreate.why.includes('provisioner')],
+    // ⑩ NGƯỜI GHI THỨ TƯ — người chưa tồn tại. ① và ⑨ khoá hai khoá có tên; bất biến thật
+    //    thì rộng hơn: MỌI khoá của `prev` không thuộc bốn khoá của lần rà đều phải sống.
+    //    Không có ca này, một bản vá liệt kê tay `nativeEvents` + `slotReview` vẫn xanh — và
+    //    nó tái diễn đúng #120 cho cơ chế thêm vào sau.
+    ['giữ khoá của cơ chế CHƯA TỒN TẠI (không liệt kê tay)',
+      { $futureWriter: { đo: 'gì đó', n: 7 }, mộtKhoáPhẳng: 'giữ nguyên' },
+      (r) => r.$futureWriter?.n === 7 && r.mộtKhoáPhẳng === 'giữ nguyên'],
+    // ⑪ Chiều ngược của ⑩, cho `$comment`: nó nằm SAU `...prev` nên bản hiện tại phải thắng
+    //    bản lỗi thời trong file. Ngược lại thì lời chỉ đường ("đừng sửa tay — dùng lệnh này")
+    //    đóng băng ở lần ghi đầu tiên và không bao giờ theo kịp lệnh thật.
+    ['`$comment` lỗi thời của prev KHÔNG thắng', { $comment: 'lời cũ từ 2026-01' },
+      (r) => r.$comment !== 'lời cũ từ 2026-01' && r.$comment.includes('--reviewed-claude-code')],
   ];
   const bad = [];
   for (const [name, prev, want] of cases) {
+    // THUẦN nghĩa là không đụng `prev` — khẳng định cho MỌI ca, không phải một ca riêng.
+    // Người gọi ở `rituals.mjs` đọc `prev`, hợp nhất, rồi `JSON.stringify` KẾT QUẢ; một bản
+    // vá dùng `prev.history.unshift(...)` cho ra output đúng y hệt và qua sạch 11 ca trên.
+    const snapshot = JSON.stringify(prev ?? null);
     let r; try { r = mergeBaseline(prev, NEW); } catch (e) { bad.push(`${name} (ném: ${e.message})`); continue; }
     if (!want(r)) bad.push(name);
+    if (JSON.stringify(prev ?? null) !== snapshot) bad.push(`${name} (SỬA prev — hàm không thuần)`);
   }
-  if (bad.length) fail.push(`mergeBaseline${' '.repeat(15)} sai ${bad.length}/${cases.length} ca: ${bad.join(' · ')}`);
-  else ok.push(`mergeBaseline${' '.repeat(15)} ${cases.length} ca — khoá của cơ chế KIA sống sót, và bản rà MỚI vẫn thắng (cả hai chiều)`);
+  // ⑫ Hai lần rà liên tiếp, chạy qua chính phép hợp nhất — đây là cách file THẬT lớn lên.
+  //    Các ca trên đều một-nhát trên `prev` viết tay; ca này bắt lỗi chỉ hiện ở lần thứ hai,
+  //    khi `prev` là output của chính hàm (đã có đủ bốn khoá, `history` đã không rỗng).
+  {
+    const one = mergeBaseline({ nativeEvents: { events: ['PreToolUse'] } },
+      { version: '1.0.0', at: 'T1', found: 'lần một' });
+    const two = mergeBaseline(one, { version: '2.0.0', at: 'T2', found: 'lần hai' });
+    if (!(two.reviewedVersion === '2.0.0' && two.reviewedAt === 'T2'
+      && two.history.length === 2
+      && two.history[0].found === 'lần hai' && two.history[1].found === 'lần một'
+      && two.nativeEvents?.events?.length === 1)) {
+      bad.push('hai lần rà liên tiếp (mới nhất đầu sổ, đo của cơ chế kia còn nguyên)');
+    }
+  }
+  const total = cases.length + 1;
+  if (bad.length) fail.push(`mergeBaseline${' '.repeat(15)} sai ${bad.length}/${total} ca: ${bad.join(' · ')}`);
+  else ok.push(`mergeBaseline${' '.repeat(15)} ${total} ca — cả BA người ghi (+ người thứ tư chưa có) sống sót, bản rà MỚI thắng, trần 20 cắt đúng đầu`);
 }
 
 // ─── sổ ô native: phép trừ tập hợp, và chiều SỬA QUÁ TAY của nó (#129) ───────
