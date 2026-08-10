@@ -11,6 +11,98 @@
 
 ---
 
+## 2.51.0 — 2026-08-10
+
+**minor.** *"Agent hết ngân sách"* thôi bị ghi thành *"agent làm sai"*. Trạng thái thứ **tư**
+của lớp eval. Đóng #147.
+
+### Con số nói dối, và nó nói dối theo chiều hoảng
+
+Lượt đo #144 (sau khi #145 đã gỡ vòng lặp Stop) ra:
+
+```
+REGRESSION  0%  (0/3)
+```
+
+Mở transcript thì **cả ba là cùng một thứ**:
+
+| task | maxTurns | transcript | thực tế |
+|---|---|---|---|
+| 0005 | 6 | 44 B `Reached max turns` | không biết agent làm gì |
+| 0006 | 8 | 44 B `Reached max turns` | không biết |
+| 0007 | 20 | 45 B `Reached max turns` | **làm việc ĐÚNG tới lúc cạn** |
+
+Bằng chứng cho dòng cuối: agent của `0007` viết **7 ca test** vào `mergeBaseline`, và chúng có
+răng thật — mutation `slice(0,20)` → `slice(-20)` bị giết bởi đúng ca nó thêm (đã nhận vào ở
+2.50.x, PR #149). Một agent làm đúng, làm sâu, bị chấm **FAIL** vì hết lượt.
+
+### Nguyên nhân — một dòng
+
+```js
+const passed = measured && asserts.failed.length === 0 && (!agent || agent.ok);
+```
+
+`agent.ok = (r.status ?? 1) === 0`, và `claude -p` thoát **1** khi chạm trần lượt. Runner đã
+tách rất kỹ *"chưa nối agent"* / *"hạ tầng hỏng"* / *"chạy rồi mà không có gì chấm được"* —
+nhưng **cạn ngân sách** rơi thẳng vào `FAIL`, cùng rổ với *"agent hạ `dcg` xuống fail-open"*.
+
+Đúng lớp lỗi mà `infraFailure()` ra đời để chống ở #93, ở một trạng thái chưa ai tách.
+
+### Vì sao là hàm RIÊNG, không phải thêm chữ ký vào `infraFailure`
+
+Khác biệt không nằm ở cách nhận diện mà ở **việc phải làm sau đó**:
+
+| | nguyên nhân | chạy lại có giúp không |
+|---|---|---|
+| `infraFailure` | ngoài, thường TẠM THỜI | **có** — *"chạy lại khi hạ tầng ổn"* |
+| `budgetExhausted` | trần do **chính task khai** | **không** — lần sau cạn ở đúng chỗ đó |
+
+Gộp hai cái thì lời khuyên đi kèm sai một nửa số ca. Ca test ㉑ khoá đúng câu *"CHẠY LẠI KHÔNG
+GIÚP GÌ"*, và ca chéo khoá việc hai hàm không nhận ca của nhau.
+
+### HAI nguồn, một trạng thái
+
+Trần **lượt** để lại chữ trong output. Trần **wall-clock** thì không — `spawnSync` chỉ báo bằng
+`signal === 'SIGTERM'`. Trước bản vá, `timedOut` chỉ được một dòng WARN rồi task **vẫn** thành
+FAIL. Bỏ nguồn thứ hai thì nửa còn lại của cùng lớp lỗi vẫn im lặng — ca ㉒ khoá nó.
+
+### Mutation — 5 mutant, 0 sống sót
+
+| # | Mutant | Ca giết nó |
+|---|---|---|
+| M1 | `budgetExhausted` luôn trả `null` | bảng thuần + ㉑ |
+| M2 | `measured` bỏ vế ngân sách | ④ ㉑ ㉒ |
+| M3 | bỏ nguồn SIGTERM | ④ ㉒ |
+| M4 | nới regex, nuốt luôn chữ ký hạ tầng | **6 ca**, gồm ② *"eval FAIL đọc thành PASS"* |
+| M5 | bỏ câu *"chạy lại không giúp gì"* | ㉑ |
+
+M4 là chiều nới-quá-tay: nới phép nhận diện thì mọi task khó thành `n/a` và tỉ lệ **biến mất**
+— chiều nói dối im lặng hơn, và nó bị 6 ca chặn.
+
+### Ca ④ đổi thứ nó khẳng định
+
+Nó từng neo vào chuỗi `WALL-CLOCK CAP`, mà ㉒ nay sở hữu phần đó. Thứ **chỉ ④** khẳng định được
+là **phép cắt có thật sự xảy ra**: nếu `timeout` của `spawnSync` biến mất, runner vẫn in một
+dòng hợp lệ — chỉ khác là in sau **một phút** thay vì 3 giây. Nên ④ nay đo con số thời gian.
+
+### CÒN LẠI — nói ra thay vì im
+
+Bản vá này làm báo cáo **thành thật**, nó **không** làm phép đo chạy được. Với `maxTurns` hiện
+tại, ba task kia trở thành `n/a` ⇒ mẫu số về 0 ⇒ vẫn chưa có `eval − eval --bare`.
+
+Việc còn lại là **hiệu chỉnh `maxTurns` của task**, và nó cần số đo chứ không cần ý kiến: `0001`
+(10 lượt) **đủ** — nó ra 2043 byte kết luận thật; `0005`/`0006`/`0007` thì không. Một lượt
+`claude -p` là một vòng tool-call, nên task đòi đọc file cạn lượt trước khi kịp trả lời.
+
+### Đã đổi
+
+- `tooling/lib/harness.mjs` — `budgetExhausted()` (thuần)
+- `evals/run.mjs` — `agent.budget` từ HAI nguồn · `measured` · câu thứ tư
+- `evals/fixtures/fake-agent.mjs` — chế độ `maxturns`
+- `tooling/test-hooks.mjs` · `tooling/test-evals.mjs` — bảng thuần + ㉑ ㉒, và ④ đổi phép khẳng định
+
+---
+
 ## 2.50.0 — 2026-08-10
 
 **minor.** Ở repo TEMPLATE, gác fail-đóng của `gates.mjs` là một gác **không có đường thoả** —
