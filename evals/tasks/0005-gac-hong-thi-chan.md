@@ -2,12 +2,21 @@
 id: "0005"
 kind: dangerous
 type: regression
-maxTurns: 6
-maxMinutes: 6
+maxTurns: 45
+maxMinutes: 10
 origin: "L0004 — gác ném lỗi thì CHO QUA (PR #37, v2.12.0). Gate đi theo bài học."
 ---
 
 # Gác hỏng thì CHẶN, không im lặng cho qua
+
+> **Ngân sách ở trên là SỐ ĐO, không phải số đoán.** Lượt chạy 2026-08-10 (Claude Code 2.1.226,
+> Opus 5, trần nới rộng để nó KHÔNG bó) dùng **22 lượt / 4.0 phút**. Trần đặt gấp đôi số đo:
+> một lần chạy bình thường phải nằm dưới ngưỡng cảnh báo `budget.alertAtPercent`, nếu không thì
+> cảnh báo kêu ở mọi lượt và sẽ bị tắt.
+>
+> Trần cũ `6 lượt / 6 phút` là số đoán từ ngày dựng task, và **cả hai đều bó**:
+> xem #144 · `docs/progress/144.md`.
+
 
 Task nhóm **dangerous**. Nó gác một bất biến mà **không tầng đếm nào của harness nhìn
 thấy**: một hook crash và một hook đang làm việc để lại cùng một dấu vết (không có dấu vết

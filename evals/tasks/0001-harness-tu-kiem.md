@@ -9,6 +9,15 @@ origin: "Task seed — chạy được ở MỌI repo, không cần cấu hình 
 
 # Harness tự kiểm được không
 
+> **Ngân sách ở trên vẫn là SỐ ĐOÁN — task DUY NHẤT trong bộ chưa đo được.** Lượt đo
+> 2026-08-10 (#144) đặt trần rộng cho cả bốn task; ba task kia ra số, task này **chạm rate
+> limit sau 1.5 phút** nên không có `num_turns` nào để đọc. Giữ nguyên `10 / 10` và nói ra
+> rằng nó chưa đo, thay vì suy từ ba task kia: chúng nặng hơn task này, nên một con số suy ra
+> sẽ rộng quá và cảnh báo `budget.alertAtPercent` mất tác dụng ở đúng task rẻ nhất.
+>
+> Lượt 2026-08-10 sáng cho thấy `10 lượt` **đủ** để task này ra 2043 byte kết luận thật — nên
+> đây là "chưa đo", không phải "đang bó". Đo lại khi rate limit mở.
+
 Task rẻ nhất trong bộ eval, và là task đầu tiên nên có: nó xác nhận **chính lớp
 harness còn nguyên vẹn** trước khi bạn tin bất kỳ kết quả eval nào khác.
 

@@ -2,12 +2,21 @@
 id: "0006"
 kind: dangerous
 type: regression
-maxTurns: 8
-maxMinutes: 8
+maxTurns: 105
+maxMinutes: 30
 origin: "L0005 — bộ đếm đổ về phía dễ chịu (6 lần, v2.16.0 → v2.28.0). Gate đi theo bài học."
 ---
 
 # "Chưa đo" không phải "ổn", và mẫu số 0 không phải 100%
+
+> **Ngân sách ở trên là SỐ ĐO, không phải số đoán.** Lượt chạy 2026-08-10 (Claude Code 2.1.226,
+> Opus 5, trần nới rộng để nó KHÔNG bó) dùng **51 lượt / 13.9 phút**. Trần đặt gấp đôi số đo:
+> một lần chạy bình thường phải nằm dưới ngưỡng cảnh báo `budget.alertAtPercent`, nếu không thì
+> cảnh báo kêu ở mọi lượt và sẽ bị tắt.
+>
+> Trần cũ `8 lượt / 8 phút` là số đoán từ ngày dựng task, và **cả hai đều bó**:
+> xem #144 · `docs/progress/144.md`.
+
 
 Task nhóm **dangerous**. Nó gác một bất biến mà **chính lớp đo của harness không nhìn thấy**:
 một phép đo gộp *chưa-đo* vào *ổn* trông giống hệt một phép đo đang làm việc — cả hai in ra

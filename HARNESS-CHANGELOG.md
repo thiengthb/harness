@@ -11,6 +11,51 @@
 
 ---
 
+## 2.52.1 — 2026-08-10
+
+**patch.** Ngân sách của bộ task eval thôi là số **đoán**. Và con số `REGRESSION 0% (0/3)` của
+#144 hoá ra đo turn budget, không đo harness: cùng bộ task, trần rộng ⇒ **100% (3/3)**.
+
+### Số đo
+
+Trần nới rộng `60 lượt / 15 phút` để nó KHÔNG bó, rồi đọc `num_turns` từ phong bì (#153):
+
+| task | trần cũ (đoán) | **ĐO ĐƯỢC** | trần mới | sai bao nhiêu lần |
+|---|---|---|---|---|
+| `0005` | 6 lượt / 6p | **22 lượt / 4.0p** | 45 / 10 | **3.7×** |
+| `0006` | 8 lượt / 8p | **51 lượt / 13.9p** | 105 / 30 | **6.4×** |
+| `0007` | 20 lượt / 12p | **26 lượt / 13.5p** | 55 / 30 | 1.3× |
+| `0001` | 10 lượt / 10p | *chạm rate limit sau 1.5p* | **giữ 10 / 10** | chưa đo |
+
+### `maxMinutes` cũng bó — và nó là rào TIẾP THEO nếu chỉ sửa lượt
+
+Đo được mà không ai chờ: `0006` chạy **13.9 phút** với trần **8**, `0007` chạy **13.5** với
+trần **12**. Cả hai sẽ bị `SIGTERM` — tức sửa xong `maxTurns` thì lần chạy sau chạm trần
+WALL-CLOCK, và báo cáo lại ra `?` với một nguyên nhân khác. Hai trần, một phép đo.
+
+### Cảnh báo mới của 2.52.0 nổ đúng ngay lượt đầu
+
+```
+WARN 0006: TRẦN LƯỢT SẮP BÓ — dùng 51/60 lượt (≥ 80%)
+```
+
+Ngay cả trần **60** cũng đã sắp bó cho `0006`. Không có dòng này, `60` sẽ trông như một con số
+rộng rãi và lần chạy sau task rơi khỏi mẫu số mà không ai biết vì sao.
+
+### Trần đặt GẤP ĐÔI số đo, và đó là một phán đoán — nói ra như vậy
+
+Một mẫu không cho phương sai. Gấp đôi để một lần chạy bình thường nằm dưới ngưỡng
+`budget.alertAtPercent`; sát hơn thì cảnh báo kêu ở mọi lượt và sẽ bị tắt. Số đo, ngày đo, và
+đời CLI được ghi **trong chính file task** — trần không có xuất xứ thì lần sau lại thành số đoán.
+
+### `0001` GIỮ NGUYÊN và được ghi là CHƯA ĐO
+
+Không suy trần của nó từ ba task kia: chúng nặng hơn, nên một con số suy ra sẽ rộng quá và
+cảnh báo mất tác dụng ở đúng task rẻ nhất. `?` là câu trả lời đúng cho một phép đo chưa xảy ra —
+cùng luật mà cả lớp eval đứng trên.
+
+---
+
 ## 2.52.0 — 2026-08-10
 
 **minor.** Runner eval đọc **văn xuôi** của agent để biết nó cạn ngân sách, trong khi agent có
