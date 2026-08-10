@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { parseFrontmatter } from '../tooling/lib/frontmatter.mjs';
-import { repoPath, readJson, writeJson, report, git, config, spill, infraFailure, budgetExhausted, stateDir } from '../tooling/lib/harness.mjs';
+import { repoPath, readJson, writeJson, report, git, config, spill, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, stateDir } from '../tooling/lib/harness.mjs';
 
 const argv = process.argv.slice(2);
 const has = f => argv.includes(f);
@@ -331,6 +331,13 @@ function bareTree() {
  * Khai lệnh ở `harness.config.json → evals.command`, ví dụ:
  *   "claude -p --max-turns {maxTurns} --permission-mode auto --output-format json"
  *
+ * `--output-format json` là KHUYẾN NGHỊ, không phải trang trí: nó đổi lời khai của agent từ
+ * văn xuôi sang CÓ CẤU TRÚC — `num_turns` (số lượt thật sự dùng, thứ duy nhất hiệu chỉnh được
+ * `maxTurns` bằng số đo thay vì bằng ý kiến) và `terminal_reason` (cạn trần lượt khai thẳng,
+ * không phải đoán từ một câu tiếng Anh). Tới #153 cờ này còn là một cái BẪY: bật nó làm
+ * `budgetExhausted()` mù, vì chuỗi `Reached max turns` biến mất khỏi output. Nay `runAgent`
+ * đọc phong bì TRƯỚC, văn xuôi SAU, nên cả hai dạng lệnh đều đúng.
+ *
  * PROMPT ĐI QUA STDIN. Placeholder còn lại: {maxTurns} {maxMinutes} {id} {promptFile}.
  * `{prompt}` đã bị BỎ ở 2.7.8 — xem lý do trong thân hàm.
  *
@@ -398,6 +405,10 @@ function runAgent(task, root) {
   // lớp ĐẮT nhất và mờ nhất, lại được miễn.
   const transcript = spill(`eval-${task.id}`, (r.stdout || '') + '\n--- stderr ---\n' + (r.stderr || ''));
 
+  // PHONG BÌ trước, văn xuôi sau. `null` khi lệnh eval không in JSON — ca thường gặp, và mọi
+  // thứ bên dưới rơi về đường cũ.
+  const env = agentEnvelope(r.stdout);
+
   return {
     ok: (r.status ?? 1) === 0,
     timedOut: r.signal === 'SIGTERM',
@@ -405,14 +416,32 @@ function runAgent(task, root) {
     retries,
     transcript,
     error: r.error?.message,
+    // SỐ LƯỢT ĐÃ DÙNG và TRẦN, cạnh nhau. Trần một mình không nói gì; cặp số mới nói được
+    // "task này còn bao nhiêu chỗ thở". `turns: null` = lệnh eval không khai — `?`, không phải 0.
+    turns: env ? env.turns : null,
+    maxTurns,
+    costUsd: env ? env.costUsd : null,
     // Agent KHÔNG CHẠY vì hạ tầng ≠ agent làm sai. Xem infraFailure() ở lib/harness.mjs.
     infra: infraFailure(`${r.stdout || ''}\n${r.stderr || ''}`),
-    // Agent HẾT NGÂN SÁCH ≠ agent làm sai — và ≠ hạ tầng hỏng (#147). HAI NGUỒN, một trạng
-    // thái: trần LƯỢT để lại chữ trong output; trần WALL-CLOCK thì không, `spawnSync` chỉ báo
-    // bằng SIGTERM. Bỏ nguồn thứ hai thì một task treo 8 phút vẫn bị chấm FAIL, và ca `hang`
-    // của agent giả đã chứng minh đường đó chạy được từ lâu.
+    // Agent HẾT NGÂN SÁCH ≠ agent làm sai — và ≠ hạ tầng hỏng (#147). BA NGUỒN, một trạng thái:
+    //
+    //   ① SIGTERM   — trần WALL-CLOCK không để lại chữ nào, `spawnSync` chỉ báo bằng tín hiệu.
+    //   ② PHONG BÌ  — `terminal_reason: "max_turns"`. CẤU TRÚC, không phải văn xuôi.
+    //   ③ văn xuôi  — `Reached max turns`, cho lệnh eval KHÔNG in JSON.
+    //
+    // ② và ③ KHÔNG phải hai lần thử cùng một chỗ, và đây là chi tiết quyết định: chúng đọc
+    // hai thứ khác nhau. ③ quét TOÀN BỘ stdout — mà ở chế độ JSON, stdout chứa cả **câu trả
+    // lời của chính agent**. Một agent viết *"gate này chặn khi reached max turns"* trong câu
+    // trả lời sẽ bị ③ chấm là cạn ngân sách, và task IM LẶNG rơi khỏi mẫu số. Đó đúng chiều
+    // nói dối mà bảng ca của `budgetExhausted` phải khoá hai đầu để chống: nới phép nhận diện
+    // ra thì mọi task khó thành `n/a` và tỉ lệ biến mất.
+    //
+    // Nên KHÔNG phải `??` giữa ② và ③: **có phong bì thì phong bì là nguồn DUY NHẤT.** CLI đã
+    // khai trạng thái của chính nó bằng một trường; đi đọc văn xuôi thêm lần nữa chỉ có thể
+    // làm sai đi. ③ chỉ sống ở nhánh KHÔNG có phong bì, nơi văn xuôi là thứ duy nhất tồn tại.
     budget: r.signal === 'SIGTERM'
       ? `chạm trần WALL-CLOCK do task khai (${maxMinutes} phút)`
+      : env ? envelopeBudget(env)
       : budgetExhausted(`${r.stdout || ''}\n${r.stderr || ''}`),
   };
 }
@@ -499,6 +528,26 @@ for (const t of tasks) {
     // nên người đọc đi tìm ở model trong khi lỗi nằm ở cấu hình. Một thông báo lỗi được tạo
     // ra rồi bị bỏ đi thì tệ hơn không tạo ra: chi phí đã trả, giá trị thì không.
     if (agent.error) fail.push(`${label}: ${agent.error}`);
+
+    // TRẦN SẮP BÓ — task này còn ĐO ĐƯỢC, nhưng chỉ vừa đủ. Đây là cảnh báo duy nhất trong file
+    // nói về một lượt chạy THÀNH CÔNG, và nó có lý do: một `maxTurns` sát ngưỡng là một task
+    // sắp rơi khỏi MẪU SỐ ở lần chạy sau — model đổi một nhịp, task thành `?`, và không dòng
+    // nào giải thích vì sao tỉ lệ vừa đổi. Trần của bộ task (`6 · 8 · 10 · 15 · 20`) là số
+    // ĐOÁN từ đầu; đây là chỗ nó thành số ĐO (#153, rào cuối của #144).
+    //
+    // KHÔNG in khi đã cạn ngân sách: dòng "KHÔNG ĐO ĐƯỢC" phía dưới đã nói đúng chuyện đó, và
+    // hai dòng cho một sự kiện thì dòng ngắn hơn được đọc trước.
+    //
+    // Ngưỡng dùng lại `budget.alertAtPercent` — field ĐÃ CÓ. Thêm một field mới cho một ngưỡng
+    // cùng nghĩa (*"đã tiêu tới bao nhiêu phần trăm ngân sách thì kêu"*) là thêm một chỗ để hai
+    // con số lệch nhau, và một mục nữa cho máy dò field chết phải theo.
+    const pct = config().budget?.alertAtPercent ?? 80;
+    if (!agent.budget && typeof agent.turns === 'number' && agent.maxTurns > 0
+        && (agent.turns / agent.maxTurns) * 100 >= pct) {
+      warn.push(`${label}: TRẦN LƯỢT SẮP BÓ — dùng ${agent.turns}/${agent.maxTurns} lượt (≥ ${pct}%). `
+        + `Lần này vẫn đo được, lần sau chưa chắc: chạm trần ⇒ task ra khỏi mẫu số và tỉ lệ đổi mà không ai biết vì sao. `
+        + `Nâng \`maxTurns\` trong ${t.file} theo SỐ ĐO này, đừng đoán.`);
+    }
   }
 
   // `n/a` THẬT: không assertion nào chạy được, và cũng không có agent để chấm. Task này
@@ -555,7 +604,13 @@ for (const t of tasks) {
         + (agent.transcript ? ` · transcript: ${agent.transcript}` : '')
       : `${label}: KHÔNG ĐO ĐƯỢC — ${asserts.na.length} assertion đều n/a và chưa khai \`evals.command\`. Không tính vào tỉ lệ.`);
   } else {
-    (passed ? ok : fail).push(`${label}${agent ? ` (${agent.minutes}p)` : ''}${asserts.failed.length ? ` → fail: ${asserts.failed[0]}` : ''}`
+    // Số lượt đi kèm mỗi task ĐO ĐƯỢC. In cả khi còn rộng rãi, cố ý: hiệu chỉnh `maxTurns` cần
+    // một dãy số qua nhiều lượt chạy, và một con số chỉ hiện ra lúc sắp hỏng thì tới lúc đó đã
+    // không còn gì để so. `?` khi lệnh eval không in JSON — không phải `0`.
+    const turnNote = agent
+      ? (typeof agent.turns === 'number' ? ` · ${agent.turns}/${agent.maxTurns} lượt` : ` · ?/${agent.maxTurns} lượt`)
+      : '';
+    (passed ? ok : fail).push(`${label}${agent ? ` (${agent.minutes}p)` : ''}${turnNote}${asserts.failed.length ? ` → fail: ${asserts.failed[0]}` : ''}`
       + (agent?.transcript ? ` · transcript: ${agent.transcript}` : ''));
   }
 }

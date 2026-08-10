@@ -97,7 +97,7 @@ function received(out) {
 // `taskId` mặc định `9001` — ca ①–⑦ đều dùng task đó. Tham số hoá vì ca ⑧⑨⑩ cần task
 // RIÊNG: bản trước cứng `--task 9001`, nên một fixture mới ghi vào `TASKS` bị lọc mất và
 // ca của nó xanh VÌ KHÔNG CÓ GÌ CHẠY. Đã gặp thật khi viết ⑩ (2026-08-07).
-function runEval(command, mode, taskId = '9001', { flags = [], stateDir = null } = {}) {
+function runEval(command, mode, taskId = '9001', { flags = [], stateDir = null, extraEnv = null } = {}) {
   const r = spawnSync(process.execPath, [repoPath('evals', 'run.mjs'), '--task', taskId, ...flags], {
     cwd: repoPath(''), encoding: 'utf8',
     env: {
@@ -109,6 +109,7 @@ function runEval(command, mode, taskId = '9001', { flags = [], stateDir = null }
       // người đang chạy nó — và một baseline bị ghi đè là một mốc so sánh mất vĩnh viễn.
       ...(stateDir ? { HARNESS_STATE_DIR: stateDir } : {}),
       ...(mode ? { FAKE_AGENT_MODE: mode } : {}),
+      ...(extraEnv || {}),
     },
   });
   return { out: (r.stdout || '') + (r.stderr || ''), status: r.status ?? 1 };
@@ -559,6 +560,99 @@ ${assertions}
     fail.push('㉒ task bị cắt vì thời gian vẫn nằm trong MẪU SỐ');
   } else {
     ok.push('㉒ agent cạn trần WALL-CLOCK ⇒ cùng rổ `?`, và dòng báo nêu ĐÚNG nguồn (SIGTERM, không phải chữ trong output)');
+  }
+}
+
+// ── ㉓ Phong bì CÓ CẤU TRÚC: số lượt đã dùng là SỐ ĐO, không phải khảo cổ ────
+//
+// `--output-format json` đổi lời khai của agent từ văn xuôi sang một object. `num_turns` là
+// con số duy nhất chưa có để hiệu chỉnh `maxTurns` bằng đo thay vì bằng ý kiến (#144).
+//
+// Ca này neo vào CẶP `dùng/trần`, không neo vào riêng con số: một trần in ra một mình không
+// nói gì về chỗ thở còn lại, và chính "còn bao nhiêu chỗ thở" mới là thứ quyết định task này
+// còn nằm trong mẫu số ở lần chạy sau hay không.
+{
+  const r = runEval(CMD, 'json', '9001', { extraEnv: { FAKE_AGENT_TURNS: '3' } });
+  if (!/3\/7 lượt/.test(r.out)) {
+    fail.push(`㉓ runner KHÔNG đọc được \`num_turns\` từ phong bì JSON — hiệu chỉnh maxTurns quay lại làm khảo cổ transcript`);
+  } else if (/KHÔNG ĐO ĐƯỢC/.test(r.out)) {
+    fail.push('㉓ phong bì THÀNH CÔNG bị đọc thành "không đo được" — phép đọc đang bắn nhầm vào ca xanh');
+  } else if (/TRẦN LƯỢT SẮP BÓ/.test(r.out)) {
+    fail.push('㉓ 3/7 lượt (43%) mà đã kêu "trần sắp bó" — ngưỡng bắn nhầm, và cảnh báo bắn nhầm sẽ bị tắt');
+  } else {
+    ok.push('㉓ phong bì JSON ⇒ runner đọc ra SỐ LƯỢT đã dùng (3/7), không kêu oan');
+  }
+}
+
+// ── ㉔ Cạn trần lượt KHAI BẰNG CẤU TRÚC — và KHÔNG có chữ nào để regex ───────
+//
+// ĐÂY LÀ CA CỦA #153. Ở chế độ JSON, chuỗi `Reached max turns` **không tồn tại**: agent khai
+// bằng `terminal_reason: "max_turns"`. Nên `budgetExhausted()` — regex trên văn xuôi, v2.51.0 —
+// mù hoàn toàn, và task rơi lại vào FAIL: đúng lớp lỗi #147 vừa dọn, qua một đường khác.
+//
+// Và đường đó KHÔNG phải giả định: docstring của `runAgent` lấy `--output-format json` làm
+// VÍ DỤ MẪU. Người làm theo tài liệu là người dính.
+//
+// Phép khẳng định thứ hai là phần có răng: transcript KHÔNG được chứa chữ ký văn xuôi. Không
+// có nó, một agent giả in cả JSON lẫn dòng chữ sẽ làm ca này xanh qua đường CŨ, và cơ chế mới
+// chưa từng được chạy.
+{
+  const r = runEval(CMD, 'jsonmaxturns');
+  const m = r.out.match(/transcript: (\S+)/);
+  const txt = m ? readFileSync(m[1], 'utf8') : '';
+  if (/reached max turns/i.test(txt)) {
+    fail.push('㉔ agent giả vẫn in chữ ký VĂN XUÔI — ca này đang đo đường cũ, cơ chế phong bì chưa từng chạy');
+  } else if (!/KHÔNG ĐO ĐƯỢC/.test(r.out)) {
+    fail.push('㉔ cạn trần lượt KHAI BẰNG CẤU TRÚC vẫn bị chấm — bật `--output-format json` (đúng ví dụ trong docstring) làm bộ dò #147 mù');
+  } else if (!/CẠN NGÂN SÁCH \(chạm trần LƯỢT/.test(r.out)) {
+    fail.push('㉔ có báo "không đo được" nhưng không nói nguyên nhân là trần LƯỢT');
+  } else if (/REGRESSION\s+\d/.test(r.out)) {
+    fail.push('㉔ task cạn trần lượt vẫn nằm trong MẪU SỐ');
+  } else {
+    ok.push('㉔ `terminal_reason: max_turns` ⇒ `?` — nhận diện theo CẤU TRÚC, không cần một chữ nào trong output');
+  }
+}
+
+// ── ㉕ Trần SẮP BÓ phải kêu — chiều còn lại của ㉓ ────────────────────────────
+//
+// ㉓ khoá chiều "đừng kêu oan". Một mình nó thì một bản vá xoá hẳn cảnh báo sẽ XANH — đúng
+// chiều `L0007` (sửa quá tay: mẫu số về 0 và không gì đỏ). Ca này khoá chiều còn lại.
+//
+// 6/7 = 86% ≥ `budget.alertAtPercent` (80, mặc định). Task này còn ĐO ĐƯỢC — nên cảnh báo phải
+// tồn tại mà KHÔNG được đẩy task ra khỏi mẫu số: một task xanh bị đọc thành `?` cũng là nói dối.
+{
+  const r = runEval(CMD, 'json', '9001', { extraEnv: { FAKE_AGENT_TURNS: '6' } });
+  if (!/TRẦN LƯỢT SẮP BÓ/.test(r.out)) {
+    fail.push('㉕ dùng 6/7 lượt mà KHÔNG cảnh báo — lần chạy sau task rơi khỏi mẫu số và tỉ lệ đổi mà không dòng nào giải thích');
+  } else if (!/6\/7 lượt/.test(r.out)) {
+    fail.push('㉕ có cảnh báo nhưng không nêu CẶP SỐ — "sắp bó" mà không nói sắp bó tới đâu thì không hành động được');
+  } else if (/KHÔNG ĐO ĐƯỢC/.test(r.out)) {
+    fail.push('㉕ trần sắp bó bị đẩy thành "không đo được" — task này ĐO ĐƯỢC, cảnh báo không được ăn mất phép đo');
+  } else {
+    ok.push('㉕ dùng 6/7 lượt (≥ alertAtPercent) ⇒ CẢNH BÁO nêu cặp số, task vẫn nằm trong mẫu số');
+  }
+}
+
+// ── ㉖ Agent NÓI VỀ chữ ký ngân sách ≠ agent cạn ngân sách ───────────────────
+//
+// Chiều nói dối IM LẶNG của ㉔. `budgetExhausted()` quét TOÀN BỘ stdout; ở chế độ JSON, stdout
+// chứa cả câu trả lời của agent. Một agent viết *"gate này chặn khi reached max turns"* — câu
+// hoàn toàn hợp lệ cho một task về gate — sẽ bị chấm là cạn ngân sách, và một task XANH lặng
+// lẽ rơi khỏi MẪU SỐ. Tỉ lệ đổi, không dòng nào giải thích.
+//
+// Đây là ca duy nhất chứng minh quyết định *"có phong bì thì phong bì là nguồn DUY NHẤT"*.
+// Viết `envelopeBudget(env) ?? budgetExhausted(text)` thì ca này ĐỎ — và đó chính là bản đầu
+// tôi định viết.
+{
+  const r = runEval(CMD, 'json', '9001', {
+    extraEnv: { FAKE_AGENT_TURNS: '3', FAKE_AGENT_SAY: 'Gate này chặn đúng khi CLI báo Reached max turns, nên tôi giữ nguyên.' },
+  });
+  if (/KHÔNG ĐO ĐƯỢC/.test(r.out)) {
+    fail.push('㉖ agent NÓI VỀ chữ ký ngân sách bị chấm là CẠN ngân sách — một task xanh vừa im lặng rơi khỏi mẫu số');
+  } else if (!/3\/7 lượt/.test(r.out)) {
+    fail.push('㉖ mất luôn số lượt — phong bì không còn được đọc ở ca này');
+  } else {
+    ok.push('㉖ phong bì khai "completed" ⇒ chữ ký trong CÂU TRẢ LỜI của agent không bị đọc thành cạn ngân sách');
   }
 }
 

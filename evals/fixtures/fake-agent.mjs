@@ -21,6 +21,8 @@
  *   hang              ngủ lâu hơn wall-clock cap — runner phải cắt và báo timedOut
  *   quota             in chữ ký hết-quota rồi exit 0 — runner phải báo `?`, KHÔNG phải FAIL
  *   maxturns          in chữ ký cạn-trần-lượt rồi exit 1 — runner phải báo `?`, KHÔNG phải FAIL
+ *   json              in PHONG BÌ thành công (num_turns) — runner phải ĐỌC ĐƯỢC số lượt
+ *   jsonmaxturns      in PHONG BÌ cạn trần lượt — `?` mà KHÔNG có chữ "Reached max turns" nào
  */
 import { readFileSync, existsSync } from 'node:fs';
 
@@ -61,6 +63,34 @@ if (mode === 'quota') {
 if (mode === 'maxturns') {
   console.log('Error: Reached max turns (6)');
   process.exit(1);
+}
+
+// PHONG BÌ — hình dạng chép NGUYÊN VĂN từ `claude -p --output-format json`, đo 2026-08-10
+// (#153). Rút gọn còn những trường runner đọc, cộng vài trường nó KHÔNG đọc (`stop_reason`,
+// `usage`) để chứng minh phép đọc không vỡ vì trường lạ.
+//
+// `FAKE_AGENT_TURNS` cho test chọn số lượt: ca "trần sắp bó" cần một con số SÁT trần, ca
+// thường cần một con số rộng rãi, và hai ca đó phải khác nhau ở ĐÚNG con số đó.
+if (mode === 'json' || mode === 'jsonmaxturns') {
+  const max = mode === 'jsonmaxturns';
+  console.log(JSON.stringify({
+    is_error: max,
+    duration_api_ms: 9726,
+    num_turns: Number(process.env.FAKE_AGENT_TURNS || (max ? 2 : 3)),
+    stop_reason: max ? 'tool_use' : 'end_turn',
+    session_id: 'fake-0000',
+    total_cost_usd: 0.044967,
+    usage: { input_tokens: 2, output_tokens: 127 },
+    permission_denials: [],
+    terminal_reason: max ? 'max_turns' : 'completed',
+    subtype: max ? 'error_max_turns' : 'success',
+    // `FAKE_AGENT_SAY` nhét chữ vào CÂU TRẢ LỜI của agent. Nó tồn tại cho đúng một ca: agent
+    // NÓI VỀ chữ ký ngân sách trong lúc chạy xong bình thường. Ở chế độ JSON, câu trả lời nằm
+    // trong cùng dòng stdout với phong bì — nên một runner còn quét văn xuôi sẽ chấm ca này là
+    // "cạn ngân sách" và đẩy một task XANH ra khỏi mẫu số, im lặng.
+    ...(max ? {} : { result: process.env.FAKE_AGENT_SAY || 'OK.' }),
+  }));
+  process.exit(max ? 1 : 0);
 }
 
 if (mode === 'loop') {

@@ -1,4 +1,4 @@
-<!-- version: 2026-08-10-a -->
+<!-- version: 2026-08-10-b -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,21 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-10 — Eval: thêm `--output-format json` vào `evals.command` (v2.52.0)
+
+Nếu bạn đã nối `evals.command` với `claude`, thêm cờ đó:
+
+```
+claude -p --max-turns {maxTurns} --permission-mode auto --output-format json
+```
+
+Đổi lại: báo cáo eval in **số lượt agent thật sự dùng / trần** cho mỗi task, và kêu khi tỉ lệ đó
+chạm `budget.alertAtPercent`. Một trần sát ngưỡng là một task sắp rơi khỏi mẫu số ở lần chạy
+sau — trước đây điều đó xảy ra im lặng và tỉ lệ đổi mà không ai biết vì sao.
+
+Tới v2.52.0 cờ này còn là một cái **bẫy**: bật nó làm bộ dò "agent cạn ngân sách" (v2.51.0) mù,
+vì chuỗi `Reached max turns` biến mất khỏi output. Nay runner đọc lời khai có cấu trúc trước.
 
 ## 2026-08-10 — `upgrade` thôi khởi động dev server trên máy bạn (v2.51.1)
 
