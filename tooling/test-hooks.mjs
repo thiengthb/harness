@@ -1050,6 +1050,9 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   const { evaluate } = await import('./rituals.mjs');
   const base = {
     issue: '', progressExists: false, commitsSinceProgress: 0, ahead: 0, integrationBranch: 'origin/main',
+    // "Trạng thái ĐỦ" cho `/handoff` trên nhánh KHÔNG mang số issue = đã đo được cây làm việc.
+    // `undefined` ở đây là "chưa nhìn" và phải ra `?` — ca ③ bên dưới khoá cả hai chiều.
+    branch: 'fix/1-x', dirtyFiles: 0,
     fixlogTotal: 0, fixlogRepeated: 0, learningsNewerThanLessons: 0,
     skillCount: 5, maxSkills: 12, worktrees: 1, maxWorktrees: 4, pendingPacks: 0, harnessBlocks: 0,
     // "Trạng thái ĐỦ" cho guard nhánh tích hợp = đã gặp ít nhất một ca. 0/0 là `?` (mẫu số
@@ -1097,10 +1100,52 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   if (wrong.length) fail.push(`rituals.mjs${' '.repeat(17)} ${wrong.length} nghi thức coi \`null\` (không đo được) là trạng thái BÌNH THƯỜNG: ${wrong.map(w => w[1]).join(' · ')}`);
   else ok.push(`rituals.mjs${' '.repeat(17)} \`null\` ⇒ \`?\` ở cả ${nulls.length} nghi thức đo bằng số (không gộp "chưa nhìn" vào "ổn")`);
 
-  // ③ Nhánh không suy ra được issue ⇒ `?`, không phải "ok, không có gì để nhận".
-  if (get({ issue: null }, 'claim')?.state !== '?') {
-    fail.push('rituals.mjs                 nhánh không suy ra được issue mà /claim vẫn báo `ok` — im lặng đúng lúc không biết');
-  } else ok.push(`rituals.mjs${' '.repeat(17)} nhánh không theo quy ước ⇒ /claim là \`?\`, không phải \`ok\``);
+  // ③ Nhánh không mang số issue: KHÔNG CÓ CHỦ NGỮ ⇒ `n/a`, và tuyệt đối KHÔNG `ok`.
+  //
+  //    Tới 2.52.0 ca này là `?`, và chú thích ở `session-start.mjs` ghi thẳng cái giá: BA
+  //    nghi thức cùng ra `?` mỗi phiên vì cùng một lý do, trên một tình huống chỉ sửa được
+  //    bằng cách đổi tên nhánh. Cái phải giữ không phải chữ `?` — mà là "không được thành
+  //    `ok`", vì `ok` khẳng định nghi thức đã chạy và sạch.
+  //
+  //    Bảng dưới khoá CẢ HAI CHIỀU trên cả ba mục, nên một lần sửa quá tay theo hướng dễ
+  //    chịu (`n/a` → `ok`) chết ở đây, chứ không chỉ chiều `?` → `n/a` mà bản vá này nhắm tới.
+  {
+    const NOISSUE = [
+      ['claim', /không mang số issue/],
+      ['verify-ui', /không mang số issue/],
+    ];
+    const bad = [];
+    for (const [id, re] of NOISSUE) {
+      const r = get({ issue: null }, id);
+      if (r?.state !== 'n/a') bad.push(`${id} ra \`${r?.state}\` thay vì \`n/a\``);
+      else if (!re.test(r.why)) bad.push(`${id} là \`n/a\` nhưng \`why\` không nói vì sao không áp dụng`);
+    }
+    // `/handoff` là NGOẠI LỆ CỐ Ý và nó phải được khẳng định riêng, không gộp vào bảng trên:
+    // chủ ngữ của nó là CÔNG VIỆC SẼ MẤT, thứ tồn tại độc lập với tên nhánh. Cây bẩn ⇒ vẫn ĐỎ.
+    const dirty = get({ issue: null, dirtyFiles: 3, ahead: 0 }, 'handoff');
+    if (dirty?.state !== 'due') bad.push(`handoff: nhánh không số issue + 3 file bẩn ⇒ \`${dirty?.state}\`, phải là \`due\` (đây là ca đã làm mất việc thật, nhật ký W32)`);
+    else if (!/\d/.test(dirty.why)) bad.push('handoff: mục đỏ không kèm số đo');
+    const unpushed = get({ issue: null, dirtyFiles: 0, ahead: 2 }, 'handoff');
+    if (unpushed?.state !== 'due') bad.push(`handoff: nhánh không số issue + 2 commit chưa vào nhánh tích hợp ⇒ \`${unpushed?.state}\`, phải là \`due\``);
+    // Và chỉ khi CẢ HAI tín hiệu đã đo và đều bằng 0 thì mới được im.
+    const quiet = get({ issue: null, dirtyFiles: 0, ahead: 0 }, 'handoff');
+    if (quiet?.state !== 'n/a') bad.push(`handoff: cây sạch + 0 commit đi trước ⇒ \`${quiet?.state}\`, phải là \`n/a\``);
+    // MUTANT: một tín hiệu KHÔNG ĐO ĐƯỢC mà tín hiệu kia bằng 0 ⇒ `?`. Đây là chỗ dễ trượt
+    // nhất của bản vá này — `null > 0` là `false`, nên một `null` lặng lẽ đi thẳng vào nhánh
+    // "không có gì để giao lại" nếu thiếu đúng phép kiểm `== null`.
+    for (const [k, other] of [['dirtyFiles', 'ahead'], ['ahead', 'dirtyFiles']]) {
+      const r = get({ issue: null, [k]: null, [other]: 0 }, 'handoff');
+      if (r?.state !== '?') bad.push(`handoff: \`${k}\` không đọc được (kia = 0) ⇒ \`${r?.state}\`, phải là \`?\` — "chưa nhìn" KHÔNG được thành "không có gì để giao lại"`);
+    }
+    // Nhưng một tín hiệu DƯƠNG thắng một tín hiệu hỏng: biết chắc có việc dở thì không cần
+    // phép đo còn lại. Ngược lại là để một `null` nuốt mất một mục đỏ đúng.
+    const half = get({ issue: null, dirtyFiles: null, ahead: 4 }, 'handoff');
+    if (half?.state !== 'due') bad.push(`handoff: 4 commit chưa vào nhánh tích hợp + cây không đọc được ⇒ \`${half?.state}\`, phải là \`due\``);
+
+
+    if (bad.length) fail.push(`rituals.mjs${' '.repeat(17)} nhánh không mang số issue: ${bad.join(' · ')}`);
+    else ok.push(`rituals.mjs${' '.repeat(17)} nhánh không mang số issue ⇒ /claim + /verify-ui là \`n/a\` (không \`ok\`), /handoff vẫn ĐO cây bẩn + commit chưa đẩy`);
+  }
 
   // ④ Mọi mục TỚI HẠN phải kèm SỐ ĐO. Một dòng "nên chạy X" không có số là lời khuyên, và
   //    lời khuyên chung chính là thứ dòng nhắc tĩnh cũ đã làm — trong 100% số phiên, vô hiệu.
@@ -1297,7 +1342,10 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   //     Ba trạng thái, và cái đáng khoá nhất là 0/0 — guard vừa cắm thì MẪU SỐ BẰNG 0, và
   //     một tỉ lệ trên mẫu số 0 là câu trả lời dễ chịu chứ không phải câu trả lời đúng (L0005).
   const GUARD = [
-    [{ mainEditEscapes: 0, mainEditBlocks: 0 }, '?', /chưa gặp ca nào/, '0 chặn 0 thoát ⇒ `?`, KHÔNG phải "ổn"'],
+    // 0/0 = KHÔNG CÓ MẪU SỐ ⇒ `n/a` (bằng không do cấu trúc), không phải `?` và không phải
+    // `ok`. L0005 giữ nguyên hiệu lực: điều nó cấm là trả lời "guard ổn" trên mẫu số rỗng, và
+    // `n/a` không nói thế — regex dưới khoá đúng câu đó ở lại trong `why`.
+    [{ mainEditEscapes: 0, mainEditBlocks: 0 }, 'n/a', /chưa gặp ca nào.*KHÔNG đọc là "guard ổn"/s, '0 chặn 0 thoát ⇒ `n/a` (chưa có mẫu số), KHÔNG phải "ổn"'],
     [{ mainEditEscapes: 5, mainEditBlocks: 1 }, 'due', /GUARD SAI/, 'cửa thoát thắng ⇒ đề xuất CẮT, không nới'],
     [{ mainEditEscapes: 1, mainEditBlocks: 4 }, 'ok', /chặn 4 lần, cửa thoát 1 lần/, 'chặn thắng ⇒ im, nhưng NÓI RA cả hai số'],
     [{ mainEditEscapes: null, mainEditBlocks: 2 }, '?', /không đo được/, 'không đọc được telemetry ⇒ `?`'],
@@ -3723,6 +3771,26 @@ if (repoRole() === 'template') {
     //    đóng băng ở lần ghi đầu tiên và không bao giờ theo kịp lệnh thật.
     ['`$comment` lỗi thời của prev KHÔNG thắng', { $comment: 'lời cũ từ 2026-01' },
       (r) => r.$comment !== 'lời cũ từ 2026-01' && r.$comment.includes('--reviewed-claude-code')],
+    // ⑫ MỤC LỊCH SỬ CŨ ĐI QUA NGUYÊN VĂN. ③ đếm được `history.length === 2` và đọc `version`
+    //    của mục cũ, nên một bản vá CHUẨN HOÁ lại sổ trên đường đi — `history.map(h => ({
+    //    version: h.version, at: h.at, found: h.found }))` — qua sạch ③. Đó là cùng một phép
+    //    "dựng lại object từ đúng các khoá mình biết" đã gây #120, chỉ hạ xuống một tầng: lần
+    //    này nạn nhân là khoá mà người ghi SAU thêm vào mục sổ, và nó cũng mất im lặng.
+    ['mục history cũ giữ cả khoá lạ, không bị dựng lại',
+      { history: [{ version: '1.0.0', at: 'cũ', found: 'cũ', by: 'native-surface', n: 3 }] },
+      (r) => r.history[1].by === 'native-surface' && r.history[1].n === 3],
+    // ⑬ MỤC MỚI CÓ ĐÚNG BA KHOÁ — chiều ngược của ⑫. `...prev` nằm ngay trên nó, nên một bản
+    //    vá "ghi thêm chút ngữ cảnh cho dễ tra" (`{ version, at, found, ...prev }`) chép cả
+    //    baseline vào MỖI mục sổ và trần 20 mục thành 20 bản sao lồng nhau. Không ca nào ở
+    //    trên nhìn thấy: chúng chỉ hỏi ba khoá đó có ĐÚNG không, không hỏi có khoá thứ tư không.
+    ['mục rà mới có đúng ba khoá version·at·found', { nativeEvents: { events: ['PreToolUse'] } },
+      (r) => Object.keys(r.history[0]).sort().join(',') === 'at,found,version'],
+    // ⑭ MỘT SỰ THẬT GHI Ở HAI CHỖ THÌ PHẢI KHỚP. `reviewedVersion`/`reviewedAt` và
+    //    `history[0]` cố ý nói cùng một điều (một chỗ để so drift, một chỗ để tra sổ) — và
+    //    AGENTS.md gọi hai chỗ nói khác nhau là một LỖI. Khẳng định bắc cầu giữa hai chỗ,
+    //    không so với hằng số viết tay: nó bắt được cả ca hai đầu cùng lệch theo một hướng.
+    ['reviewedVersion·reviewedAt khớp mục đầu sổ', {},
+      (r) => r.history[0].version === r.reviewedVersion && r.history[0].at === r.reviewedAt],
   ];
   const bad = [];
   for (const [name, prev, want] of cases) {
@@ -3734,7 +3802,7 @@ if (repoRole() === 'template') {
     if (!want(r)) bad.push(name);
     if (JSON.stringify(prev ?? null) !== snapshot) bad.push(`${name} (SỬA prev — hàm không thuần)`);
   }
-  // ⑫ Hai lần rà liên tiếp, chạy qua chính phép hợp nhất — đây là cách file THẬT lớn lên.
+  // ⑮ Hai lần rà liên tiếp, chạy qua chính phép hợp nhất — đây là cách file THẬT lớn lên.
   //    Các ca trên đều một-nhát trên `prev` viết tay; ca này bắt lỗi chỉ hiện ở lần thứ hai,
   //    khi `prev` là output của chính hàm (đã có đủ bốn khoá, `history` đã không rỗng).
   {
@@ -3750,7 +3818,116 @@ if (repoRole() === 'template') {
   }
   const total = cases.length + 1;
   if (bad.length) fail.push(`mergeBaseline${' '.repeat(15)} sai ${bad.length}/${total} ca: ${bad.join(' · ')}`);
-  else ok.push(`mergeBaseline${' '.repeat(15)} ${total} ca — cả BA người ghi (+ người thứ tư chưa có) sống sót, bản rà MỚI thắng, trần 20 cắt đúng đầu`);
+  else ok.push(`mergeBaseline${' '.repeat(15)} ${total} ca — cả BA người ghi (+ người thứ tư chưa có) sống sót, bản rà MỚI thắng, trần 20 cắt đúng đầu, mục sổ không phình`);
+}
+
+// ─── mergeBaseline: thứ ra ĐĨA, không phải thứ trong bộ nhớ ──────────────────
+//
+// Cả 15 ca ở trên khẳng định trên object TRẢ VỀ. Không người gọi nào đọc object đó: cả hai
+// đường ghi đều đi qua `JSON.stringify` (`rituals.mjs:926`, `writeJson` ở `native-surface`),
+// và `JSON.stringify` **XOÁ mọi khoá có giá trị `undefined`** mà không báo gì. Nên có một lớp
+// mất mát mà bảng trên không thể nhìn thấy về nguyên tắc — nó nằm giữa `return` và đĩa.
+//
+// Đó đúng hình dạng #120: một phép đo biến mất im lặng, và nghi thức ngay sau đó nói "chưa ai
+// đo" về một file vừa được ghi 30 giây trước.
+//
+// HAI CA `undefined` DƯỚI ĐÂY KHÔNG ĐÒI HÀM PHẢI CHẶN — thứ đang chặn nằm ở CLI, không nằm
+// trong hàm. Chúng khẳng định phép TUYỂN: hàm tự giữ, HOẶC CLI chặn trước khi gọi. Ít nhất
+// một trong hai. Viết một chiều thôi thì hoặc là đóng băng lỗi (khoá hành vi hôm nay, chặn
+// luôn bản vá thật sau này), hoặc là đỏ ngay hôm nay — cả hai đều không nói được điều cần nói:
+// **bảo vệ này tồn tại ở đâu đó, và nó không được biến mất khỏi CẢ HAI chỗ.**
+{
+  const { mergeBaseline } = await import('./rituals.mjs');
+  const onDisk = (o) => JSON.parse(JSON.stringify(o));
+  // Đoạn CLI giữa chỗ đọc argv và chỗ gọi `mergeBaseline` — quét bằng `codeOnly()` (máy quét
+  // trạng thái ở `lib`), KHÔNG bằng regex tự viết: docstring của `mergeBaseline` nhắc cả tên
+  // cờ lẫn chữ `version`, nên một phép quét còn chú thích sẽ XANH nhờ chính lời văn giải thích
+  // cái chặn — thay vì nhờ cái chặn. Đúng chiều đã đo ở #125 (bản `strip()` tự viết nuốt 89%
+  // `rituals.mjs` và báo xanh trên file nó gần như không đọc được).
+  const ritSrc = codeOnly(readFileSync(repoPath('tooling', 'rituals.mjs'), 'utf8'));
+  const argvAt = ritSrc.indexOf("process.argv.indexOf('--reviewed-claude-code')");
+  const callAt = ritSrc.indexOf('mergeBaseline(', argvAt);
+  const cliGuard = (argvAt > -1 && callAt > argvAt) ? ritSrc.slice(argvAt, callAt) : '';
+  const guards = (name) => new RegExp(`if\\s*\\(!\\s*${name}\\s*\\)`).test(cliGuard)
+    && /process\.exit\(1\)/.test(cliGuard);
+  const bad = [];
+  let n = 0;
+
+  // ⓐ VÒNG QUA JSON với `prev` có đủ ba người ghi + một người chưa tồn tại. Bất biến ⑩ nói về
+  //    object trả về; ca này nói về thứ THẬT SỰ nằm trên đĩa sau đó.
+  n++;
+  {
+    const disk = onDisk(mergeBaseline({
+      nativeEvents: { version: '2.1.226', at: 'T0', events: ['PreToolUse'] },
+      slotReview: { WorktreeCreate: { state: 'khong-co-viec', at: 'x', why: 'provisioner' } },
+      $futureWriter: { đo: 'gì đó', n: 7 },
+    }, { version: '9.9.9', at: 'T1', found: 'ghi chú' }));
+    if (!(disk.nativeEvents?.events?.length === 1 && disk.slotReview?.WorktreeCreate?.state === 'khong-co-viec'
+      && disk.$futureWriter?.n === 7 && disk.reviewedVersion === '9.9.9' && disk.history?.length === 1)) {
+      bad.push('vòng qua JSON.stringify làm rơi khoá của người ghi khác');
+    }
+  }
+
+  // ⓑ THIẾU HẲN THAM SỐ HAI ⇒ PHẢI NÉM, và sự BẤT ĐỐI XỨNG với ca ⑧ là cả hợp đồng: `prev`
+  //    thiếu là chuyện thường (lần đầu, file chưa có) nên phải chịu được; còn một bản rà RỖNG
+  //    thì vô nghĩa — ghi nó ra đĩa tạo mục sổ không phân biệt được với "chưa ai đọc changelog",
+  //    tức tự tay dựng lại đúng cái mơ hồ mà cơ chế này tồn tại để phá. Ném là câu trả lời
+  //    ĐÚNG ở đây, nên nó được KHOÁ, không phải được chịu đựng: một bản vá "cho tham số hai
+  //    giá trị mặc định `{}` cho an toàn" là một bản lùi, và ca này gọi tên nó.
+  n++;
+  {
+    let threw = false;
+    try { mergeBaseline({}); } catch { threw = true; }
+    if (!threw) bad.push('thiếu tham số hai mà KHÔNG ném — một bản rà rỗng đi được ra đĩa');
+  }
+
+  // ⓒ VERSION KHÔNG ĐO ĐƯỢC — ca đắt nhất khối này, vì cái mất không phải khoá vừa ghi mà là
+  //    khoá ĐÃ CÓ. `...prev` đặt `reviewedVersion` cũ vào, `reviewedVersion: undefined` ghi đè
+  //    lên, rồi `JSON.stringify` xoá hẳn khoá — bản rà cũ bốc hơi. Sau đó `collect()` đọc
+  //    `b?.reviewedVersion || null` (rituals.mjs:820) và `claude-code-drift` trả
+  //    `due — "CHƯA có bản rà nào được ghi"` (dòng 421-422), về đúng file vừa được ghi.
+  //    Đo 2026-08-10: `mergeBaseline({reviewedVersion:'2.1.226'}, {version: undefined})` ⇒ sau
+  //    JSON, khoá `reviewedVersion` KHÔNG CÒN TỒN TẠI.
+  n++;
+  {
+    const disk = onDisk(mergeBaseline({ reviewedVersion: '2.1.226', reviewedAt: 'T0', history: [] },
+      { version: undefined, at: undefined, found: 'có đọc, nhưng không đo được version' }));
+    if (!(disk.reviewedVersion === '2.1.226') && !guards('version')) {
+      bad.push('version không đo được ⇒ `reviewedVersion` bị xoá khỏi đĩa và KHÔNG chỗ nào chặn '
+        + '(hàm không giữ giá trị cũ, CLI không còn `if (!version) … exit(1)` trước khi gọi) — '
+        + '`claude-code-drift` sẽ nói "CHƯA có bản rà nào" về một file vừa được ghi: #120, đổi nạn nhân');
+    }
+  }
+
+  // ⓓ LÝ DO KHÔNG ĐO ĐƯỢC. Cùng phép tuyển, khoá khác — và CLI gọi thẳng khoá này là BẮT BUỘC:
+  //    *"một baseline bị bump lặng lẽ không phân biệt được với việc chưa ai đọc"* (dòng 920).
+  //    Thiếu `found`, mục ra đĩa còn đúng hai khoá (đo 2026-08-10: `{"version":…,"at":…}`) —
+  //    một dòng sổ không có nội dung, tức bump lặng lẽ, đúng thứ dòng 920 nói là không được có.
+  n++;
+  {
+    const disk = onDisk(mergeBaseline({}, { version: '9.9.9', at: 'T1' }));
+    if (!('found' in (disk.history?.[0] ?? {})) && !guards('found')) {
+      bad.push('lý do rỗng ⇒ mục sổ ra đĩa không có `found` và KHÔNG chỗ nào chặn — '
+        + 'một bump lặng lẽ đọc y hệt một lần chưa ai đọc changelog (rituals.mjs dòng 920)');
+    }
+  }
+
+  // ⓔ CANH CHÍNH PHÉP QUÉT. Neo trượt (đổi tên cờ, đổi cách dispatch argv) ⇒ `cliGuard` rỗng ⇒
+  //    `guards()` luôn `false`, và ⓒ/ⓓ mất hẳn nhánh CLI của phép tuyển.
+  //
+  //    HÔM NAY điều đó KHÔNG im lặng — đo được: neo trượt làm 3/5 ca đỏ, vì hàm không tự giữ
+  //    nên nhánh còn lại cũng `false`. Ca này trả nợ cho NGÀY MAI: khi nào hàm tự giữ giá trị
+  //    cũ (bản vá đúng, và nó nên xảy ra), ⓒ/ⓓ xanh nhờ nhánh hàm — và từ đúng lúc đó một cái
+  //    neo mục sẽ không còn ai phát hiện. Sửa hàm là lúc mất phép kiểm, không phải lúc được thêm.
+  n++;
+  if (!cliGuard) {
+    bad.push('không định vị được đoạn CLI giữa `process.argv.indexOf(\'--reviewed-claude-code\')` '
+      + 'và chỗ gọi `mergeBaseline(` trong rituals.mjs — ⓒ/ⓓ đang quét một chuỗi RỖNG, phải sửa neo');
+  }
+
+  if (bad.length) fail.push(`mergeBaseline-đĩa${' '.repeat(11)} sai ${bad.length}/${n} ca: ${bad.join(' · ')}`);
+  else ok.push(`mergeBaseline-đĩa${' '.repeat(11)} ${n} ca — thứ ra ĐĨA sau JSON.stringify: khoá người ghi khác còn nguyên, `
+    + `bản rà rỗng bị NÉM, và \`undefined\` không xoá được bản rà cũ (hàm giữ HOẶC CLI chặn)`);
 }
 
 // ─── sổ ô native: phép trừ tập hợp, và chiều SỬA QUÁ TAY của nó (#129) ───────
@@ -3948,7 +4125,7 @@ if (repoRole() === 'template') {
 // SÀN TỪNG TỤT LẠI SAU TỔNG THẬT, và đó là một chế độ hỏng riêng đáng ghi ra: 2026-08-08 đo
 // được `195/195 pass, sàn 185` — 10 ca thêm vào mà không ai nâng sàn, tức 10 ca có thể NGỪNG
 // CHẠY mà thứ duy nhất nhìn thấy điều đó vẫn xanh. Sàn không bám tổng thật là sàn đã nghỉ việc.
-const RATCHET = 205;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111)
+const RATCHET = 206;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa
