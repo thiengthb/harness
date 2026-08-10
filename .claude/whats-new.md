@@ -1,4 +1,4 @@
-<!-- version: 2026-08-10-e -->
+<!-- version: 2026-08-11-a -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -9,6 +9,19 @@
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
 
+## 2026-08-11 — Eval: điều kiện của phép trừ nay đo được bằng MỘT LỆNH (v2.56.0)
+
+```
+node evals/run.mjs --denominators
+```
+
+Đếm mẫu số hai chiều — **tất định, KHÔNG thả agent, 0 đồng**. Trước bản này, cách duy nhất biết
+hai chiều có so được với nhau không là chạy CẢ HAI với agent. Hôm nay: `24` assertion sống ở
+chiều đầy đủ, `16` ở chiều trần, **4 task lệch** — kèm tên đúng dòng gây lệch.
+
+Có **ratchet**: vượt mốc ⇒ đỏ; xuống dưới mốc ⇒ cũng đỏ, kèm yêu cầu hạ mốc trong CÙNG commit.
+Không phải gate `Stop` (chạy ~5 phút) và không phải ca test (assertion của `0007` chạy
+`test-evals` ⇒ đệ quy). Lệnh gõ tay khi bạn viết hoặc sửa task eval.
 ## 2026-08-10 — Eval: patch của chiều TRẦN nay đọc được, và cây eval có 2 commit (v2.55.0)
 
 Chạy thật cả hai chiều lần đầu, và chiều trần lộ hai lỗi. Patch `--bare` từng chứa **26 file,

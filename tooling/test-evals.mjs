@@ -849,6 +849,46 @@ const NEUTRAL_155 = 'node -e "process.exit(0)"';
   rmSync(p, { force: true });
 }
 
+// ── ㉛ `--denominators` đếm ĐÚNG, và nó là dụng cụ nên nó phải có răng ───────
+//
+// Điều kiện của phép trừ (v2.54.0) là hai chiều CÙNG mẫu số. Trước v2.56.0, cách duy nhất biết
+// mình thoả điều kiện đó là chạy cả hai chiều VỚI AGENT — tốn tiền để trả lời một câu hỏi tất
+// định. `--denominators` trả lời nó bằng hai clone và hai lượt tiền kiểm.
+//
+// Ca này chạy trên `EVAL_TASKS_DIR` riêng, và đó là điều kiện chứ không phải tiện: assertion
+// của task THẬT `0007` chạy `node tooling/test-evals.mjs`, nên gọi `--denominators` trên bộ
+// task thật từ trong test-evals là **đệ quy không đáy**.
+//
+// Hai task, hai kết luận ngược nhau — vì một bộ đếm luôn nói "lệch" cũng qua được một ca kiểm
+// "có phát hiện lệch không".
+{
+  const DEN = join(WORK, 'tasks-den');
+  mkdirSync(DEN, { recursive: true });
+  const w = (id, asserts) => writeFileSync(join(DEN, `${id}-den.md`),
+    `---\nid: "${id}"\nkind: representative\ntype: regression\nmaxTurns: 2\nmaxMinutes: 1\n---\n\n# den ${id}\n\n`
+    + `## Prompt giao cho agent\n\n\`\`\`\nkhông quan trọng\n\`\`\`\n\n## Chấm lớp 1\n\n\`\`\`bash\n${asserts}\n\`\`\`\n`, 'utf8');
+  w('9040', `${NEUTRAL_155}\n${NEUTRAL_155}`);                        // cân: 2 vs 2
+  w('9041', `${NEUTRAL_155}\nnode -e "process.exit(require('fs').existsSync('AGENTS.md')?0:1)"`); // lệch: 2 vs 1
+
+  const r = spawnSync(process.execPath, [repoPath('evals', 'run.mjs'), '--denominators'], {
+    cwd: repoPath(''), encoding: 'utf8',
+    env: { ...process.env, HARNESS_CONFIG: writeConfig(CMD), EVAL_TASKS_DIR: DEN },
+  });
+  const out = (r.stdout || '') + (r.stderr || '');
+  if (!/OK\s+9040/.test(out)) {
+    fail.push('㉛ task CÂN bị báo lệch — bộ đếm luôn nói "lệch" thì nó không đo gì, và nó sẽ dạy người ta phớt lờ dòng đó');
+  } else if (!/LỆCH 9041[^\n]*— đầy đủ 2 · trần 1/.test(out)) {
+    fail.push('㉛ task LỆCH không bị bắt (hoặc không nêu cặp số) — đây là toàn bộ lý do lệnh này tồn tại');
+  } else if (!/existsSync\('AGENTS\.md'\)/.test(out)) {
+    fail.push('㉛ bắt được lệch mà KHÔNG nêu dòng gây lệch — người đọc biết có bệnh, không biết sửa ở đâu');
+  } else if (!/ratchet KHÔNG áp dụng/.test(out)) {
+    fail.push('㉛ ratchet vẫn phán quyết trên `EVAL_TASKS_DIR` — nó là lời khai về bộ task THẬT, so với task giả là so hai thứ khác nhau, và nó sẽ luôn đòi hạ mốc');
+  } else {
+    ok.push('㉛ `--denominators` phân biệt task cân với task lệch, nêu cặp số + dòng gây lệch, và ratchet im trên task giả');
+  }
+  rmSync(DEN, { recursive: true, force: true });
+}
+
 // ── ㉚ Tiền kiểm chạy ở CẢ HAI chiều, và nói đúng tên cây ────────────────────
 //
 // Hệ quả thứ hai của ㉗, và nó KHÔNG phải đối xứng cho đẹp. Cây đầy đủ nay là clone

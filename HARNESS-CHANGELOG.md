@@ -11,6 +11,60 @@
 
 ---
 
+## 2.56.0 — 2026-08-10
+
+**minor.** `node evals/run.mjs --denominators` — điều kiện của phép trừ nay **đo được bằng một
+lệnh**, không cần agent, không tốn đồng nào.
+
+### Vấn đề: câu hỏi đắt nhất về phép đo lại không cần phép đo để trả lời
+
+v2.54.0 dựng luật *"hai chiều phải cùng mẫu số thì mới trừ được"*. Nhưng cách duy nhất biết
+mình có thoả luật đó là **chạy cả hai chiều với agent** — tốn tiền, tốn quota, và ra kết quả
+sau nhiều phút. Trong khi mẫu số là phép **tất định**: dựng hai cây, chạy tiền kiểm, so.
+
+```
+LỆCH 0001 — đầy đủ 6 · trần 2   ↳ test-hooks · test-migrations · apply-to --audit · doctor --quick
+OK   0002 — mẫu số 3 ở cả hai chiều
+OK   0003 — mẫu số 3 ở cả hai chiều
+n/a  0004 — khai `## Dựng cảnh`
+LỆCH 0005 — đầy đủ 4 · trần 3   ↳ test-hooks
+LỆCH 0006 — đầy đủ 5 · trần 4   ↳ test-hooks
+LỆCH 0007 — đầy đủ 3 · trần 1   ↳ test-hooks · test-evals
+
+tổng assertion sống: đầy đủ 24 · trần 16 (chiều trần chấm trên 67% phép đo)
+ratchet task-lech-mau-so: 4 = mốc
+```
+
+### `0002` đã cân — và nó chứng minh dụng cụ có răng
+
+`test -f AGENTS.md` hỏi về đúng file mà `BARE_STRIP` đổi tên. Thay bằng `harness.config.json` +
+`tooling/lib/harness.mjs` — cùng trả lời *"cây làm việc có bị xoá không"*, và trả lời được ở
+**cả hai chiều**. Mốc đi từ 5 xuống **4**, và chính ratchet là thứ báo phải hạ mốc.
+
+### RATCHET, không phải gate đỏ
+
+4/6 task còn lệch. Gate đỏ từ ngày đầu là guard bắn nhầm, và guard bắn nhầm dạy người ta lách
+(L0002). Nên: vượt mốc ⇒ đỏ; **dưới** mốc ⇒ cũng đỏ, kèm yêu cầu hạ mốc trong **cùng commit**
+(không hạ thì backlog bị che). Mốc về 0 ⇒ đóng #163.
+
+### Vì sao KHÔNG phải một ca test, cũng không phải gate `Stop`
+
+Assertion của `0007` chạy `node tooling/test-evals.mjs`. Tiền kiểm **chạy** assertion, nên một
+ca trong test-evals gọi `--denominators` sẽ đệ quy không đáy. Và hai lượt tiền kiểm gồm hai bộ
+test đầy đủ — **đo được ~5 phút**, trong khi ngân sách `Stop` là 30 giây. Lệnh gõ tay; ratchet
+là thứ giữ cho nó không bị quên.
+
+### Đính chính đi kèm
+
+Mục 2.54.0 viết *"6/7 task assert lên file của chính harness"* — **là 5** (`0001` `0002` `0005`
+`0006` `0007`). Bảng đúng, câu tóm tắt dưới bảng sai: con số được gõ tay từ một bảng thay vì
+được in ra bởi thứ tạo ra bảng. Đó chính là lỗ mà lệnh này bịt.
+
+Và hai con số tổng đổi: bản đo đầu (`22` / `13`) **bỏ assertion `# requires-agent`**, nhưng
+chúng CÓ chạy khi agent chạy nên chúng thuộc mẫu số thật. Số đúng là `24` / `16`.
+
+---
+
 ## 2.55.0 — 2026-08-10
 
 **minor.** Hai lỗi lộ ra khi **chạy thật** cả hai chiều lần đầu — cùng một gốc: **chiều thứ hai
@@ -94,7 +148,9 @@ vật của dụng cụ"*. Với mẫu số lệch, câu đó khẳng định **
 
 ### Nguyên nhân gốc nằm ở TASK, và bản này không sửa nó
 
-6/7 task assert lên **file của chính harness** — mà đó đúng là thứ `--bare` gỡ. Một assertion
+5 task (`0001` `0002` `0005` `0006` `0007`) assert lên **file của chính harness** — mà đó đúng
+là thứ `--bare` gỡ. (Bản 2.54.0 viết *"6/7"*; đếm lại từ chính bảng ngay trên là **5**, và
+`--denominators` ở 2.56.0 in ra con số đó mỗi lần chạy.) Một assertion
 như vậy đo *"harness có mặt không"*, không đo *"harness làm agent tốt hơn không"*. `n/a` là
 đúng; hệ quả là hai vế không so được, cũng đúng. Bản này làm cho điều đó **nói ra được** thay
 vì biến thành một con số. Sửa thật là viết task assert lên **sản phẩm**.
