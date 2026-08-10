@@ -11,6 +11,83 @@
 
 ---
 
+## 2.51.1 — 2026-08-10
+
+**patch.** Self-test của harness **chạy sản phẩm của project** — dev server, trình duyệt, cả
+`e2e` — mỗi lần bạn `upgrade`. Đóng #141.
+
+### Chuỗi gọi, đo bằng `Get-CimInstance Win32_Process`
+
+```
+node tooling/upgrade.mjs <template> --apply
+  └─ tooling/test-hooks.mjs                      ← mục "── Verify ──", ĐỒNG BỘ, không timeout
+       └─ tooling/gates.mjs --list --timing       ← test-hooks spawn, trên config THẬT
+            └─ npx playwright test                ← gate `e2e`, LỆNH CỦA PROJECT
+                 └─ next dev -p 3799              ← webServer của Playwright
+```
+
+`--list --timing` đo độ trễ bằng cách **chạy thật từng gate** — đó là việc của nó, và khi
+người gõ nó thì đúng. Sai là ở chỗ một self-test gọi nó trên config của project.
+
+| | `test-hooks.mjs` |
+|---|---|
+| ở **template** | 26 giây |
+| ở **eval-sandbox** (18 minor nâng cấp) | **> 20 phút, chưa xong — phải giết** |
+
+`docs/ROADMAP-30D.md:127` ghi ngân sách *"(5 phút)"* cho lệnh này.
+
+### Bốn cái giá, và cái thứ ba đắt nhất
+
+1. **Đọc y hệt treo.** Gọi đồng bộ, không timeout, không in tiến độ.
+2. **Tác dụng phụ ngoài repo:** mở một dev server trên cổng 3799 của máy người dùng và một
+   trình duyệt Playwright. Không dòng nào báo trước.
+3. **Chẩn đoán sai.** `e2e` của project đỏ vì lý do không liên quan ⇒ `upgrade.mjs` in
+   *"hook test ĐỎ sau khi nâng cấp"* — đổ lỗi cho bản nâng cấp về thứ không thuộc bản nâng cấp.
+   Cùng lớp lỗi `gen-clean` đã phải sửa một lần.
+4. **CI trả hai lần:** job `verify` chạy `test-hooks` ⇒ chạy `e2e`; job `e2e` chạy lại.
+
+### Và một cái giá thứ năm không ai thấy: ca test đó ĐỎ ở mọi repo tiêu thụ
+
+Ca `gates sàn runner` khẳng định *"stage không gate nào có lệnh phải báo sàn bằng SỐ"*. Ở repo
+có `commands` thật, stage `subagent` **có** lệnh ⇒ không in dòng sàn ⇒ ca đỏ, vì một lý do
+không liên quan gì tới thứ nó khẳng định. Nó chỉ xanh nhờ template vô tình rỗng.
+
+### Đo ở VAI TIÊU THỤ — vì ở template không thể thấy gì
+
+Repo tiêu thụ giả, mọi lệnh trong `commands` là một tripwire ghi lại dấu khi bị chạy:
+
+```
+                lệnh của project bị chạy                        ca `gates sàn runner`
+origin/main     6 — build · e2e · gen · lint · test · typecheck  FAIL
+sau vá          0                                                PASS
+```
+
+### Bản vá
+
+Hai lời gọi `--list --timing` trong `test-hooks.mjs` đi qua
+`HARNESS_CONFIG=fixtures/config-unconfigured.json` — đúng cơ chế mà 6 ca gate khác **trong
+chính file đó** đã dùng. Fixture nhận thêm stage `subagent` (`config()` chỉ mặc định
+`stop`/`preMerge`, và gate **tổng hợp** như `gen-clean` luôn được tính là "có lệnh" nên không
+dùng được làm neo).
+
+Cộng một ca **hai vế**: ⓐ tripwire chứng minh `--list --timing` **thật sự** chạy lệnh trong
+config — nếu điều đó đổi, vế ⓑ thành trang trí và ⓐ đỏ trước; ⓑ quét nguồn, không lời gọi
+**tự động** nào được đưa `--list` cho `gates.mjs` mà thiếu `HARNESS_CONFIG`.
+
+Vế ⓑ neo vào lời gọi `spawnSync(` chứ không neo vào chuỗi `gates.mjs`: `setup.mjs` **in ra**
+câu `node tooling/gates.mjs --list --timing` cho người dùng gõ — đó là cách dùng đúng. Đo:
+bản neo-theo-chuỗi bắn oan **2 phát** vào `setup.mjs`; bản đang dùng **0**.
+
+Mutation: 5 mutant, 0 sống sót.
+
+### Vì sao 19 minor không ai thấy
+
+*"Template là mẫu vật không điển hình"*, lần thứ **tư**. `commands.*` rỗng ở template nên
+`--list --timing` ở đó đo đúng cái nó nên đo; ở consumer nó đo bằng cách **chạy cả sản phẩm**.
+Chỗ nó hiện ra là máy người khác, sau khi `upgrade.mjs` đã chạy.
+
+---
+
 ## 2.51.0 — 2026-08-10
 
 **minor.** *"Agent hết ngân sách"* thôi bị ghi thành *"agent làm sai"*. Trạng thái thứ **tư**

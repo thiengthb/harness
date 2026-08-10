@@ -2839,10 +2839,34 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
 // Hai vế, và ca này khoá cả hai — bỏ vế nào cũng là một nửa sự thật:
 //   · sàn phải HIỆN RA bằng số;
 //   · phần việc thật vẫn phải nói rõ là CHƯA đo được.
+//
+// ── VÌ SAO CẢ HAI LỜI GỌI DƯỚI ĐÂY ĐI QUA `UNCONF`, KHÔNG QUA CONFIG THẬT (#141)
+//
+// `--list --timing` đo độ trễ bằng cách CHẠY THẬT từng gate. Ở template điều đó miễn phí vì
+// `commands.*` rỗng — và đó chính là chỗ nó lừa được ta. Ở repo TIÊU THỤ, cùng dòng lệnh này
+// là toàn bộ `preMerge`, gồm `e2e`. Đo ở canary `eval-sandbox` (2026-08-09):
+//
+//   upgrade.mjs --apply → test-hooks.mjs → gates.mjs --list --timing → npx playwright test
+//                                                                   → next dev -p 3799
+//   test-hooks ở template: 26 giây.   test-hooks ở eval-sandbox: > 20 phút, phải giết.
+//
+// Ba cái giá, và cái thứ ba đắt nhất: (1) `upgrade.mjs` gọi ĐỒNG BỘ nên người dùng đọc nó y
+// hệt TREO; (2) nó mở một dev server + một trình duyệt trên máy người khác, không báo trước;
+// (3) e2e của project đỏ vì lý do không liên quan ⇒ `upgrade.mjs` in *"hook test ĐỎ sau khi
+// nâng cấp"* — đổ lỗi cho bản nâng cấp về thứ không thuộc bản nâng cấp. Đúng lớp lỗi chẩn
+// đoán-bịa-ra mà `gen-clean` ngay trên kia đã phải sửa một lần.
+//
+// Còn một cái giá thứ tư mà ca này gánh trực tiếp: ở repo có `commands` thật, stage `subagent`
+// sẽ `ran > 0` ⇒ KHÔNG in dòng sàn ⇒ ca này ĐỎ ở mọi repo tiêu thụ, vì một lý do không liên
+// quan gì tới thứ nó khẳng định. Nó chỉ xanh nhờ template vô tình rỗng.
+//
+// `--list --timing` do NGƯỜI gõ thì chạy gate thật là ĐÚNG — đó là việc của nó (AGENTS.md gọi
+// nó là chỉ số "harness đang cản" duy nhất đo trực tiếp được). Sai là ở chỗ một self-test gọi
+// nó trên config của project. Khối `check --list --timing` ở cuối file giữ ranh giới đó.
 {
   const L = ' '.repeat(9);
   const r = spawnSync(process.execPath, [repoPath('tooling', 'gates.mjs'), '--list', '--timing'], {
-    encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, ...TEST_ENV },
+    encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, ...TEST_ENV, HARNESS_CONFIG: UNCONF() },
   });
   const out = `${r.stdout || ''}${r.stderr || ''}`;
   const line = out.split('\n').find(l => /\bsubagent:/.test(l)) || '';
@@ -2865,17 +2889,102 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   //
   // Ở đây chỉ `floorMs` mới ghi telemetry: `--list` gọi thẳng `runGate()`, không đi qua
   // đường `--stage`. Nên nếu `floorMs` thôi chuyển hướng, sổ thật mọc đúng 5 dòng.
+  //
+  // `env` khai TƯỜNG MINH `{ ...process.env }` chứ không bỏ trắng khoá `env`: hai cách đó
+  // giống hệt nhau về môi trường con nhận được, nhưng chỉ cách thứ nhất chèn thêm được
+  // `HARNESS_CONFIG` (#141) mà không kéo `TEST_ENV` vào — và việc KHÔNG có `TEST_ENV` ở đây
+  // là điều kiện sống của phép khẳng định ngay dưới, xem đoạn trên.
   const realLog = repoPath('.claude', 'telemetry', 'gate-runs.log');
   const lines = () => (exists(realLog) ? readFileSync(realLog, 'utf8').split('\n').length : 0);
   const before = lines();
   spawnSync(process.execPath, [repoPath('tooling', 'gates.mjs'), '--list', '--timing'], {
-    encoding: 'utf8', cwd: repoPath(''),
+    encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, HARNESS_CONFIG: UNCONF() },
   });
   const after = lines();
   if (after !== before) bad.push(`phép đo sàn ghi ${after - before} dòng vào gate-runs.log THẬT — công cụ đo đang làm nhiễu số của chính nó (#66)`);
 
   if (bad.length) fail.push(`gates sàn runner${L} ${bad.join(' · ')}`);
   else ok.push(`gates sàn runner${L} stage rỗng báo sàn ${ms}ms bằng SỐ, vẫn nói rõ việc thật chưa đo, và không ghi vào sổ thật`);
+}
+
+// ─── Self-test KHÔNG được chạy SẢN PHẨM của project (#141) ──────────────────
+//
+// Hai ca, và chúng gác hai chiều khác nhau của cùng một bản vá:
+//
+//   ⓐ ĐO — `--list --timing` CÓ chạy thật lệnh trong config. Đây là tiền đề của ⓑ. Nếu một
+//     ngày nó thôi chạy thật, ⓑ trở thành trang trí và không gì báo; ⓐ đỏ trước.
+//   ⓑ QUÉT NGUỒN — không lời gọi TỰ ĐỘNG nào trong repo được đưa `--list` cho `gates.mjs`
+//     mà không kèm `HARNESS_CONFIG`.
+//
+// Vì sao cần ⓑ chứ không chỉ sửa hai lời gọi: bug này sống **19 minor** ở template mà không ai
+// thấy, vì ở template `commands.*` rỗng nên nó miễn phí. Chỗ nó hiện ra là máy người khác, sau
+// khi `upgrade.mjs` đã chạy. Một lời gọi thứ ba mọc lên sẽ tái lập đúng chuỗi đó, và cũng
+// đúng như lần này, template sẽ vẫn xanh. Lần thứ **tư** của
+// "template là mẫu vật không điển hình".
+//
+// ⓑ là BEST-EFFORT, đọc đúng như vậy — nó neo vào `spawnSync(` rồi nhìn tới trước 500 ký tự.
+// Lệnh lắp từ biến (`const a = ['--list']; spawnSync(node, [g, ...a])`) đi lọt. Neo vào lời gọi
+// spawn chứ không neo vào chuỗi `gates.mjs` là chủ ý: `setup.mjs` IN RA câu
+// `node tooling/gates.mjs --list --timing` cho người dùng gõ — đó là cách dùng ĐÚNG, và một
+// phép quét bắn vào nó sẽ bị tắt trong tuần.
+{
+  const L = ' '.repeat(4);
+  const bad = [];
+
+  // ⓐ Lệnh trong config THẬT SỰ chạy. Tripwire tự ghi cạnh chính nó: không cần biến môi
+  //   trường, không cần nháy lồng nhau — hai thứ hỏng khác nhau trên cmd.exe và trên sh.
+  const tw = join(tmpdir(), `harness-141-tripwire-${process.pid}.mjs`);
+  const hit = `${tw}.hit`;
+  try {
+    rmSync(hit, { force: true });
+    writeFileSync(tw, "import { writeFileSync } from 'node:fs';\n"
+      + "import { fileURLToPath } from 'node:url';\n"
+      + "writeFileSync(fileURLToPath(import.meta.url) + '.hit', 'BUM');\n", 'utf8');
+    const cfg = join(tmpdir(), `harness-141-config-${process.pid}.json`);
+    writeFileSync(cfg, JSON.stringify({
+      $comment: 'FIXTURE của test #141 trong tooling/test-hooks.mjs — một project CÓ khai lệnh thật',
+      project: { id: 'fixture-141' },
+      commands: { typecheck: `node "${tw}"` },
+      paths: {}, limits: {}, gates: { subagent: ['typecheck'] }, budget: {}, knowledge: {},
+    }, null, 2) + '\n', 'utf8');
+
+    spawnSync(process.execPath, [repoPath('tooling', 'gates.mjs'), '--list', '--timing'], {
+      encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, ...TEST_ENV, HARNESS_CONFIG: cfg },
+    });
+    if (!exists(hit)) {
+      bad.push('`--list --timing` KHÔNG còn chạy lệnh khai trong config — tiền đề của #141 đã đổi, '
+        + 'phép quét nguồn ngay dưới nay là trang trí. Đọc lại cả khối trước khi xoá nó');
+    }
+    rmSync(cfg, { force: true });
+  } finally {
+    rmSync(tw, { force: true });
+    rmSync(hit, { force: true });
+  }
+
+  // ⓑ Không lời gọi tự động nào bỏ trống `HARNESS_CONFIG`.
+  const SPAWN = /\b(?:spawnSync|spawn|execFileSync|execSync)\s*\(/g;
+  const offenders = [];
+  for (const d of [['tooling'], ['tooling', 'knowledge'], ['.claude', 'hooks']]) {
+    let names = []; try { names = readdirSync(repoPath(...d)); } catch { continue; }
+    for (const n of names.filter(x => x.endsWith('.mjs'))) {
+      if (d.length === 1 && n === 'gates.mjs') continue; // nó ĐỊNH NGHĨA cờ này, không gọi nó
+      const s = codeOnly(readFileSync(repoPath(...d, n), 'utf8'));
+      for (const m of s.matchAll(SPAWN)) {
+        const win = s.slice(m.index, m.index + 500);
+        if (!/gates\.mjs/.test(win) || !/--list/.test(win)) continue;
+        if (/HARNESS_CONFIG/.test(win)) continue;
+        offenders.push(`${[...d, n].join('/')} → ${win.slice(0, 70).replace(/\s+/g, ' ')}…`);
+      }
+    }
+  }
+  if (offenders.length) {
+    bad.push(`${offenders.length} lời gọi tự động đo độ trễ trên config THẬT: ${offenders.join(' · ')}. `
+      + 'Ở repo tiêu thụ, đó là chạy cả `preMerge` gồm `e2e` — dev server, trình duyệt, và một lời '
+      + 'đổ lỗi sai chỗ. Dùng `HARNESS_CONFIG: UNCONF()`');
+  }
+
+  if (bad.length) fail.push(`gates --list --timing${L} ${bad.join(' · ')}`);
+  else ok.push(`gates --list --timing${L} lệnh trong config CÓ chạy thật (tripwire nổ), và 0 lời gọi tự động nào đo trên config thật`);
 }
 
 // ─── File ĐƯỢC SHIP không được trích đường dẫn KHÔNG được ship ───────────────
