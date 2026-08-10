@@ -566,12 +566,14 @@ const results = [];
 // người ta lách (L0002). Nên: vượt mốc ⇒ ĐỎ; dưới mốc ⇒ đỏ kèm yêu cầu HẠ MỐC trong cùng
 // commit (không hạ thì backlog bị che); bằng mốc ⇒ xanh.
 const SKEW_RATCHET = {
-  n: 2,
+  n: 1,
   since: '2026-08-11',
-  why: '5 (đo lần đầu) → 4 (`0002` thôi hỏi về `AGENTS.md`) → 2 (`test-hooks` phân biệt "cây bị gỡ có chủ ý" '
-    + 'với "repo hỏng": `0005` và `0006` cân hẳn). Còn `0001` (test-migrations · apply-to --audit · doctor --quick) '
-    + 'và `0007` (test-evals) — CÙNG một lớp, bốn công cụ nữa cần cùng phép phân biệt đó. '
-    + 'Khi có công cụ thứ hai cần nó, `BARE_TREE` chuyển lên `lib/harness.mjs`. Về 0 ⇒ đóng #163.',
+  why: '5 → 4 (`0002` thôi hỏi về `AGENTS.md`) → 2 (`test-hooks` phân biệt "gỡ có chủ ý" với "repo hỏng") '
+    + '→ 1 (`harnessStripped()` lên lib; `test-migrations`, `apply-to`, `test-evals` dùng chung). '
+    + 'Còn ĐÚNG `0007`, và nó KHÔNG cùng lớp với bốn cái kia — nó là CẤU TRÚC: assertion của nó chạy '
+    + '`tooling/test-evals.mjs`, mà suite đó kiểm `--bare`; trong một cây ĐÃ trần thì `--bare` từ chối chạy '
+    + '("KHÔNG gỡ được gì") — đúng thiết kế. Ép nó thành `n/a` chỉ dời lệch mẫu số xuống TRONG assertion, '
+    + 'nơi không ai đếm được. Lối ra là ở TASK: `0007` đừng lấy cả một bộ test làm assertion. Xem #163.',
 };
 
 if (has('--denominators')) {

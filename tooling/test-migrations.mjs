@@ -47,7 +47,7 @@ import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { tmpdir } from 'node:os';
-import { repoPath, report, exists } from './lib/harness.mjs';
+import { repoPath, report, exists, harnessStripped } from './lib/harness.mjs';
 
 const MIG_DIR = repoPath('harness-migrations');
 const JSON_FILES = ['harness.config.json', join('.claude', 'settings.json')];
@@ -211,6 +211,27 @@ for (const f of files) {
   const fixtureDir = repoPath('tooling', 'fixtures', `migration-${mod.version}`);
   const fixture = exists(fixtureDir) ? fixtureDir : null;
   const work = join(tmpdir(), `harness-mig-${mod.version}-${process.pid}`);
+
+  // MIGRATION ĐỌC `.claude/settings.json` CỦA TEMPLATE làm vật liệu (qua `tplPath`, hoặc qua
+  // `prepare()` khi không có fixture). Trên cây `--bare`, file đó vừa bị đổi tên đi ⇒ migration
+  // chạy thiếu đúng thứ nó sửa, rồi hợp đồng ⑤ báo *"MẤT đoạn phải giữ — regex ăn quá nhiều"*.
+  //
+  // Đó là lời buộc tội NẶNG NHẤT của suite này (migration ăn mất cấu hình của repo người khác),
+  // và ở đây nó SAI: không regex nào ăn gì cả — vật liệu chưa từng có mặt. Đo 2026-08-11:
+  // migration 008 và 011 sinh 6 dòng FAIL kiểu đó trên cây trần ⇒ task `0001` lệch mẫu số.
+  //
+  // NEO VÀO NGUỒN CỦA MIGRATION, không vào `!fixture` và không vào "đang ở cây trần" trần trụi.
+  // `!fixture` sai: 008 và 011 CÓ fixture, chúng đọc settings.json của TEMPLATE. Còn cắt hết
+  // mọi migration trên cây trần là sửa quá tay — 7/12 migration không nhắc `settings.json` một
+  // lần nào, và chúng vẫn phải nằm trong mẫu số.
+  //
+  // `?` chứ không PASS: hợp đồng thật sự KHÔNG được kiểm ở đây.
+  const needsSettings = readFileSync(join(MIG_DIR, f), 'utf8').includes('settings.json');
+  if (needsSettings && harnessStripped() && !exists(repoPath('.claude', 'settings.json'))) {
+    na.push(`${label}: hợp đồng cần \`.claude/settings.json\` của template làm vật liệu, mà cây này bị GỠ lớp `
+      + 'harness có chủ ý (`.bare-disabled` nằm cạnh) — CHƯA KIỂM, không phải đạt. Trong repo thật, cùng sự vắng mặt đó vẫn ĐỎ.');
+    continue;
+  }
 
   try {
     const { bad, logs1, before, after } = await contract(mod, work, fixture);

@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -389,7 +389,7 @@ const declareNa = (count, msg) => naEntries.push({ count, msg });
  * trị của bản vá: một `settings.json` **biến mất** trong repo thật vẫn phải ĐỎ TO, vì đó là repo
  * hỏng. Chỉ khi cái xác `.bare-disabled` nằm ngay cạnh thì sự vắng mặt mới là **cố ý**.
  */
-const BARE_TREE = exists(repoPath('.claude', 'settings.json.bare-disabled'));
+const BARE_TREE = harnessStripped();
 
 // NEO CỦA `BARE_TREE` LÀ THỨ DUY NHẤT GIỮ BẢN VÁ NÀY KHỎI THÀNH MỘT CỬA THOÁT.
 //
@@ -405,15 +405,18 @@ const BARE_TREE = exists(repoPath('.claude', 'settings.json.bare-disabled'));
 // Xoá chuỗi đi thì khai báo còn `exists(repoPath('', ''))` và ca này đỏ oan — đã xảy ra thật
 // khi viết nó. `blankStrings` đúng cho ca đi tìm TÊN HÀM; sai cho ca đi tìm HẰNG CHUỖI.
 {
-  const selfCode = codeOnly(readFileSync(repoPath('tooling', 'test-hooks.mjs'), 'utf8'));
-  const decl = selfCode.match(/const BARE_TREE = [^\n]*/)?.[0] ?? '';
-  if (!decl) {
-    fail.push(`BARE_TREE${' '.repeat(19)} không tìm thấy khai báo — neo của ca này đã trôi, sửa neo thay vì xoá check`);
-  } else if (!decl.includes('bare-disabled')) {
-    fail.push(`BARE_TREE${' '.repeat(19)} KHÔNG còn neo vào \`.bare-disabled\`: \`${decl.trim().slice(0, 70)}\` — `
-      + 'sự vắng mặt trở thành cửa thoát, và một repo mất `settings.json` sẽ được chấm XANH mà không có triệu chứng');
+  const libCode = codeOnly(readFileSync(repoPath('tooling', 'lib', 'harness.mjs'), 'utf8'));
+  const body = libCode.match(/export function harnessStripped\(\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? '';
+  const suffix = libCode.match(/export const BARE_SUFFIX = '([^']*)'/)?.[1] ?? '';
+  if (!body || !suffix) {
+    fail.push(`harnessStripped${' '.repeat(13)} không tìm thấy \`harnessStripped()\`/\`BARE_SUFFIX\` trong lib — neo của ca này đã trôi, sửa neo thay vì xoá check`);
+  } else if (suffix !== '.bare-disabled') {
+    fail.push(`harnessStripped${' '.repeat(13)} \`BARE_SUFFIX\` = \`${suffix}\` — không còn khớp hậu tố \`evalTree()\` đóng lên file nó gỡ, phép dò cây trần thành vô hiệu im lặng`);
+  } else if (!body.includes('BARE_SUFFIX') || !body.includes('exists(')) {
+    fail.push(`harnessStripped${' '.repeat(13)} thân hàm KHÔNG còn hỏi \`exists(…BARE_SUFFIX)\`: \`${body.trim().slice(0, 70)}\` — `
+      + 'nếu nó chuyển sang hỏi sự VẮNG MẶT thì đây là cửa thoát: repo mất `settings.json` được mọi suite chấm XANH, không triệu chứng');
   } else {
-    ok.push(`BARE_TREE${' '.repeat(19)} neo vào BẰNG CHỨNG (\`.bare-disabled\`), không vào sự vắng mặt — repo mất settings.json vẫn ĐỎ`);
+    ok.push(`harnessStripped${' '.repeat(13)} neo vào BẰNG CHỨNG (\`${suffix}\`), không vào sự vắng mặt — repo mất settings.json vẫn ĐỎ`);
   }
 }
 const naIfBare = (count, what) => {

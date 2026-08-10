@@ -24,7 +24,7 @@ import { mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync } from 'nod
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { repoPath, report } from './lib/harness.mjs';
+import { repoPath, report, exists } from './lib/harness.mjs';
 
 const ok = [], fail = [], warn = [];
 const WORK = join(tmpdir(), `harness-eval-test-${process.pid}`);
@@ -345,8 +345,12 @@ ${assertions}
   const POS = [
     ['git rev-parse HEAD > /dev/null', 1], ['x >/dev/null', 1], ['x 2>/dev/null', 1],
     ['test -n "$(git rev-parse HEAD)"', 1],
-    ['git rev-parse HEAD', 0], ['x 2>&1', 0], ['test -f AGENTS.md', 0], ['[ -f AGENTS.md ]', 0],
-    ['echo ok && test -f AGENTS.md', 0],
+    // `harness.config.json` chứ không `AGENTS.md`: bảng này chỉ cần MỘT tên file có thật, và
+    // suite còn chạy trên cây `--bare`, nơi `AGENTS.md` đã bị đổi tên. Bộ dò đếm POSIX-ism trên
+    // CHUỖI, không mở file — nhưng dùng một tên đã biến mất làm ví dụ là mời người sau hiểu
+    // nhầm rằng ca này phụ thuộc file đó.
+    ['git rev-parse HEAD', 0], ['x 2>&1', 0], ['test -f harness.config.json', 0], ['[ -f harness.config.json ]', 0],
+    ['echo ok && test -f harness.config.json', 0],
   ];
   const badDet = POS.filter(([s, n]) => scan(s).length !== n);
   if (badDet.length) fail.push(`⑫a bộ dò POSIX-ism sai ${badDet.length}/${POS.length} ca: ${badDet.map(c => c[0]).join(' · ')}`);
@@ -775,9 +779,18 @@ const NEUTRAL_155 = 'node -e "process.exit(0)"';
 //   ① runner NÊU TÊN file patch;
 //   ② patch chứa đúng thay đổi (áp lại được);
 //   ③ repo THẬT không bị đụng — tức cây đúng là cô lập, không phải một cái nhãn (#91 lần nữa).
+// FILE MỐC phải CÒN TỒN TẠI ở nơi suite đang chạy. `AGENTS.md` là mốc đúng trong repo thật —
+// nó ở vùng cấm, nên chạm vào nó là thiệt hại thấy ngay. Nhưng suite này CÒN chạy như assertion
+// của task `0007`, kể cả trên cây `--bare`, nơi `BARE_STRIP` vừa đổi tên đúng file đó ⇒
+// `readFileSync` NÉM ⇒ **cả suite chết** trước khi in được một dòng nào.
+//
+// Đo 2026-08-11 trên cây trần: `ENOENT … bt6\AGENTS.md`, exit 1, 0 dòng kết quả. Một suite CHẾT
+// còn tệ hơn một suite ĐỎ: nó không nói được nó đã kiểm gì. `harness.config.json` cũng ở vùng
+// cấm và KHÔNG nằm trong `BARE_STRIP`, nên nó là mốc đúng ở cả hai cây.
 {
   const p = writeTask('9021', NEUTRAL_155);
-  const realAgents = readFileSync(repoPath('AGENTS.md'), 'utf8');
+  const SENTINEL = exists(repoPath('AGENTS.md')) ? 'AGENTS.md' : 'harness.config.json';
+  const realAgents = readFileSync(repoPath(SENTINEL), 'utf8');
   const r = runEval(CMD, 'writes', '9021');
   const m = r.out.match(/patch: (\S+)/);
   const patch = m ? (() => { try { return readFileSync(m[1], 'utf8'); } catch { return ''; } })() : '';
@@ -785,10 +798,10 @@ const NEUTRAL_155 = 'node -e "process.exit(0)"';
     fail.push('㉙ agent SỬA CÂY mà runner không nêu tên patch — cây bị xoá và việc agent làm biến mất không dấu vết (PR #149 và #157 đều ra đời từ đúng chỗ này)');
   } else if (!/DÒNG DO AGENT GIẢ THÊM/.test(patch)) {
     fail.push(`㉙ có file patch nhưng KHÔNG chứa thay đổi của agent — một patch rỗng tệ hơn không có patch, nó nói dối rằng đã cứu được việc`);
-  } else if (!/^\+\+\+ b\/AGENTS\.md$/m.test(patch)) {
+  } else if (!/^\+\+\+ b\/(AGENTS\.md|agent-da-ghi\.txt)$/m.test(patch)) {
     fail.push('㉙ patch không ở dạng diff áp lại được — nó phải là thứ `git apply` nhận, không phải một bản chụp văn bản');
-  } else if (readFileSync(repoPath('AGENTS.md'), 'utf8') !== realAgents) {
-    fail.push('㉙ AGENTS.md của REPO THẬT vừa bị agent sửa — cây "cô lập" là một cái nhãn');
+  } else if (readFileSync(repoPath(SENTINEL), 'utf8') !== realAgents) {
+    fail.push(`㉙ ${SENTINEL} của REPO THẬT vừa bị agent sửa — cây "cô lập" là một cái nhãn`);
   } else {
     ok.push('㉙ agent sửa cây ⇒ patch được RÚT RA và nêu tên, áp lại được, và repo thật không đụng tới');
   }

@@ -11,6 +11,51 @@
 
 ---
 
+## 2.58.0 — 2026-08-11
+
+**minor.** `harnessStripped()` lên `lib`, và ba công cụ nữa dùng nó. Ratchet mẫu số **2 → 1**.
+
+### Điều kiện tự khai của v2.57.0 đã thoả
+
+v2.57.0 viết: *"khi có công cụ thứ hai cần nó, `BARE_TREE` chuyển lên `lib/harness.mjs`"*. Có ba.
+
+| công cụ | đỏ vì gì trên cây trần | vá |
+|---|---|---|
+| `test-migrations.mjs` | migration 008/011 đọc `settings.json` của **template** làm vật liệu ⇒ hợp đồng ⑤ báo *"MẤT đoạn phải giữ — regex ăn quá nhiều"* | migration nào **nhắc `settings.json` trong nguồn** ⇒ `?` |
+| `apply-to.mjs --audit` | liệt 9 mục `*.bare-disabled` như file chưa khai | thêm `/\.bare-disabled(\/\|$)/` vào `IGNORE` |
+| `test-evals.mjs` | **CRASH** `ENOENT AGENTS.md` ở ca ㉙ — cả suite chết, 0 dòng kết quả | file mốc chọn `harness.config.json` khi `AGENTS.md` vắng |
+| `harness-doctor --quick` | tổng hợp — đỏ vì ba cái trên | tự xanh theo |
+
+Neo của `test-migrations` là **nguồn của migration**, không phải `!fixture` và không phải
+*"đang ở cây trần"*: 008/011 **có** fixture (nên `!fixture` trượt), còn cắt hết mọi migration là
+sửa quá tay — **7/12 migration không nhắc `settings.json` một lần nào** và vẫn phải bị kiểm.
+
+Một suite **CHẾT** tệ hơn một suite **ĐỎ**: nó không nói được nó đã kiểm gì. `test-evals` ném
+`ENOENT` trước khi in một dòng nào — đó là lý do ca ㉙ nay chọn file mốc còn tồn tại.
+
+### Kết quả
+
+```
+5 task lệch · trần 13/24        (trước)
+4 task lệch · trần 16/24        2.56.0
+2 task lệch · trần 20/24        2.57.0
+1 task lệch · trần 23/24        2.58.0   ← chiều trần chấm trên 96% phép đo
+```
+
+`0001` **cân hẳn** (6 vs 6). Phép trừ nay so được **5/6 task đo được**, thay vì 1.
+
+### Vì sao mốc dừng ở 1, không phải 0
+
+`0007` **không cùng lớp** với bốn cái trên — nó là **cấu trúc**. Assertion của nó chạy
+`tooling/test-evals.mjs`, mà suite đó kiểm chính `--bare`; trong một cây **đã** trần thì `--bare`
+từ chối chạy (*"KHÔNG gỡ được gì"*) — **đúng thiết kế**, không phải lỗi.
+
+Ép nó thành `?` sẽ làm suite exit 0 và mốc về 0, nhưng nó chỉ **dời lệch mẫu số xuống TRONG
+assertion**, nơi không bộ đếm nào nhìn thấy. Đó là đúng cái bệnh v2.54.0 sinh ra để chữa, lùi
+một tầng. Lối ra nằm ở **task**: `0007` đừng lấy cả một bộ test làm assertion. Xem #163.
+
+---
+
 ## 2.57.0 — 2026-08-11
 
 **minor.** `test-hooks` phân biệt *"cây bị gỡ lớp harness CÓ CHỦ Ý"* với *"repo hỏng"*. Ratchet
