@@ -8,10 +8,11 @@ status: active
 owner: "@dri"
 added: 2026-08-03
 expires-review: 2027-02-03
-occurrences: 2
+occurrences: 3
 evidence:
   - "harness v1.0–1.2: `**/migrations/**` nằm trong paths.generated. Chặn MỌI sửa đổi migration, kèm lời khuyên sai 'sửa nguồn rồi chạy gen' — trong khi Rails/Alembic/Django/Flyway đều viết thân file bằng tay."
   - "Chính lỗi này chặn tác giả harness khi tạo thư mục `migrations/` của harness — phải đổi tên thành `harness-migrations/` để đi tiếp. Đó là lách, không phải sửa."
+  - "2026-08-10: dcg rule /^git\\s+checkout\\s+--\\s/ chặn `git checkout -- <MỘT file cụ thể>` — bước DỌN DẸP của mutation test, tức của chính nghi thức harness đòi hỏi. 3 lần (Aug-8 evals/run.mjs; Aug-10 x2 tooling/rituals.mjs), xác nhận độc lập ở .claude/telemetry/gate-fails.log lúc 02:49, 02:59, 07:38. Ca cùng lớp: `rm -f /tmp/<file cụ thể>` bị rule rm gốc chặn. Đường vòng thực tế đã dùng: writeFileSync từ Node — KHÔNG có telemetry. Guard không mất tác dụng, nó mất TẦM NHÌN. Chi tiết: .claude/learnings/2026-W33-retro-cong-cu-do-tu-lam-nhieu-so-cua-no.md muc 3."
 artifacts:
   - ".claude/hooks/protect-migrations.mjs"
   - ".claude/rules/danger-zones.md §3"
@@ -32,6 +33,28 @@ mà là tìm đường đi vòng: đổi tên file, chạy qua `Bash` thay vì `
 
 Khi đó bạn mất hai thứ cùng lúc: guard đó **và** lòng tin vào mọi guard khác.
 Lần sau một guard chặn đúng, phản xạ đã được huấn luyện sẵn là lách.
+
+### Ca thứ ba dạy thêm một điều hai ca đầu không dạy: guard mất TẦM NHÌN trước khi mất tác dụng
+
+Hai ca đầu là *lách nhìn thấy được* — đổi tên thư mục, ai đọc PR cũng thấy. Ca 2026-08-10 thì
+không: rule `/^git\s+checkout\s+--\s/` chặn `git checkout -- <MỘT file cụ thể>`, tức bước dọn
+dẹp của **mutation test** — nghi thức mà chính harness đòi hỏi. Đường vòng đã dùng là
+`writeFileSync` từ Node.
+
+Hậu quả không phải "guard bị tắt". Guard vẫn chạy, vẫn đếm, và bảng của `harness-doctor` vẫn in
+`dcg … 17 chặn` — trông **khoẻ hơn trước**. Thứ đã chuyển đi là **hành vi thật**, sang một kênh
+guard không nhìn thấy và không ghi log.
+
+Nên chế độ hỏng thật của một guard bắn nhầm không phải *"nó bị vô hiệu"* mà là:
+
+```
+guard bắn nhầm  →  người ta đi vòng  →  đường vòng KHÔNG có telemetry
+                →  số của guard vẫn đẹp  →  không ai biết để sửa
+```
+
+Một guard bắn nhầm **tự che dấu vết của chính nó**. Đó là lý do câu số 2 trong §Cơ chế
+(*"tần suất bắn nhầm > 10% thì sẽ bị lách"*) không thể đo bằng telemetry của guard — nó phải
+đo bằng `fixlog`, tức bằng người ghi lại lúc bực mình.
 
 ## Nguyên nhân
 
