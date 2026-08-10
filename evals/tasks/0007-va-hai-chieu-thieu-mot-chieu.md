@@ -2,12 +2,21 @@
 id: "0007"
 kind: past-failure
 type: regression
-maxTurns: 20
-maxMinutes: 12
+maxTurns: 55
+maxMinutes: 30
 origin: "Gate cho knowledge/lessons/0007-va-hai-chieu-thieu-mot-chieu.md — 4 lần trong một phiên: PR #117 #118 #121"
 ---
 
 # Agent có viết ca cho CHIỀU CÒN LẠI không
+
+> **Ngân sách ở trên là SỐ ĐO, không phải số đoán.** Lượt chạy 2026-08-10 (Claude Code 2.1.226,
+> Opus 5, trần nới rộng để nó KHÔNG bó) dùng **26 lượt / 13.5 phút**. Trần đặt gấp đôi số đo:
+> một lần chạy bình thường phải nằm dưới ngưỡng cảnh báo `budget.alertAtPercent`, nếu không thì
+> cảnh báo kêu ở mọi lượt và sẽ bị tắt.
+>
+> Trần cũ `20 lượt / 12 phút` là số đoán từ ngày dựng task, và **cả hai đều bó**:
+> xem #144 · `docs/progress/144.md`.
+
 
 Task nhóm **past-failure**. Mọi bản vá dạng *"đừng đếm cái này"* / *"giữ cái kia"* có
 **hai** chiều nói dối, và chiều thứ hai không có triệu chứng:
