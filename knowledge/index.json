@@ -29,7 +29,7 @@
       "representation": "computational-control",
       "status": "active",
       "added": "2026-08-03",
-      "occurrences": 2,
+      "occurrences": 3,
       "artifacts": [
         ".claude/hooks/protect-migrations.mjs",
         ".claude/rules/danger-zones.md §3",
