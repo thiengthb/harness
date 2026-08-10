@@ -1325,6 +1325,36 @@ export function infraFailure(text) {
 }
 
 /**
+ * NGÂN SÁCH CỦA TASK ĐÃ CẠN — trạng thái thứ TƯ, và nó KHÔNG phải `infraFailure`.
+ *
+ * Khác biệt quyết định: hạ tầng hỏng thường TẠM THỜI ⇒ *"chạy lại khi hạ tầng ổn"* là lời
+ * khuyên đúng. Cạn ngân sách thì **chạy lại KHÔNG giúp gì** — trần do chính task khai, nên
+ * lần sau nó cạn ở đúng chỗ đó. Hai việc phải làm khác nhau ⇒ hai hàm, hai câu.
+ *
+ * Đo 2026-08-10 (#147): `claude -p` thoát **1** khi chạm trần lượt, nên `agent.ok === false`,
+ * nên task rơi vào cùng rổ `FAIL` với *"agent hạ `dcg` xuống fail-open"*. Ba task cùng lượt
+ * đo ra `REGRESSION 0% (0/3)` — và cả ba là artifact. Một trong ba (`0007`) thực ra làm việc
+ * ĐÚNG tới lúc hết lượt: nó viết 7 ca test có răng thật, và bị chấm là thất bại.
+ *
+ * Đây đúng lớp lỗi mà `infraFailure` ra đời để chống (#93), ở một trạng thái chưa ai tách.
+ *
+ * PHẠM VI HẸP, cố ý. Chỉ nhận diện chữ ký NGÂN SÁCH, không nhận diện "agent bỏ cuộc" hay
+ * "agent trả lời ngắn" — nới ra thì mọi task khó thành `n/a` và tỉ lệ biến mất, đúng chiều
+ * nói dối im lặng mà bảng ca của `infraFailure` đã phải khoá hai đầu.
+ *
+ * Trần WALL-CLOCK không đi qua đây: nó không để lại chữ trong output, `spawnSync` báo bằng
+ * `signal === 'SIGTERM'`. Người gọi gộp hai nguồn — xem `runAgent()` ở `evals/run.mjs`.
+ */
+export function budgetExhausted(text) {
+  const t = String(text || '').toLowerCase();
+  const SIGNS = [
+    [/reached max turns|max turns (exceeded|reached)|maximum (number of )?turns/, 'chạm trần LƯỢT do task khai'],
+  ];
+  for (const [re, why] of SIGNS) if (re.test(t)) return why;
+  return null;
+}
+
+/**
  * PHÁN ĐOÁN của `dcg` — hàm THUẦN, test khẳng định thẳng vào đây.
  *
  * Rule có `program` chỉ nổ khi một LỆNH ĐƠN có đúng chương trình đó, và khớp trên dạng đã bỏ

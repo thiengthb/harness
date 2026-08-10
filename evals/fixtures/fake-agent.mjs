@@ -20,6 +20,7 @@
  *   loop              in MỘT dòng dài giống hệt 5 lần — runner phải thấy "vòng lặp mù"
  *   hang              ngủ lâu hơn wall-clock cap — runner phải cắt và báo timedOut
  *   quota             in chữ ký hết-quota rồi exit 0 — runner phải báo `?`, KHÔNG phải FAIL
+ *   maxturns          in chữ ký cạn-trần-lượt rồi exit 1 — runner phải báo `?`, KHÔNG phải FAIL
  */
 import { readFileSync, existsSync } from 'node:fs';
 
@@ -51,6 +52,15 @@ if (mode === 'fail') process.exit(3);
 if (mode === 'quota') {
   console.log("You've hit your session limit · resets 12am (Asia/Saigon)");
   process.exit(0);
+}
+
+// Cạn trần LƯỢT — chữ ký NGUYÊN VĂN từ lần đo 2026-08-10 (#147), không phải bịa. Hai chi
+// tiết quyết định, và cả hai khác `quota`: nó in ra **stdout** (transcript thật cho thấy chữ
+// nằm TRƯỚC mốc `--- stderr ---`), và nó exit **1**. Chính exit-code khác 0 đó là thứ đẩy task
+// vào rổ FAIL trước bản vá — nên một agent giả exit 0 sẽ không tái tạo được bug.
+if (mode === 'maxturns') {
+  console.log('Error: Reached max turns (6)');
+  process.exit(1);
 }
 
 if (mode === 'loop') {

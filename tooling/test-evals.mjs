@@ -155,10 +155,20 @@ const CMD = `node ${JSON.stringify(FAKE)} --turns {maxTurns} --minutes {maxMinut
 }
 
 // ── ④ Wall-clock cap: guardrail ngân sách, không phải lời khuyên ─────────────
+//
+// Từ #147 ca này KHÔNG còn neo vào chuỗi thông báo — ㉒ sở hữu phần đó (phân loại vào rổ nào).
+// Thứ CHỈ ④ khẳng định được là **phép cắt có thật sự xảy ra**: agent giả ngủ 60 giây, trần là
+// 0.05 phút (3 giây). Nếu `timeout` của `spawnSync` biến mất, runner vẫn in một dòng "không đo
+// được" hợp lệ — chỉ khác là nó in sau MỘT PHÚT. Con số thời gian là chỗ duy nhất phân biệt
+// "đã cắt" với "đã chờ xong", nên ca này đo con số đó.
 {
   const { out } = runEval(CMD, 'hang');
-  if (!/WALL-CLOCK CAP/.test(out)) fail.push('④ agent treo mà KHÔNG bị cắt ở maxMinutes=0.05 (3 giây) — cap ngân sách không tồn tại');
-  else ok.push('④ agent treo ⇒ bị cắt ở wall-clock cap và NÓI RA');
+  const mins = Number(out.match(/sau ([\d.]+)p/)?.[1] ?? NaN);
+  if (!/trần WALL-CLOCK/.test(out)) fail.push('④ agent treo mà KHÔNG bị cắt ở maxMinutes=0.05 (3 giây) — cap ngân sách không tồn tại');
+  else if (!Number.isFinite(mins)) fail.push('④ có báo cắt nhưng KHÔNG in thời gian — không phân biệt được "đã cắt" với "đã chờ xong"');
+  else if (mins >= 1) fail.push(`④ báo cắt nhưng agent chạy ${mins}p ≫ trần 0.05p — `
+    + '`timeout` của spawnSync không còn tác dụng, và dòng thông báo vẫn đọc như bình thường');
+  else ok.push(`④ agent treo ⇒ bị cắt THẬT ở ${mins}p (trần 0.05p), không phải chờ hết 60 giây`);
 }
 
 // ── ⑤ `evals.command` rỗng ⇒ nói ra là chưa gọi agent, KHÔNG im lặng ─────────
@@ -498,6 +508,57 @@ ${assertions}
     else if (!/không task nào ĐO ĐƯỢC ở CẢ HAI/.test(r.out)) fail.push('⑳ giao rỗng mà runner không nói `?` — im lặng ở đây đọc thành "chưa chạy phép trừ"');
     else ok.push('⑳ giao rỗng ⇒ `?` kèm số task mỗi bên, KHÔNG bịa ra một hiệu số');
     rmSync(p, { force: true });
+  }
+}
+
+// ── ㉑ Cạn ngân sách LƯỢT ≠ agent làm sai (#147) ─────────────────────────────
+//
+// Ca ⑪ khoá đúng lớp lỗi này cho HẠ TẦNG. Ca này khoá nó cho NGÂN SÁCH — trạng thái thứ tư,
+// và là trạng thái duy nhất mà `claude -p` thoát KHÁC 0, nên nó rơi thẳng vào `FAIL`.
+//
+// Đo 2026-08-10: ba task hết lượt in ra `REGRESSION 0% (0/3)`. Một trong ba (`0007`) thực ra
+// làm việc ĐÚNG tới lúc cạn — nó viết 7 ca test có răng thật, và bị chấm là thất bại. Con số
+// 0% đó không đo harness, nó đo turn budget.
+//
+// Ca dùng task 9001 mà assertion CHẠY ĐƯỢC và PASS. Nên nếu phép nhận diện biến mất, task sẽ
+// hiện ra là FAIL (vì exit 1) — và ca vẫn đỏ. Nó khoá cả hai chiều nói dối, như ⑪.
+{
+  const r = runEval(CMD, 'maxturns');
+  if (!/KHÔNG ĐO ĐƯỢC/.test(r.out)) {
+    fail.push('㉑ agent cạn trần LƯỢT KHÔNG được đánh "không đo được" — một phép đo chưa xảy ra đang bị ghi thành THẤT BẠI');
+  } else if (!/CẠN NGÂN SÁCH \(chạm trần LƯỢT/.test(r.out)) {
+    fail.push('㉑ có báo "không đo được" nhưng KHÔNG nói nguyên nhân là ngân sách — người đọc sẽ đi tìm lỗi ở model');
+  } else if (/HẠ TẦNG/.test(r.out)) {
+    fail.push('㉑ cạn ngân sách bị gộp vào rổ HẠ TẦNG — hai nguyên nhân, hai việc phải làm, và "chạy lại" là lời khuyên SAI ở đây');
+  } else if (!/CHẠY LẠI KHÔNG GIÚP GÌ/.test(r.out)) {
+    fail.push('㉑ không nói rằng chạy lại vô ích — đó là khác biệt DUY NHẤT về hành động so với ca hạ tầng');
+  } else if (/→ fail/.test(r.out)) {
+    fail.push('㉑ task vẫn bị ghi FAIL dù agent chưa kịp trả lời');
+  } else if (/REGRESSION\s+\d/.test(r.out)) {
+    fail.push('㉑ task cạn-ngân-sách vẫn nằm trong MẪU SỐ — tỉ lệ đang tính trên một phép đo không xảy ra');
+  } else {
+    ok.push('㉑ agent cạn trần LƯỢT ⇒ `?` kèm nguyên nhân + "chạy lại không giúp gì", ra khỏi mẫu số — không phải FAIL');
+  }
+}
+
+// ── ㉒ Cạn ngân sách WALL-CLOCK đi cùng đường ────────────────────────────────
+//
+// Nguồn KHÁC: trần lượt để lại chữ trong output, trần thời gian thì KHÔNG — `spawnSync` chỉ
+// báo bằng `signal === 'SIGTERM'`. Chế độ `hang` của agent giả đã tồn tại từ lâu và đi đúng
+// đường đó, nhưng trước #147 nó chỉ được một dòng WARN rồi task vẫn thành FAIL.
+//
+// Không có ca này, một bản vá chỉ nối `budgetExhausted(text)` sẽ xanh — và nửa còn lại của
+// cùng một lớp lỗi vẫn im lặng.
+{
+  const r = runEval(CMD, 'hang');
+  if (!/KHÔNG ĐO ĐƯỢC/.test(r.out)) {
+    fail.push('㉒ agent bị cắt vì WALL-CLOCK vẫn không được đánh "không đo được" — nửa còn lại của #147');
+  } else if (!/CẠN NGÂN SÁCH \(chạm trần WALL-CLOCK/.test(r.out)) {
+    fail.push('㉒ có báo "không đo được" nhưng không nêu trần WALL-CLOCK — hai nguồn phải nói ra nguồn nào');
+  } else if (/REGRESSION\s+\d/.test(r.out)) {
+    fail.push('㉒ task bị cắt vì thời gian vẫn nằm trong MẪU SỐ');
+  } else {
+    ok.push('㉒ agent cạn trần WALL-CLOCK ⇒ cùng rổ `?`, và dòng báo nêu ĐÚNG nguồn (SIGTERM, không phải chữ trong output)');
   }
 }
 
