@@ -117,8 +117,18 @@ if (mode === 'writes') {
     console.log('FAKE_AGENT_REFUSED=' + JSON.stringify(`đang đứng trong repo THẬT (${process.cwd()}) — cô lập đã hỏng, KHÔNG ghi`));
     process.exit(0);
   }
-  writeFileSync('AGENTS.md', readFileSync('AGENTS.md', 'utf8') + '\nDÒNG DO AGENT GIẢ THÊM\n', 'utf8');
-  console.log('Đã sửa AGENTS.md.');
+  // `AGENTS.md` là mục tiêu ĐÚNG cho chiều đầy đủ (ca ㉙): nó nằm trong vùng cấm, nên nếu cô
+  // lập hỏng thì thiệt hại nhìn thấy ngay. Nhưng ở chiều TRẦN, `BARE_STRIP` vừa đổi tên đúng
+  // file đó — agent giả sẽ ném, và một fixture ném thì ca test không nói được gì về cơ chế nó
+  // định kiểm. Nên: có `AGENTS.md` thì sửa nó, không có thì tạo file MỚI (dấu vết vẫn rõ, và
+  // vẫn nằm ngoài mọi thứ `--bare` chạm tới).
+  if (existsSync('AGENTS.md')) {
+    writeFileSync('AGENTS.md', readFileSync('AGENTS.md', 'utf8') + '\nDÒNG DO AGENT GIẢ THÊM\n', 'utf8');
+    console.log('Đã sửa AGENTS.md.');
+  } else {
+    writeFileSync('agent-da-ghi.txt', 'DÒNG DO AGENT GIẢ THÊM\n', 'utf8');
+    console.log('Không thấy AGENTS.md (cây trần) — đã tạo agent-da-ghi.txt.');
+  }
   process.exit(0);
 }
 

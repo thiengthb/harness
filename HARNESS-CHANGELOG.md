@@ -11,6 +11,48 @@
 
 ---
 
+## 2.55.0 — 2026-08-10
+
+**minor.** Hai lỗi lộ ra khi **chạy thật** cả hai chiều lần đầu — cùng một gốc: **chiều thứ hai
+chưa từng được chạy, nên lỗi của nó chưa có cơ hội lộ.**
+
+### ① Patch của chiều trần là patch của `--bare`, không phải của agent
+
+`capturePatch` chụp bằng `git add -A` + commit, mà `evalTree` đổi tên 7 mục của `BARE_STRIP`
+**sau** khi clone và không commit. Nên mọi rename đó vào patch.
+
+Đo trên `0003` chiều trần: **26 file trong patch, 25 là rename của `BARE_STRIP`** — đúng **một**
+file là việc agent làm. Nó phá đúng mục đích `capturePatch` ra đời để phục vụ: PR #149 và #157
+đều đến từ việc **đọc** patch của agent, và một patch 25/26 là nhiễu thì không ai đọc. Chế độ
+hỏng im lặng — patch vẫn có, vẫn `git apply` được, chỉ là không đọc được.
+
+**Vá:** một commit **MỐC** đóng lại mọi thứ runner vừa làm, trước khi agent chạy.
+
+### ② …và commit mốc đó suýt tái tạo chính lỗi #155
+
+Commit chỉ ở chiều trần ⇒ cây trần 2 commit, cây đầy đủ 1 ⇒ hai chiều lại khác nhau ở một thứ
+**ngoài `BARE_STRIP`**. Nên commit mốc chạy ở **cả hai chiều**, `--allow-empty`.
+
+**Đổi hợp đồng cho người viết task:** cây eval nay có **2 commit** (clone `--depth 1` + mốc),
+không phải 1. Assertion nào đếm commit phải biết. Mọi thứ khác giữ nguyên.
+
+### ③ Thứ tự chạy ngược đã có ca test
+
+`--bare --baseline` trước rồi chạy đầy đủ là luồng hợp lệ, và nó đi qua nhánh `BARE === false`
+của thông điệp "MẪU SỐ LỆCH" (v2.54.0) — nhánh chưa ca nào chạm tới. Đảo nhầm cặp số thì con số
+**vẫn in ra, vẫn đúng định dạng**, chỉ gán sai nhãn, và người đọc đi thu hẹp nhầm task.
+
+### Bằng chứng
+
+`tooling/test-evals.mjs` **39/39**. Ca mới: `⑲d` (thứ tự ngược) · `㉙b` (patch chiều trần sạch)
+· `㉙c` (commit mốc đối xứng). Mutation **5/5 chết** qua hai lượt, mỗi mutant bị đúng ca của nó
+bắt — gồm hai chiều SỬA QUÁ TAY (`capturePatch` nuốt luôn việc agent; commit mốc chỉ một chiều).
+
+Fixture `writes` nay tạo file mới khi không thấy `AGENTS.md` — ở cây trần chính `--bare` đã đổi
+tên file đó, và một fixture **ném** thì ca test không nói được gì về cơ chế nó định kiểm.
+
+---
+
 ## 2.54.0 — 2026-08-10
 
 **minor.** Giao theo TASK chưa đủ để trừ — mẫu số phải bằng nhau ở tầng **assertion**. Rào thứ
