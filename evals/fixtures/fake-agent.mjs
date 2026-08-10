@@ -21,10 +21,12 @@
  *   hang              ngủ lâu hơn wall-clock cap — runner phải cắt và báo timedOut
  *   quota             in chữ ký hết-quota rồi exit 0 — runner phải báo `?`, KHÔNG phải FAIL
  *   maxturns          in chữ ký cạn-trần-lượt rồi exit 1 — runner phải báo `?`, KHÔNG phải FAIL
+ *   writes            SỬA một file trong cây — runner phải RÚT patch ra trước khi xoá cây
  *   json              in PHONG BÌ thành công (num_turns) — runner phải ĐỌC ĐƯỢC số lượt
  *   jsonmaxturns      in PHONG BÌ cạn trần lượt — `?` mà KHÔNG có chữ "Reached max turns" nào
  */
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 const mode = process.env.FAKE_AGENT_MODE || 'ok';
 
@@ -91,6 +93,33 @@ if (mode === 'json' || mode === 'jsonmaxturns') {
     ...(max ? {} : { result: process.env.FAKE_AGENT_SAY || 'OK.' }),
   }));
   process.exit(max ? 1 : 0);
+}
+
+// SỬA CÂY — agent làm việc thật, như agent thật đã làm hai lần (PR #149, #157). Từ #155 cây
+// là clone dùng một lần, nên nếu runner không RÚT patch ra trước khi xoá thì việc này biến mất
+// không dấu vết. Ghi vào một file CÓ SẴN chứ không tạo file mới: `git diff` bắt được cả hai,
+// nhưng file có sẵn chứng minh luôn rằng cây là bản sao THẬT của repo, không phải thư mục rỗng.
+//
+// ── VÀ NÓ TỪ CHỐI GHI VÀO REPO THẬT, KỂ CẢ KHI ĐƯỢC BẢO GHI ──────────────────
+//
+// Đây không phải cẩn thận thừa. Đo 2026-08-10, ngay trong lượt mutation của chính #155: mutant
+// N2 (*"chỉ chiều trần mới cô lập"* — tức hành vi CŨ) làm `cwd` quay về repo thật, và chế độ
+// này **ghi thẳng vào `AGENTS.md` của repo** — một file trong VÙNG CẤM. Ca test đỏ đúng như
+// thiết kế, nhưng thiệt hại đã xảy ra rồi, và script mutation chỉ khôi phục file nó tự sửa.
+//
+// Bài học không phải *"viết script mutation cẩn thận hơn"*: một fixture chỉ an toàn khi cơ chế
+// nó đang kiểm còn hoạt động thì **không phải một fixture an toàn** — nó là một cái bẫy chờ
+// đúng lúc cơ chế hỏng. Nên nó tự gác: `FAKE_AGENT_FORBID_CWD` do test truyền vào, và ở đây
+// chỉ có một việc — KHÔNG GHI, và nói to.
+if (mode === 'writes') {
+  const forbid = process.env.FAKE_AGENT_FORBID_CWD;
+  if (forbid && resolve(process.cwd()) === resolve(forbid)) {
+    console.log('FAKE_AGENT_REFUSED=' + JSON.stringify(`đang đứng trong repo THẬT (${process.cwd()}) — cô lập đã hỏng, KHÔNG ghi`));
+    process.exit(0);
+  }
+  writeFileSync('AGENTS.md', readFileSync('AGENTS.md', 'utf8') + '\nDÒNG DO AGENT GIẢ THÊM\n', 'utf8');
+  console.log('Đã sửa AGENTS.md.');
+  process.exit(0);
 }
 
 if (mode === 'loop') {
