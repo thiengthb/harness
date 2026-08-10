@@ -1,4 +1,4 @@
-<!-- version: 2026-08-10-d -->
+<!-- version: 2026-08-10-e -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -9,6 +9,15 @@
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
 
+## 2026-08-10 — Eval: patch của chiều TRẦN nay đọc được, và cây eval có 2 commit (v2.55.0)
+
+Chạy thật cả hai chiều lần đầu, và chiều trần lộ hai lỗi. Patch `--bare` từng chứa **26 file,
+25 là thao tác gỡ harness của chính runner** — đúng một file là việc agent làm. Nay có một
+commit **MỐC** đóng lại mọi thứ runner làm trước khi agent chạy, nên patch chỉ còn việc agent.
+
+**Việc bạn phải làm khác đi:** nếu bạn viết assertion đếm commit — cây eval nay có **2 commit**
+(clone `--depth 1` + mốc), không phải 1. Mốc chạy ở **cả hai chiều** (`--allow-empty`); chỉ một
+chiều thôi là hai cây lại khác nhau ngoài `BARE_STRIP`, đúng lỗi #155.
 ## 2026-08-10 — Eval: `eval − eval --bare` nay TỪ CHỐI trừ hai vế không cùng mẫu số (v2.54.0)
 
 Chiều trần bị gỡ lớp harness, nên assertion nào đọc file của harness sẽ **đỏ sẵn** ở đó và bị

@@ -402,6 +402,23 @@ function evalTree({ strip }) {
       stripped.push(rel);
     }
   }
+  // ĐÓNG mọi thứ runner vừa làm vào một commit MỐC, TRƯỚC khi agent chạy. Không phải vệ sinh —
+  // `capturePatch` chụp bằng `git add -A` + commit, nên mọi thứ chưa commit trong cây đều vào
+  // patch. Để strip nằm ngoài commit thì patch chiều trần là patch của `--bare`, không phải
+  // của agent.
+  //
+  // Đo 2026-08-10 khi chạy THẬT hai chiều trên `0003`: patch chiều trần có **26 file, 25 là
+  // rename của `BARE_STRIP`**, đúng MỘT file là việc agent làm. Nó phá đúng mục đích
+  // `capturePatch` ra đời để phục vụ — PR #149 và #157 đều đến từ việc ĐỌC patch của agent.
+  //
+  // `--allow-empty` VÀ chạy ở CẢ HAI CHIỀU là phần bắt buộc, không phải phòng xa: commit chỉ
+  // ở chiều trần thì cây trần có 2 commit còn cây đầy đủ có 1, tức hai chiều lại khác nhau ở
+  // một thứ ngoài `BARE_STRIP` — đúng lớp lỗi #155, do chính bản vá chống nhiễu này sinh ra.
+  // Một assertion đọc `git rev-list --count HEAD` sẽ đỏ ở đúng một chiều, và mẫu số lệch.
+  git(['add', '-A'], { cwd: root });
+  git(['-c', 'user.name=harness-eval', '-c', 'user.email=eval@harness.local',
+    'commit', '--quiet', '--no-verify', '--allow-empty', '-m',
+    strip ? 'eval: mốc sau khi gỡ lớp harness' : 'eval: mốc trước khi agent chạy'], { cwd: root });
   return { dir, root, stripped };
 }
 

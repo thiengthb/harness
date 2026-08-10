@@ -514,9 +514,9 @@ ${assertions}
   //     và phép trừ chết im lặng: mẫu số về 0 thì không gì đỏ được nữa (L0007).
   //     Hai assertion TRUNG LẬP ⇒ mẫu số 2 ở cả hai chiều ⇒ PHẢI vẫn trừ được.
   {
-    const p = writeTask('9020', `${NEUTRAL}\n${NEUTRAL}`);
-    runEval(CMD, 'ok', '9020', { flags: ['--baseline'], stateDir: BARE_STATE });
-    const r = runEval(CMD, 'ok', '9020', { flags: ['--bare'], stateDir: BARE_STATE });
+    const p = writeTask('9030', `${NEUTRAL}\n${NEUTRAL}`);
+    runEval(CMD, 'ok', '9030', { flags: ['--baseline'], stateDir: BARE_STATE });
+    const r = runEval(CMD, 'ok', '9030', { flags: ['--bare'], stateDir: BARE_STATE });
     if (/MẪU SỐ LỆCH/.test(r.out)) fail.push('⑲b hai chiều CÙNG mẫu số mà vẫn bị loại — bản vá cắt quá tay, phép trừ không bao giờ ra số nữa');
     else if (!/đầy đủ \d+%\s+−\s+trần \d+%\s+=\s+[+-]?\d+pp/.test(r.out)) fail.push('⑲b task so được mà runner không trừ — mẫu số đã về 0, không gì đỏ được nữa');
     else if (!/trên 1 task so được/.test(r.out)) fail.push('⑲b phép trừ không nói MẪU SỐ — "chênh 0" trên 1 task khác hẳn "chênh 0" trên 5');
@@ -524,16 +524,33 @@ ${assertions}
     rmSync(p, { force: true });
   }
 
+  // ⑲d THỨ TỰ CHẠY NGƯỢC — `--bare --baseline` trước, đầy đủ sau. Luồng hợp lệ (`basePath`
+  //     đổi tên theo `BARE`, nên chiều trần ghi được baseline của riêng nó), và nó đi qua
+  //     nhánh `BARE === false` của thông điệp lệch — nhánh mà ⑲/⑲b/⑲c KHÔNG chạm tới.
+  //
+  //     Cặp số trong thông điệp lấy từ `BARE ? b : a`. Đảo nhầm hai vế thì con số vẫn IN RA,
+  //     vẫn đúng định dạng, chỉ **gán sai nhãn** — và người đọc đi thu hẹp nhầm task. Đây là
+  //     chiều thứ hai của cùng bản vá (L0007): chiều ồn ào đã có ca, chiều này thì không.
+  {
+    const p = writeTask('9032', `${NEUTRAL}\n${READS_HARNESS}`);
+    runEval(CMD, 'ok', '9032', { flags: ['--bare', '--baseline'], stateDir: BARE_STATE });
+    const r = runEval(CMD, 'ok', '9032', { stateDir: BARE_STATE });
+    if (!/MẪU SỐ LỆCH/.test(r.out)) fail.push('⑲d chạy trần TRƯỚC ⇒ phép so mẫu số không nổ — nhánh `BARE === false` chưa từng được thử');
+    else if (!/đầy đủ 2 · trần 1 assertion/.test(r.out)) fail.push('⑲d cặp số bị ĐẢO khi thứ tự chạy đảo — số vẫn in ra, vẫn đúng định dạng, chỉ gán sai nhãn ⇒ người đọc đi thu hẹp nhầm task');
+    else ok.push('⑲d thứ tự chạy ngược ⇒ vẫn bắt lệch, và cặp số vẫn gán ĐÚNG vế (đầy đủ 2 · trần 1)');
+    rmSync(p, { force: true });
+  }
+
   // ⑲c Baseline KHÔNG ghi `ran` (bản cũ) ⇒ `?`, không phải "bằng nhau". Trạng thái thứ ba, áp
   //     cho chính dụng cụ: chưa biết mẫu số có bằng nhau không thì chưa trừ được.
   {
-    const p = writeTask('9021', NEUTRAL);
-    runEval(CMD, 'ok', '9021', { flags: ['--baseline'], stateDir: BARE_STATE });
+    const p = writeTask('9031', NEUTRAL);
+    runEval(CMD, 'ok', '9031', { flags: ['--baseline'], stateDir: BARE_STATE });
     const bp = join(BARE_STATE, 'eval-baseline.json');
     const b = JSON.parse(readFileSync(bp, 'utf8'));
     for (const x of b.results) delete x.ran;          // giả lập baseline sinh trước bản vá này
     writeFileSync(bp, JSON.stringify(b));
-    const r = runEval(CMD, 'ok', '9021', { flags: ['--bare'], stateDir: BARE_STATE });
+    const r = runEval(CMD, 'ok', '9031', { flags: ['--bare'], stateDir: BARE_STATE });
     if (/đầy đủ \d+%\s+−\s+trần \d+%/.test(r.out)) fail.push('⑲c baseline cũ không ghi mẫu số mà runner vẫn trừ — nó đang GIẢ ĐỊNH hai vế bằng nhau, đúng giả định bản vá này ra đời để gỡ');
     else if (!/chưa biết mẫu số/.test(r.out)) fail.push('⑲c bỏ qua baseline cũ mà không nói lý do — người đọc tưởng task không đo được, và sẽ đi sửa nhầm chỗ');
     else ok.push('⑲c baseline cũ thiếu `ran` ⇒ `?` kèm cách đi tiếp, KHÔNG suy ra "mẫu số bằng nhau"');
@@ -774,6 +791,60 @@ const NEUTRAL_155 = 'node -e "process.exit(0)"';
     fail.push('㉙ AGENTS.md của REPO THẬT vừa bị agent sửa — cây "cô lập" là một cái nhãn');
   } else {
     ok.push('㉙ agent sửa cây ⇒ patch được RÚT RA và nêu tên, áp lại được, và repo thật không đụng tới');
+  }
+  rmSync(p, { force: true });
+}
+
+// ── ㉙b Patch của chiều TRẦN là việc AGENT làm, không phải việc `--bare` làm ──
+//
+// ㉙ khoá chiều đầy đủ. Chiều trần có thêm một bước mà chiều kia không có — `evalTree` đổi tên
+// 7 mục của `BARE_STRIP` SAU khi clone. `capturePatch` chụp bằng `git add -A` + commit, nên
+// mọi thứ chưa commit đều vào patch, kể cả việc của chính `--bare`.
+//
+// Đo 2026-08-10 khi chạy THẬT hai chiều trên `0003`: patch chiều trần có **26 file, 25 là
+// rename của `BARE_STRIP`** — đúng MỘT file là việc agent làm. Nó phá đúng mục đích ㉙ ra đời
+// để bảo vệ: PR #149 và #157 đều đến từ việc ĐỌC patch, và một patch 25/26 là nhiễu thì không
+// ai đọc. Chế độ hỏng im lặng: patch VẪN có, VẪN áp lại được, chỉ là không đọc được.
+{
+  const p = writeTask('9033', NEUTRAL_155);
+  const r = runEval(CMD, 'writes', '9033', { flags: ['--bare'], stateDir: join(WORK, 'state-patch-bare') });
+  const m = r.out.match(/patch: (\S+)/);
+  const patch = m ? (() => { try { return readFileSync(m[1], 'utf8'); } catch { return ''; } })() : '';
+  const files = [...patch.matchAll(/^diff --git a\/(\S+)/gm)].map(x => x[1]);
+  const noise = files.filter(f => /\.bare-disabled/.test(f) || patch.includes(`b/${f}.bare-disabled`));
+  if (!m) {
+    fail.push('㉙b chiều trần: agent SỬA CÂY mà runner không nêu tên patch');
+  } else if (!/DÒNG DO AGENT GIẢ THÊM/.test(patch)) {
+    fail.push('㉙b chiều trần: patch KHÔNG chứa thay đổi của agent — vá chống nhiễu đã cắt luôn cả tín hiệu');
+  } else if (/bare-disabled/.test(patch)) {
+    fail.push(`㉙b patch chiều trần chứa thao tác strip của \`--bare\` (${noise.length || 'nhiều'} mục) — đó là việc của RUNNER, không phải của agent; patch thành không đọc được đúng lúc nó có giá trị nhất`);
+  } else {
+    ok.push('㉙b patch chiều trần chỉ chứa việc AGENT làm — thao tác strip của `--bare` đã ra khỏi khung hình');
+  }
+  rmSync(p, { force: true });
+}
+
+// ── ㉙c Commit MỐC phải có ở CẢ HAI chiều — nếu không, bản vá ㉙b tự tạo lỗi #155 ──
+//
+// ㉙b buộc runner commit thao tác strip. Làm điều đó CHỈ ở chiều trần thì cây trần có 2 commit
+// còn cây đầy đủ có 1 — hai chiều lại khác nhau ở một thứ NGOÀI `BARE_STRIP`, đúng lớp lỗi mà
+// #155 và v2.54.0 vừa dọn, lần này do chính bản vá chống nhiễu sinh ra.
+//
+// Ca này không tự viết phép so: nó dùng chính máy dò mẫu số của v2.54.0. Assertion đòi
+// `rev-list --count == 2`; lệch commit ⇒ đỏ ở đúng MỘT chiều ⇒ `n/a` ⇒ `ran` lệch ⇒ runner in
+// "MẪU SỐ LỆCH". Nên phép kiểm ở đây là: **KHÔNG được có dòng đó**.
+{
+  const COUNT2 = `node -e "const c=require('child_process').execSync('git rev-list --count HEAD').toString().trim();process.exit(c==='2'?0:1)"`;
+  const ST = join(WORK, 'state-moc');
+  const p = writeTask('9034', COUNT2);
+  runEval(CMD, 'ok', '9034', { flags: ['--baseline'], stateDir: ST });
+  const r = runEval(CMD, 'ok', '9034', { flags: ['--bare'], stateDir: ST });
+  if (/MẪU SỐ LỆCH/.test(r.out)) {
+    fail.push('㉙c commit MỐC chỉ có ở một chiều — hai cây khác nhau ở SỐ COMMIT, ngoài `BARE_STRIP`. Bản vá chống nhiễu của ㉙b vừa tái tạo lỗi #155');
+  } else if (!/đầy đủ \d+%\s+−\s+trần \d+%/.test(r.out)) {
+    fail.push('㉙c hai chiều không so được vì lý do khác — neo của ca này đã trôi, đọc báo cáo trước khi sửa');
+  } else {
+    ok.push('㉙c commit mốc có ở CẢ HAI chiều ⇒ hai cây vẫn chỉ khác nhau ở `BARE_STRIP`');
   }
   rmSync(p, { force: true });
 }
