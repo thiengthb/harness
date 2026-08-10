@@ -11,6 +11,64 @@
 
 ---
 
+## 2.52.0 — 2026-08-10
+
+**minor.** Runner eval đọc **văn xuôi** của agent để biết nó cạn ngân sách, trong khi agent có
+sẵn một **lời khai có cấu trúc** — và ví dụ trong docstring của chính runner khuyên dùng đúng
+cái cờ làm bộ dò đó mù. Đóng #153.
+
+### Đo được
+
+`claude -p --output-format json`, lúc cạn trần lượt:
+
+```
+is_error  true · subtype "error_max_turns" · terminal_reason "max_turns" · num_turns 2 · exit 1
+```
+
+Không có chuỗi `Reached max turns` ở đâu cả — nó là JSON. Còn `budgetExhausted()` (v2.51.0,
+#147) khớp regex trên văn xuôi. Nên **bật cờ đó là làm bản vá #147 mù**, và `evals/run.mjs:332`
+lấy đúng cờ đó làm ví dụ mẫu. Người làm theo tài liệu là người dính.
+
+### Hai thứ được mở ra
+
+**`num_turns` — con số duy nhất còn thiếu để đóng #144.** Trần `maxTurns` của bộ task
+(`6 · 8 · 10 · 15 · 20`) là số **đoán**. Runner nay in `dùng/trần` cho mọi task đo được, nên
+hiệu chỉnh trở thành sản phẩm phụ của mỗi lượt chạy thay vì một đợt khảo cổ transcript riêng.
+
+**Cảnh báo TRẦN SẮP BÓ** khi `dùng/trần ≥ budget.alertAtPercent` (field **đã có** — không thêm
+field mới, máy dò field chết giữ nguyên 0/0). Một trần sát ngưỡng là một task sắp rơi khỏi
+**mẫu số** ở lần chạy sau: model đổi một nhịp, task thành `?`, và tỉ lệ đổi mà không dòng nào
+giải thích.
+
+### Có phong bì thì phong bì là nguồn DUY NHẤT — không phải `??`
+
+Chỗ này suýt sai, và ca ㉖ là ca duy nhất chứng minh nó. `budgetExhausted()` quét **toàn bộ
+stdout**; ở chế độ JSON, stdout chứa cả **câu trả lời của agent**. Một agent viết *"gate này
+chặn khi reached max turns"* — câu hoàn toàn hợp lệ cho một task về gate — sẽ bị chấm là cạn
+ngân sách, và một task **XANH** lặng lẽ rơi khỏi mẫu số.
+
+Nên ba nguồn, và nguồn ③ chỉ sống ở nhánh KHÔNG có phong bì:
+
+```
+① SIGTERM   trần WALL-CLOCK — không để lại chữ nào
+② PHONG BÌ  terminal_reason / subtype — CẤU TRÚC
+③ văn xuôi  Reached max turns — CHỈ khi không có phong bì
+```
+
+### Kiểm
+
+Bằng **agent GIẢ** — tất định, 0 token. Hai chế độ mới (`json`, `jsonmaxturns`) chép nguyên văn
+hình dạng đo được; `FAKE_AGENT_TURNS` và `FAKE_AGENT_SAY` để ca chọn số lượt và nhét chữ vào
+câu trả lời.
+
+```
+test-hooks   223/223   agentEnvelope 20 ca — nhiễu hai đầu, phong bì CUỐI, 8 ca KHÔNG-phải-phong-bì
+test-evals   29 ca     ㉓ đọc số lượt · ㉔ cấu trúc · ㉕ trần sắp bó · ㉖ agent NÓI VỀ chữ ký
+mutation     9 mutant, 0 sống sót
+```
+
+---
+
 ## 2.51.1 — 2026-08-10
 
 **patch.** Self-test của harness **chạy sản phẩm của project** — dev server, trình duyệt, cả

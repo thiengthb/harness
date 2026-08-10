@@ -1355,6 +1355,65 @@ export function budgetExhausted(text) {
 }
 
 /**
+ * PHONG BÌ KẾT QUẢ của agent — lời khai CÓ CẤU TRÚC, thay cho việc đoán từ văn xuôi.
+ *
+ * `claude -p --output-format json` in một object JSON thay cho transcript. Đo 2026-08-10
+ * (#153), lúc cạn trần lượt:
+ *
+ *   is_error true · subtype "error_max_turns" · terminal_reason "max_turns" · num_turns 2 · exit 1
+ *
+ * Hai điều quan trọng, và điều thứ hai là lý do hàm này tồn tại:
+ *
+ *   ① **`num_turns` là con số duy nhất chưa có để đóng #144.** Trần `maxTurns` của bộ task
+ *      (`6 · 8 · 10 · 15 · 20`) là số ĐOÁN; ở đây nó thành số ĐO. Không có nó thì *"agent thật
+ *      sự dùng bao nhiêu lượt"* là khảo cổ transcript.
+ *   ② **Chuỗi `Reached max turns` KHÔNG xuất hiện ở chế độ JSON.** `budgetExhausted()` khớp
+ *      regex trên văn xuôi, nên bật `--output-format json` là làm bộ dò của #147 mù — và
+ *      docstring của `evals/run.mjs` lấy đúng cờ đó làm ví dụ mẫu. Cạn lượt sẽ lại bị chấm
+ *      *"agent làm sai"*.
+ *
+ * TRẢ `null` KHI KHÔNG PHẢI JSON, và đó là ca THƯỜNG GẶP: `evals.command` không bắt buộc là
+ * `claude`, và không bắt buộc bật cờ đó. `null` ⇒ người gọi rơi về đường văn xuôi, không mất gì.
+ *
+ * Đòi `num_turns` là SỐ để nhận: một JSON bất kỳ trong output (agent in ra một object khi trả
+ * lời) KHÔNG được đọc thành phong bì. Đây là chỗ hàm này dễ sai theo chiều im lặng nhất — nhận
+ * nhầm thì `turns` là rác, và một con số rác nguy hiểm hơn không có số.
+ */
+export function agentEnvelope(text) {
+  const s = String(text || '').trim();
+  if (!s) return null;
+  // Thử cả chuỗi trước, rồi từng dòng từ CUỐI lên: phong bì là thứ in RA SAU CÙNG, và một
+  // lời cảnh báo của runtime ở dòng đầu không được làm hỏng phép đọc.
+  const candidates = [s, ...s.split('\n').map(l => l.trim()).filter(l => l.startsWith('{')).reverse()];
+  for (const c of candidates) {
+    let o;
+    try { o = JSON.parse(c); } catch { continue; }
+    if (!o || typeof o !== 'object' || Array.isArray(o)) continue;
+    if (typeof o.num_turns !== 'number') continue;
+    return {
+      turns: o.num_turns,
+      terminal: typeof o.terminal_reason === 'string' ? o.terminal_reason : null,
+      subtype: typeof o.subtype === 'string' ? o.subtype : null,
+      isError: o.is_error === true,
+      costUsd: typeof o.total_cost_usd === 'number' ? o.total_cost_usd : null,
+      denials: Array.isArray(o.permission_denials) ? o.permission_denials.length : null,
+    };
+  }
+  return null;
+}
+
+/**
+ * Phong bì có khai CẠN TRẦN LƯỢT không — tách khỏi `agentEnvelope` vì nó là một PHÁN ĐOÁN,
+ * còn hàm kia là một phép ĐỌC. Hai chữ ký, vì vendor đã cho hai và chúng có thể lệch nhau ở
+ * đời CLI sau; đòi cả hai cùng có là tự chuốc một điểm mù.
+ */
+export function envelopeBudget(env) {
+  if (!env) return null;
+  if (env.terminal === 'max_turns' || env.subtype === 'error_max_turns') return 'chạm trần LƯỢT do task khai';
+  return null;
+}
+
+/**
  * PHÁN ĐOÁN của `dcg` — hàm THUẦN, test khẳng định thẳng vào đây.
  *
  * Rule có `program` chỉ nổ khi một LỆNH ĐƠN có đúng chương trình đó, và khớp trên dạng đã bỏ

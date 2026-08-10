@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -2688,6 +2688,58 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     fail.push(`budgetExhausted${' '.repeat(10)} ${[...bbad.map(c => c[2]), ...crossed].join(' · ')}`);
   } else {
     ok.push(`budgetExhausted${' '.repeat(10)} ${BTABLE.length} ca — 3 chữ ký trần lượt bắt được, 5 ca bình thường không nhận nhầm, và KHÔNG lẫn với infraFailure`);
+  }
+
+  // ─── `agentEnvelope`: lời khai CÓ CẤU TRÚC thay cho đoán từ văn xuôi (#153) ──
+  //
+  // Hình dạng chép NGUYÊN VĂN từ `claude -p --output-format json`, đo 2026-08-10.
+  //
+  // Chỗ hàm này dễ sai theo chiều IM LẶNG nhất là chiều NHẬN NHẦM: một agent trả lời bằng cách
+  // in ra một object JSON (chuyện thường) mà bị đọc thành phong bì thì `turns` là RÁC — và một
+  // con số rác nguy hiểm hơn không có số, vì nó sẽ được dùng để đặt `maxTurns`. Nên phép nhận
+  // đòi `num_turns` là SỐ, và bảng dưới có 5 ca chỉ để khoá đúng chiều đó.
+  const ENV_OK = (turns) => JSON.stringify({ is_error: false, num_turns: turns, subtype: 'success', terminal_reason: 'completed', total_cost_usd: 0.04, permission_denials: [] });
+  const ETABLE = [
+    [ENV_OK(3), 3, 'phong bì đứng một mình'],
+    [`warning: something\n${ENV_OK(5)}`, 5, 'có nhiễu TRƯỚC phong bì — phong bì là thứ in ra SAU CÙNG'],
+    [`${ENV_OK(5)}\nFAKE_AGENT_TAIL=1`, 5, 'có nhiễu SAU phong bì'],
+    // KHOÁ QUYẾT ĐỊNH `.reverse()`: hai phong bì thì phong bì CUỐI là kết quả của lần chạy này.
+    [`${ENV_OK(2)}\n${ENV_OK(9)}`, 9, 'hai phong bì ⇒ lấy cái CUỐI'],
+    [JSON.stringify({ is_error: false, num_turns: 4, mot_truong_la: true, nested: { a: 1 } }), 4, 'trường lạ không làm vỡ phép đọc — đời CLI sau còn thêm nữa'],
+    ['Đã sửa xong file, chạy test: 12 pass.', null, 'văn xuôi ⇒ null ⇒ rơi về đường cũ'],
+    ['Error: Reached max turns (6)', null, 'chữ ký văn xuôi KHÔNG phải phong bì'],
+    ['', null, 'rỗng'],
+    [null, null, 'null'],
+    ['{ "num_turns": 3', null, 'JSON hỏng'],
+    [JSON.stringify([{ num_turns: 3 }]), null, 'MẢNG không phải phong bì'],
+    [JSON.stringify({ ket_qua: 'xong', num_turns: '3' }), null, '`num_turns` là CHUỖI ⇒ từ chối, không ép kiểu'],
+    [JSON.stringify({ ket_qua: 'xong', files: 3 }), null, 'object KHÔNG có num_turns ⇒ không phải phong bì'],
+    ['{"a":1}\n{"b":2}', null, 'nhiều object mà không cái nào là phong bì'],
+  ];
+  const ebad = ETABLE.filter(([txt, want]) => (agentEnvelope(txt)?.turns ?? null) !== want).map(c => c[2]);
+
+  // `envelopeBudget` — PHÁN ĐOÁN, tách khỏi phép ĐỌC. Hai chữ ký được OR lại vì vendor cho cả
+  // hai và chúng có thể lệch ở đời CLI sau; nên mỗi chữ ký phải có ca RIÊNG đứng MỘT MÌNH,
+  // không thì một mutant xoá nhánh này sống sót nhờ nhánh kia.
+  const EB = [
+    [{ terminal: 'max_turns', subtype: 'success' }, YES, 'chỉ `terminal_reason` khai'],
+    [{ terminal: 'completed', subtype: 'error_max_turns' }, YES, 'chỉ `subtype` khai'],
+    [{ terminal: 'max_turns', subtype: 'error_max_turns' }, YES, 'cả hai khai — ca THẬT của 2.1.226'],
+    [{ terminal: 'completed', subtype: 'success' }, NO, 'chạy xong bình thường'],
+    [{ terminal: null, subtype: null }, NO, 'lệnh eval không khai gì'],
+    [null, NO, 'không có phong bì'],
+  ];
+  const ebbad = EB.filter(([env, want]) => Boolean(envelopeBudget(env)) !== want).map(c => c[2]);
+
+  // Hai đường tới cùng một trạng thái phải NÓI CÙNG MỘT CÂU. Lệch chữ ở đây thì ca ㉑ và ca ㉔
+  // của `test-evals` neo vào hai chuỗi khác nhau, và một trong hai sẽ mục mà không ai biết.
+  if (envelopeBudget({ terminal: 'max_turns' }) !== budgetExhausted('Error: Reached max turns (6)')) {
+    ebbad.push('phong bì và văn xuôi nói HAI CÂU khác nhau cho cùng một trạng thái');
+  }
+  if (ebad.length || ebbad.length) {
+    fail.push(`agentEnvelope${' '.repeat(12)} ${[...ebad, ...ebbad].join(' · ')}`);
+  } else {
+    ok.push(`agentEnvelope${' '.repeat(12)} ${ETABLE.length + EB.length} ca — nhiễu hai đầu và phong bì CUỐI đọc đúng, 8 ca KHÔNG-phải-phong-bì bị từ chối, và mỗi chữ ký trần lượt có ca đứng một mình`);
   }
 }
 
