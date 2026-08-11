@@ -61,8 +61,16 @@ import('./tooling/lib/harness.mjs').then(m => {
 });
 "
 node tooling/test-hooks.mjs
+# full-arm-only: suite này kiểm chính `--bare`, mà trong một cây ĐÃ trần thì `--bare` từ chối chạy ("KHÔNG gỡ được gì") — đúng thiết kế, không vá được
 node tooling/test-evals.mjs
 ```
+
+> **Vì sao đúng một dòng ở đây mang `full-arm-only`** (thêm 2026-08-11, #163). `test-hooks` từng
+> cũng đỏ ở chiều trần, nhưng đó là **công cụ báo oan** — nó đọc `.claude/settings.json` mà
+> `--bare` vừa gỡ, và v2.57.0 đã vá bằng `harnessStripped()`. `test-evals` thì khác về **bản
+> chất**: nó là bộ test của chính cơ chế `--bare`, nên chạy nó trong một cây đã trần là hỏi một
+> câu không có nghĩa. Phân biệt hai ca đó là toàn bộ điểm của dấu này — gộp chúng lại thì dấu
+> `full-arm-only` trở thành chỗ giấu mọi assertion khó.
 
 Bảy khẳng định trên **chạy được mà không cần agent** — cố ý, cùng lý do với `0005` và `0006`.
 Mỗi cặp khoá **hai chiều của cùng một quyết định**: giữ-quá-ít với giữ-quá-nhiều, `0` với

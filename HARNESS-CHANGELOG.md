@@ -11,6 +11,67 @@
 
 ---
 
+## 2.59.0 — 2026-08-11
+
+**minor.** `# full-arm-only: <lý do>` — task tự khai assertion **không so được do bản chất**.
+Mẫu số lệch về **0**; hai chiều chấm trên **cùng tập assertion**.
+
+### Vì sao cần một khái niệm mới, thay vì vá thêm một công cụ
+
+v2.57.0 và v2.58.0 vá **bốn công cụ báo oan**: chúng đọc `.claude/settings.json` hoặc
+`.claude/rules`, mà `--bare` vừa gỡ. Đó là lỗi, và vá được.
+
+`0007` thì khác **về bản chất**: assertion của nó chạy `tooling/test-evals.mjs`, và suite đó
+kiểm chính `--bare`. Trong một cây **đã** trần, `--bare` **từ chối chạy** (*"KHÔNG gỡ được gì"*)
+— **đúng thiết kế**. Không có gì để vá.
+
+Gộp hai ca đó lại là hỏng theo cả hai hướng: hoặc ta vá mãi một thứ không hỏng, hoặc ta cho phép
+mọi assertion khó trốn vào cùng một cái cớ.
+
+### Cơ chế
+
+```bash
+# full-arm-only: suite này kiểm chính `--bare`, mà trong cây ĐÃ trần thì `--bare` từ chối chạy
+node tooling/test-evals.mjs
+```
+
+**HAI thứ, không một.** Đánh dấu KHÔNG làm assertion biến mất:
+
+- chiều **đầy đủ** vẫn CHẠY và vẫn chấm nó — giá trị regression giữ nguyên;
+- phép **trừ** loại nó khỏi **cả hai** vế — một assertion chỉ chạy ở một bên thì hai bên đang
+  chấm trên hai tập, và đó là đúng bệnh v2.54.0 sinh ra để chữa.
+
+Nên mỗi task nay có **hai phán quyết**: `passed` (mọi assertion — tỉ lệ regression) và
+`passedComparable` (chỉ assertion so được — phép trừ). Gộp lại là quay về lỗi cũ.
+
+### Cửa thoát này đắt một cách cố ý
+
+`danger-zones.md §Cưỡng chế` viết: *"không có cửa thoát, người ta tự tạo cửa thoát — và cửa đó
+không ghi log"*. Nên có cửa, và nó phải trả giá:
+
+- **lý do BẮT BUỘC** — không có `:` thì marker không được nhận;
+- lý do được **in ra** ở cả `--denominators` lẫn báo cáo;
+- task đánh dấu tới mức `ranComparable === 0` ⇒ **ra khỏi phép trừ hoàn toàn**, kèm một dòng nói
+  thẳng rằng đánh dấu hết cho ra **giao rỗng**, không phải con số đẹp.
+
+### Ratchet chạm 0, và thôi là ratchet
+
+```
+5 lệch · trần 13/24   đo lần đầu 2026-08-10
+4 · 16/24             `0002` thôi hỏi về `AGENTS.md`
+2 · 20/24             `test-hooks` phân biệt "gỡ có chủ ý" với "repo hỏng"
+1 · 23/24             `harnessStripped()` lên lib; test-migrations · apply-to · test-evals
+0 · 23/23             `0007` khai `full-arm-only` cho ĐÚNG dòng không so được
+```
+
+`SKEW_RATCHET` nay là **bất biến**, không phải backlog: mọi task đo được phải cùng mẫu số so
+được. Nó có **điều kiện thoát** viết rõ — xoá khi `--bare` không còn tồn tại. Đây là mục CẮT mà
+`.claude/learnings/2026-W33-phep-do-khong-xay-ra…` đề xuất, đã thực hiện.
+
+Phép trừ `eval − eval --bare` nay so được **6/6 task đo được**. Hai phiên trước: **1**.
+
+---
+
 ## 2.58.0 — 2026-08-11
 
 **minor.** `harnessStripped()` lên `lib`, và ba công cụ nữa dùng nó. Ratchet mẫu số **2 → 1**.

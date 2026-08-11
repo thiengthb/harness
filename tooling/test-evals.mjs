@@ -552,12 +552,99 @@ ${assertions}
     runEval(CMD, 'ok', '9031', { flags: ['--baseline'], stateDir: BARE_STATE });
     const bp = join(BARE_STATE, 'eval-baseline.json');
     const b = JSON.parse(readFileSync(bp, 'utf8'));
-    for (const x of b.results) delete x.ran;          // giả lập baseline sinh trước bản vá này
+    // Giả lập baseline CŨ — và có HAI đời cũ, cả hai phải rơi vào `?`:
+    //   · trước v2.54.0: không có `ran` lẫn `ranComparable`;
+    //   · v2.54.0–v2.58.0: có `ran`, chưa có `ranComparable` (khái niệm `full-arm-only` chưa ra đời).
+    // Xoá cả hai là cách duy nhất ca này còn khoá đúng thứ nó khoá sau khi phép trừ đổi thước đo.
+    for (const x of b.results) { delete x.ran; delete x.ranComparable; }
     writeFileSync(bp, JSON.stringify(b));
     const r = runEval(CMD, 'ok', '9031', { flags: ['--bare'], stateDir: BARE_STATE });
     if (/đầy đủ \d+%\s+−\s+trần \d+%/.test(r.out)) fail.push('⑲c baseline cũ không ghi mẫu số mà runner vẫn trừ — nó đang GIẢ ĐỊNH hai vế bằng nhau, đúng giả định bản vá này ra đời để gỡ');
-    else if (!/chưa biết mẫu số/.test(r.out)) fail.push('⑲c bỏ qua baseline cũ mà không nói lý do — người đọc tưởng task không đo được, và sẽ đi sửa nhầm chỗ');
+    else if (!/chưa biết hai vế có bằng nhau không/.test(r.out)) fail.push('⑲c bỏ qua baseline cũ mà không nói lý do — người đọc tưởng task không đo được, và sẽ đi sửa nhầm chỗ');
     else ok.push('⑲c baseline cũ thiếu `ran` ⇒ `?` kèm cách đi tiếp, KHÔNG suy ra "mẫu số bằng nhau"');
+    rmSync(p, { force: true });
+  }
+
+  // ⑲e `# full-arm-only: <lý do>` — assertion KHÔNG SO ĐƯỢC do bản chất, task tự khai.
+  //
+  //     Khác hẳn "công cụ báo oan vì `--bare` gỡ mất file nó đọc" (ca đó phải VÁ — v2.57.0/
+  //     v2.58.0 vá bốn công cụ như vậy). Ca này không vá được: mẫu vật thật là `0007`, assertion
+  //     của nó chạy `tooling/test-evals.mjs`, mà suite đó kiểm chính `--bare`.
+  //
+  //     HAI khẳng định, và cái thứ hai đắt hơn: task PHẢI vào được phép trừ trên phần còn lại
+  //     (nếu không, đánh dấu = tự loại, và cửa này vô dụng), VÀ dòng đánh dấu phải nêu LÝ DO
+  //     task đã khai (nếu không, nó là chỗ giấu mọi assertion khó).
+  {
+    const p = writeTask('9035', `${NEUTRAL}\n# full-arm-only: bộ test này kiểm chính cơ chế trần\n${READS_HARNESS}`);
+    runEval(CMD, 'ok', '9035', { flags: ['--baseline'], stateDir: BARE_STATE });
+    const r = runEval(CMD, 'ok', '9035', { flags: ['--bare'], stateDir: BARE_STATE });
+    if (/MẪU SỐ LỆCH/.test(r.out)) fail.push('⑲e assertion khai `full-arm-only` VẪN bị đếm vào mẫu số — dấu này không có tác dụng, và task vẫn rơi khỏi phép trừ');
+    else if (!/đầy đủ \d+%\s+−\s+trần \d+%\s+=\s+[+-]?\d+pp/.test(r.out)) fail.push('⑲e task còn assertion so được mà runner không trừ — dấu `full-arm-only` đang loại CẢ TASK, tức cắt quá tay');
+    else if (!/bộ test này kiểm chính cơ chế trần/.test(r.out)) fail.push('⑲e không in LÝ DO task đã khai — một cửa thoát không nói vì sao là chỗ giấu mọi assertion khó');
+    else ok.push('⑲e `full-arm-only` loại ĐÚNG assertion đó khỏi phép trừ, task vẫn so được trên phần còn lại, và lý do được in ra');
+    rmSync(p, { force: true });
+  }
+
+  // ⑲g LÝ DO LÀ BẮT BUỘC — `# full-arm-only` trần trụi KHÔNG được nhận.
+  //
+  //     Cả thiết kế của cửa thoát này dựa vào một câu: *"lý do bắt buộc"*. Nếu marker nhận cả
+  //     dạng không lý do thì nó rẻ ngang một dòng chú thích, và `danger-zones §Cưỡng chế` nói
+  //     thẳng chuyện gì xảy ra với cửa thoát rẻ. Mutant nới regex thành `\b\s*:?\s*(.*)` SỐNG
+  //     SÓT ở lượt đầu — tức tôi đã khai một ràng buộc mà không ca nào kiểm nó.
+  {
+    const p = writeTask('9037', `${NEUTRAL}\n# full-arm-only\n${READS_HARNESS}`);
+    runEval(CMD, 'ok', '9037', { flags: ['--baseline'], stateDir: BARE_STATE });
+    const r = runEval(CMD, 'ok', '9037', { flags: ['--bare'], stateDir: BARE_STATE });
+    if (!/MẪU SỐ LỆCH/.test(r.out)) fail.push('⑲g `# full-arm-only` KHÔNG có lý do vẫn được nhận — cửa thoát rẻ ngang một dòng chú thích, và mọi assertion khó sẽ trốn vào đó');
+    else ok.push('⑲g `# full-arm-only` thiếu lý do ⇒ KHÔNG được nhận, assertion vẫn vào mẫu số so được');
+    rmSync(p, { force: true });
+  }
+
+  // ⑲h CHIỀU ĐẦY ĐỦ VẪN CHẤM assertion đã đánh dấu — chiều SỬA QUÁ TAY.
+  //
+  //     `full-arm-only` phải làm ĐÚNG MỘT việc: đưa assertion ra khỏi PHÉP TRỪ. Nếu nó cũng đưa
+  //     assertion ra khỏi chiều đầy đủ thì giá trị regression biến mất **im lặng** — task vẫn
+  //     xanh, chỉ là nó thôi kiểm thứ nó sinh ra để kiểm. Mutant `if (fullArmOnly && bare)` →
+  //     `if (fullArmOnly)` SỐNG SÓT ở lượt đầu.
+  //
+  //     Ca dùng một assertion đã đánh dấu mà LUÔN ĐỎ: chiều đầy đủ phải báo `→ fail`.
+  //
+  //     `# requires-agent` đi kèm là BẮT BUỘC, không phải trang trí. Bản đầu của ca này chỉ có
+  //     `full-arm-only`, và nó đỏ trên code ĐÚNG — vì **tiền kiểm** loại một assertion đỏ-sẵn
+  //     thành `n/a` TRƯỚC khi tới chỗ chấm, nên nó không bao giờ chứng minh được điều ca này
+  //     muốn chứng minh. `requires-agent` là đường duy nhất vượt tiền kiểm (`preflight` bỏ qua
+  //     chúng), nên assertion mới thật sự chạy SAU agent và mới thật sự được chấm.
+  {
+    const RED = 'node -e "process.exit(1)"';
+    const p = writeTask('9038', `${NEUTRAL}\n# requires-agent\n# full-arm-only: chỉ chấm được ở chiều đầy đủ\n${RED}`);
+    const r = runEval(CMD, 'ok', '9038', { stateDir: BARE_STATE });
+    if (!/→ fail/.test(r.out)) fail.push('⑲h assertion đã đánh dấu KHÔNG còn chạy ở chiều đầy đủ — `full-arm-only` vừa nuốt luôn giá trị regression, và nó nuốt IM LẶNG: task vẫn xanh');
+    else ok.push('⑲h chiều đầy đủ VẪN chạy và VẪN chấm assertion đã đánh dấu — dấu chỉ tác động lên phép trừ');
+    rmSync(p, { force: true });
+  }
+
+  // ⑲f LẠM DỤNG CỬA THOÁT — đánh dấu HẾT. Chiều duy nhất `full-arm-only` bị dùng sai, và hậu quả
+  //     phải là GIAO RỖNG chứ không phải một con số đẹp. Không có ca này thì dấu đó là nút
+  //     "cho tôi 100%".
+  //
+  //     ĐƯỜNG ĐI TỚI KẾT QUẢ ĐÚNG KHÔNG PHẢI ĐƯỜNG TÔI ĐOÁN. Bản đầu của bản vá có một nhánh
+  //     riêng trong phép trừ cho ca này; chạy thật thì nhánh đó **không bao giờ tới**: chiều trần
+  //     bỏ qua mọi assertion đã đánh dấu ⇒ `ran === 0` ⇒ `measured === false` ⇒ task chưa từng
+  //     vào giao. Nhánh ấy đã bị xoá — một guard không bao giờ chạy tới nói dối về việc nó canh gì.
+  //
+  //     Nên ca này khẳng định HÀNH VI (không có hiệu số + lý do được nêu), KHÔNG khẳng định
+  //     đường đi. Đó cũng là lý do nó vẫn có răng sau khi nhánh kia biến mất.
+  {
+    const p = writeTask('9036', `# full-arm-only: lý do bịa\n${NEUTRAL}\n# full-arm-only: lý do bịa\n${NEUTRAL}`);
+    runEval(CMD, 'ok', '9036', { flags: ['--baseline'], stateDir: BARE_STATE });
+    const r = runEval(CMD, 'ok', '9036', { flags: ['--bare'], stateDir: BARE_STATE });
+    if (/đầy đủ \d+%\s+−\s+trần \d+%\s+=\s+[+-]?\d+pp/.test(r.out)) fail.push('⑲f đánh dấu MỌI assertion vẫn ra một hiệu số — `full-arm-only` vừa thành nút "cho tôi 100%", và con số đó không nói về cái gì cả');
+    else if (!/không task nào SO ĐƯỢC/.test(r.out)) fail.push('⑲f không ra hiệu số nhưng cũng không nói `?` — im lặng ở đây đọc thành "chưa chạy phép trừ"');
+    // KHÔNG để backtick trong regex literal: máy quét nguồn của `lib-import` (và `codeOnly`)
+    // đọc nó là MỞ template literal, nuốt phần sau, rồi lộ chú thích ra thành "code" — suite
+    // đỏ ở một chỗ không liên quan. Gặp thật khi viết ca này.
+    else if (!/full-arm-only.: lý do bịa/.test(r.out)) fail.push('⑲f task biến mất khỏi phép trừ mà KHÔNG nêu lý do nó tự khai — người đọc sẽ tưởng phép đo hỏng, và đi sửa nhầm chỗ');
+    else ok.push('⑲f đánh dấu HẾT ⇒ giao rỗng kèm lý do task tự khai, KHÔNG phải một hiệu số bịa');
     rmSync(p, { force: true });
   }
 
