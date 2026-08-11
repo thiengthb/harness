@@ -210,13 +210,18 @@ console.log(`  ${cov.unread.length || cov.undeclared.length ? '⚠️ ' : '✓'}
     'template-cap': `  ⚠️   trần $${cap} nằm trong REPO TEMPLATE — nó sẽ chảy xuống MỌI consumer áp template sau này`,
     'flat-unmeasured': '  ?    gói PHẲNG — không đọc được `budget-alarm.log`, nên số lần chạm rate limit KHÔNG ĐO ĐƯỢC',
     'flat-limited': `  ⚠️   gói PHẲNG · ${b.rateLimitHits} lần chạm rate limit trong 30 ngày — ĐÂY là trần thật, không phải USD`,
+    // ⚠️ → ok là CÓ CHỦ Ý, và lý do không phải "ít nghiêm trọng hơn": cùng ${b.rateLimitHits}
+    // lần chạm, nhưng ở đây chúng đã ĐỔI được ra một con số. Dấu ⚠️ ở dòng trên nói "bạn có
+    // một cổ chai chưa ai soi"; khi đã soi rồi thì thứ đáng in là TỈ LỆ, không phải dấu.
+    'flat-capo': `  ok   gói PHẲNG · CAPO-TRẦN = ${b.flatCapo} lần chạm trần / kết quả `
+      + `(${b.rateLimitHits} lần trong 30 ngày · tỉ lệ đo trên cửa sổ ${b.flatDays} ngày, ${b.flatAgeDays} ngày trước)`,
     'flat-ok': '  ok   gói PHẲNG · 0 lần chạm rate limit trong 30 ngày — cổ chai hiện không phải hạn mức',
   };
   console.log(LINE[b.mode]);
   // Dòng "harness không đọc được hoá đơn" chỉ đúng khi con số ĐANG hiển thị là USD nhập tay.
   // Ở gói phẳng thì con số là số lần chạm rate limit, do chính harness đo — in câu đó ở đây
   // là nói sai về nguồn gốc dữ liệu của chính mình.
-  if (!['off', 'template-na', 'flat-ok', 'flat-limited', 'flat-unmeasured'].includes(b.mode)) {
+  if (!['off', 'template-na', 'flat-ok', 'flat-limited', 'flat-unmeasured', 'flat-capo'].includes(b.mode)) {
     console.log('       harness KHÔNG đọc được hoá đơn — con số này do người chép từ dashboard billing.');
   }
   if (b.advice) advice.push(b.advice);

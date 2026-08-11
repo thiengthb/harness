@@ -455,6 +455,7 @@ export function budgetSnapshot(cfg = null, role = null, now = Date.now()) {
     cap: c.budget?.monthlyUsdCap,
     alertAtPercent: c.budget?.alertAtPercent,
     latest: latestCapoEntry(),
+    flatCapo: flatCapoEntries(),
     role: role ?? repoRole(),
     plan: budgetPlan(c),
     rateLimitHits: hits,
@@ -475,7 +476,7 @@ export function rateLimitHitsIn(text, sinceMs = 0) {
 }
 
 export function budgetStatus({ cap, alertAtPercent = 80, latest = null, now = Date.now(), role = null,
-  plan = 'metered', rateLimitHits = null } = {}) {
+  plan = 'metered', rateLimitHits = null, flatCapo = [] } = {}) {
   const c = Number(cap);
   // MỘT phép kiểm "số đo có dùng được không", dùng ở CẢ HAI chỗ cần nó: cờ `measured` (nhánh
   // template) và mode `unmeasured` (nhánh có cap). Viết hai lần thì hai bản sẽ lệch, và lúc
@@ -513,7 +514,18 @@ export function budgetStatus({ cap, alertAtPercent = 80, latest = null, now = Da
     }
     const n = Number(rateLimitHits);
     if (n > 0) {
+      // HAI trạng thái, không một: "chạm trần N lần" và "chạm trần N lần VÀ tôi biết N đó
+      // đổi lấy được bao nhiêu kết quả" là hai câu khác nhau, và chỉ câu thứ nhất là việc
+      // TỚI HẠN. Trước #180 chỉ có câu thứ nhất, nên `rituals` báo đỏ suốt 30 ngày và KHÔNG
+      // hành động nào tắt được nó — kể cả hành động chính nó yêu cầu. Một cảnh báo luôn bật
+      // không phân biệt được với một cảnh báo không tồn tại (`lessons/0002`).
+      const fc = flatCapoReading(flatCapo, now);
+      if (fc) {
+        return { mode: 'flat-capo', percent: null, runRate: null, measured, plan: 'flat', rateLimitHits: n,
+          flatCapo: fc.capoTran, flatDays: fc.days, flatAgeDays: fc.ageDays, advice: null };
+      }
       return { mode: 'flat-limited', percent: null, runRate: null, measured, plan: 'flat', rateLimitHits: n,
+        flatCapo: null, flatDays: null, flatAgeDays: null,
         advice: `gói PHẲNG: ${n} lần chạm rate limit trong 30 ngày — ĐÂY là trần thật của bạn, không phải USD. `
           + 'Tiền không giảm được (chi phí biên = 0); thứ giảm được là số lần chạm trần: cắt context thừa, ít phiên song song hơn. Xem docs/WIP.md' };
     }
@@ -678,9 +690,45 @@ export function mergeState(branch, { mergedSet = new Set(), ask = () => ({ statu
  * Entry đo chi tiêu GẦN NHẤT, hoặc `null` nếu chưa từng đo. Phần IO của `budgetStatus`.
  */
 export function latestCapoEntry() {
-  const h = readJson(join(stateDir(), 'capo-history.json'), null);
-  const e = Array.isArray(h?.entries) ? h.entries : [];
-  return e.length ? e[e.length - 1] : null;
+  return capoEntries('capo-history.json').at(-1) ?? null;
+}
+
+/**
+ * Sổ đo của gói PHẲNG — **file RIÊNG, không phải hình dạng thứ hai trong mảng cũ** (#180).
+ *
+ * `latestCapoEntry()` đọc `entries.at(-1)` và mong `{usd, days}`. Nhét một mục `{capoTran}`
+ * vào cùng mảng đó là đúng lớp lỗi của #107: một sổ đo lường bị neo vào một mục nó không
+ * hiểu. Hai file thì bên đọc cũ **không thể** đọc nhầm — nó không mở file kia.
+ */
+export function flatCapoEntries() {
+  return capoEntries('capo-flat-history.json');
+}
+
+function capoEntries(file) {
+  const h = readJson(join(stateDir(), file), null);
+  return Array.isArray(h?.entries) ? h.entries : [];
+}
+
+/**
+ * Số đo CAPO-TRẦN gần nhất **còn dùng được**, hoặc `null`. THUẦN — nhận mảng, trả object.
+ *
+ * `maxAgeDays = 30` **bằng đúng cửa sổ đếm hits** của `budgetSnapshot`, và con số đó không
+ * phải khẩu vị: một số đo cũ hơn cửa sổ mô tả một khoảng thời gian **rời hẳn** khoảng đang
+ * xét — nó là con số về tháng khác. (Nhánh metered dùng 45 ngày cho `stale` vì trần ở đó là
+ * trần THÁNG, không phải một cửa sổ trượt.)
+ *
+ * Mục giữ NGUYÊN `days` của chính nó thay vì giả định 30: người dùng chạy `--days 7` thì
+ * `capoTran` của họ là tỉ lệ trên 7 ngày, và ghép nó cạnh "19 lần / 30 ngày" là trộn hai cửa
+ * sổ vào một phân số — `capo-report.mjs` §GÓI PHẲNG từ chối làm đúng chuyện đó.
+ */
+export function flatCapoReading(entries = [], now = Date.now(), maxAgeDays = 30) {
+  const e = Array.isArray(entries) ? entries.at(-1) : null;
+  const capoTran = Number(e?.capoTran), days = Number(e?.days), at = Date.parse(e?.at ?? '');
+  if (!Number.isFinite(capoTran) || capoTran < 0) return null;
+  if (!Number.isFinite(days) || days <= 0 || !Number.isFinite(at)) return null;
+  const ageDays = Math.round((now - at) / 86400000);
+  if (ageDays > maxAgeDays || ageDays < 0) return null;
+  return { capoTran, days, ageDays, hits: Number(e?.hits), accepted: Number(e?.accepted) };
 }
 
 /**

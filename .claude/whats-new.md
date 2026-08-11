@@ -1,4 +1,4 @@
-<!-- version: 2026-08-11-h -->
+<!-- version: 2026-08-11-i -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,22 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-11 — gói PHẲNG: CAPO-TRẦN có sổ, nên có XU HƯỚNG (v2.63.0)
+
+Chỉ ảnh hưởng người khai `budget.plan = flat` (hoặc `HARNESS_BUDGET_PLAN=flat`).
+
+1. **`capo-report --days 30` giờ GHI** vào `.claude/state/capo-flat-history.json` và in
+   *"so kỳ trước"*. Trước đó nó tính CAPO-TRẦN rồi vứt đi — mà cái đọc đáng giá của chỉ số
+   này là **nó đi lên hay không**, không phải giá trị tuyệt đối.
+2. **Mục `capo-report` trong `rituals` tắt được.** Trước: `19 lần chạm trần` ⇒ đỏ suốt 30
+   ngày, **không hành động nào tắt được** — kể cả chạy đúng lệnh nó bảo bạn chạy. Nay đo
+   xong là xanh, và **đỏ lại sau 30 ngày** (bằng đúng cửa sổ đếm).
+3. Đổi `--days` giữa hai kỳ thì báo cáo **từ chối so** — tỉ lệ 7 ngày và tỉ lệ 30 ngày không
+   phải hai điểm của cùng một đường.
+
+Trên repo này: `CAPO-TRẦN = 0.15 lần chạm trần / kết quả được chấp nhận (19 lần · 130 kết
+quả · 30 ngày)`.
 
 ## 2026-08-11 — `fixlog`: nhóm ĐÃ ĐÓNG thôi nuốt mục CHƯA XONG (v2.62.0)
 
