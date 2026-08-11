@@ -57,7 +57,7 @@ function readLog() {
 // thuộc hai nhóm đã có địa chỉ (#177, #160). Thật sự chưa xử: **2**.
 //
 // `rituals` đã sửa đúng chỗ này ở #182 (`fixlogOpen`) và KHÔNG sửa ở đây — vá một chỗ, để lại
-// chỗ bên cạnh, đúng lỗi mà `.claude/learnings/2026-W32` §1 đã mắc. Nên phép trừ nay là MỘT hàm
+// chỗ bên cạnh, đúng lỗi mà learnings W32 §1 (`so-khong-bao-gio-dong-duoc`) đã mắc. Nên phép trừ là MỘT hàm
 // dùng chung (`handledGroups()` ở lib), không phải hai bản chép.
 if (args[0] === '--list') {
   const since = Date.now() - 7 * 86400_000;
