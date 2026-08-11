@@ -1652,10 +1652,27 @@ export function repoRole() {
  */
 export function fixlogKey(text, rules = []) {
   const t = String(text).toLowerCase();
+  // LUẬT CỤ THỂ HƠN THẮNG (needle DÀI HƠN), không phải luật tới trước.
+  //
+  // Đo 2026-08-11: sổ có hai luật — `dcg` (khai 08-06, ĐÃ ĐÓNG 08-07) và
+  // `buoc DON DEP cua mutation` (khai 08-10, đang mở). Mục ngày 08-10 khớp CẢ HAI; luật cũ
+  // rộng hơn và tới trước nên nó thắng, và mục đó thừa hưởng dấu ✔ của một nhóm đã đóng
+  // TRƯỚC KHI nó tồn tại. `--top` báo 0 nhóm ★ ⇒ `/harness-retro` bước 4 thấy "không có gì
+  // tới hạn", trong khi việc đó đang mở dưới dạng issue #160.
+  //
+  // "Dài hơn" chứ không phải "mới hơn": độ dài là thuộc tính của CHÍNH luật, nên phép chọn
+  // không đổi theo thứ tự người ta khai. Chọn "mới hơn" thì một luật rộng khai sau sẽ nuốt
+  // mọi luật hẹp khai trước — đúng chiều hỏng vừa gặp, chỉ đảo trục.
+  //
+  // BẰNG ĐỘ DÀI ⇒ giữ thứ tự file (luật đầu thắng). Ca `A`/`B` cùng needle `dcg` trong
+  // `test-hooks` khoá đúng tính tất định đó.
+  let best = null;
   for (const r of rules) {
     const needle = String(r?.needle || '').toLowerCase().trim();
-    if (needle && t.includes(needle)) return String(r.key);
+    if (!needle || !t.includes(needle)) continue;
+    if (!best || needle.length > best.len) best = { key: String(r.key), len: needle.length };
   }
+  if (best) return best.key;
   return t
     .replace(/[^a-z0-9à-ỹ\s]/gi, ' ')
     .split(/\s+/).filter(w => w.length > 3).slice(0, 6).join(' ');
@@ -1665,8 +1682,29 @@ export function fixlogKey(text, rules = []) {
 export const FIXLOG_GROUPS_FILE = () => join(telemetryDir(), 'fixlog-groups.log');
 
 /**
+ * Một nhóm ĐÃ ĐÓNG có còn đóng không — **THUẦN**, nhận mốc đóng + mốc các mục, trả phán quyết.
+ *
+ * `--close` ghi *"đã xử lý xong"* tại MỘT thời điểm. Mục xuất hiện SAU thời điểm đó là **tái
+ * phát**, và dấu ✔ nói dối về nó. Đây là ca đáng canh nhất của cả cơ chế đóng nhóm: cùng một
+ * lỗi quay lại sau khi bạn tuyên bố đã sửa tận gốc.
+ *
+ * HÀM RIÊNG, không viết inline ở hai chỗ — `fixlog --top` và `rituals.fixlogState()` trả lời
+ * CÙNG một câu hỏi, và `test-hooks` ca ⑦ tồn tại vì hai bảng đó đã từng lệch nhau. Bản trước
+ * `rituals` chỉ đọc KHOÁ trong `fixlog-closed.log` và vứt cả cột thời gian đi, nên nó không
+ * thể phát hiện tái phát dù có muốn.
+ *
+ * Không có mốc đóng ⇒ `closed: false` (chưa từng đóng), KHÔNG phải "đang mở vì tái phát".
+ * Hai chuyện đó khác nhau và `recurred` phân biệt được: rỗng ở ca một, có phần tử ở ca hai.
+ */
+export function groupStillClosed(closedTs, rowTimestamps = []) {
+  if (!closedTs) return { closed: false, recurred: [] };
+  const recurred = [...rowTimestamps].map(String).filter(ts => ts > String(closedTs)).sort();
+  return { closed: recurred.length === 0, recurred };
+}
+
+/**
  * Đọc luật gom nhóm do người khai. TSV `ts \t key \t needle`, giữ NGUYÊN thứ tự file
- * (luật đầu tiên khớp thì thắng — xem `fixlogKey`).
+ * (khi hai luật khớp mà needle DÀI BẰNG NHAU thì luật đầu thắng — xem `fixlogKey`).
  *
  * Đọc được rỗng và đọc lỗi trả về CÙNG một thứ (`[]`) là chấp nhận được ở đây, và chỉ ở đây:
  * không có luật nào thì phép từ vựng cũ vẫn chạy, tức mất phép gom thủ công chứ không mất mục
