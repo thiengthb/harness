@@ -87,9 +87,33 @@ Ghi kết quả xét vào cùng PR.
 ## 8. Nếu scope là universal hoặc stack
 
 ```
-node tooling/knowledge/export.mjs
+node tooling/knowledge/export.mjs        # → .harness-pack/  (KHÔNG commit vào repo này)
 ```
 
-Commit `.harness-pack/` vào repo harness trung tâm và **gắn tag**.
-Repo khác pin theo tag/sha, không bao giờ theo `main` — một commit sai ở `main`
-làm hỏng đồng thời mọi repo của bạn.
+**`.harness-pack/` là sản phẩm BUILD, không phải thứ để commit tại chỗ.** Nó nằm trong
+`REQUIRED_IGNORE`, và `harness-doctor` có `MUST_NOT_TRACK` cho đúng đường dẫn đó — commit nó
+vào repo vừa sinh ra nó làm **máy đo sức khoẻ của chính harness ĐỎ**. `upstream.mjs` còn dùng
+`.harness-pack/upstream-clone` làm chỗ clone tạm; đây là thư mục làm việc.
+
+Đích là một **repo RIÊNG**, tên ở `knowledge.packName` (`setup.mjs` sinh mặc định
+`<project-id>-harness-pack`):
+
+```
+# trong repo <org>-harness-pack, KHÔNG phải repo này
+cp -r ../<repo>/.harness-pack/* .   &&   git add -A && git commit && git tag vX.Y.Z && git push --tags
+```
+
+Repo khác lấy về bằng **một trong hai** đường mà `import.mjs` hỗ trợ:
+
+```
+node tooling/knowledge/import.mjs ../repo-cu/.harness-pack              # ĐĨA — không cần git
+node tooling/knowledge/import.mjs https://github.com/org/harness-pack --ref v1.4.0   # GIT-URL
+```
+
+Pin theo **tag/sha**, không bao giờ theo `main` — một commit sai ở `main` làm hỏng đồng thời
+mọi repo của bạn.
+
+> **Đường git-url cần `knowledge.packName` + `knowledge.upstream` được khai thật.** Ở repo này
+> cả hai còn là `CHANGEME-org-harness-pack` / `""`, nên **chưa repo nào từng pin được gói này**
+> — đo 2026-08-11, `git log -- .harness-pack` rỗng hoàn toàn (issue #178). Cùng phát hiện đã
+> ghi trong nhật ký vòng học tuần W32 §L0004 và chưa được xử. Đường ĐĨA thì chạy.
