@@ -11,6 +11,70 @@
 
 ---
 
+## 2.61.0 — 2026-08-11
+
+**minor.** Gói **PHẲNG**: CAPO tính bằng **lần chạm trần**, không bằng USD. `capo-report.mjs`
+thôi đòi một con số mà chính nó khai là không đọc được.
+
+### Nghi thức tự mâu thuẫn với chính nó
+
+```
+capo-report.mjs --usd <N>  —  gói PHẲNG: 19 lần chạm rate limit trong 30 ngày —
+ĐÂY là trần thật của bạn, không phải USD.
+```
+
+Nó nói *"không phải USD"* rồi bảo chạy `--usd <N>`. `budgetStatus` biết gói phẳng từ #111
+(chi tiêu tháng **bằng định nghĩa** đúng bằng trần, chi phí biên = 0, cổ chai là rate limit);
+`capo-report` thì chưa, và hint của chính nó ghi *"harness KHÔNG đọc được hoá đơn"*.
+
+Với gói phẳng, `USD / accepted` là **một hằng số chia cho accepted** — nó đo *"tháng này ra
+nhiều kết quả hay ít"*, không đo gì về hiệu quả. Con số RÀNG BUỘC thì nằm sẵn trên đĩa:
+
+```
+CAPO-TRẦN = 0.15 lần chạm trần / kết quả được chấp nhận (19 lần · 126 kết quả · 30 ngày)
+```
+
+### Ba trạng thái — chép hình dạng, không tự nghĩ lại
+
+```
+sổ VẮNG   ⇒ 0      observe.mjs chưa từng ghi lần nào LÀ một số đo
+đọc HỎNG  ⇒ null   `?` — không biết
+```
+
+Bản đầu gộp cả hai thành `?`. Nghe an toàn mà sai hai lần: nó biến một repo yên ả thành `?`
+vĩnh viễn, VÀ nó làm **hai công cụ đọc cùng một cái sổ trả lời khác nhau** — đúng #125, thứ
+`budgetSnapshot` ra đời để chống. Không gọi thẳng `budgetSnapshot()` được vì nó chốt cứng cửa
+sổ 30 ngày, còn ở đây cửa sổ phải **bằng** cửa sổ đếm merge (`--days`).
+
+### Hai chỗ chống BẮN NHẦM
+
+- **Gói metered không đổi hành vi.** Với trả-theo-mức-dùng thì USD mới là cổ chai, và
+  `--usd` vẫn được nhắc.
+- **0 kết quả được chấp nhận ⇒ WARN, không FAIL** — trong khi nhánh `--usd` ngay trên FAIL cho
+  cùng tình huống. Khác biệt là **ai bật nó**: `--usd` là người TỰ khai; nhánh này chạy tự động
+  vì gói cước là phẳng. Một tuần nghỉ phép không được làm báo cáo đỏ (**L0002**).
+
+### `rituals.mjs`: một nghi thức không bao giờ tắt được
+
+Nhánh `flat-ok` treo vào `b.measured` — cờ hỏi *"đã có ai NHẬP số USD chưa"*. Người gói phẳng
+không cần `--usd`, nên sổ USD **mãi rỗng**, nên mục đỏ **vĩnh viễn** kể cả khi họ 0 lần chạm
+trần. Nay `flat-ok` ⇒ `ok`, kèm câu nói rõ số này **không cần dashboard**.
+
+### Test
+
+`tooling/test-hooks.mjs` 226 ca. Bốn mutant, **4/4 chết**:
+
+| mutant | ca đỏ |
+|---|---|
+| sổ VẮNG ⇒ `null` (lỗi bản đầu) | CAPO gói phẳng ① |
+| bỏ cửa sổ thời gian | CAPO gói phẳng ② |
+| bật CAPO-TRẦN cho MỌI gói | CAPO gói phẳng ③ |
+| nuốt luôn nhắc `--usd` của metered | CAPO gói phẳng ③ |
+
+Refs: #173
+
+---
+
 ## 2.60.0 — 2026-08-11
 
 **minor.** Phép trừ nói ra **từng task** rơi khỏi nó và **vì sao** — và tách riêng nguyên nhân

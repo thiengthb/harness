@@ -365,8 +365,9 @@ export const RITUALS = [
     //
     // `?` ở đây KHÔNG phải "ổn": khai trần mà chưa lần nào đo thì trần chưa so với gì.
     id: 'capo-report',
-    cmd: 'capo-report.mjs --usd <N>',
-    what: 'đối chiếu chi tiêu THẬT với trần tháng (số lấy từ dashboard billing, harness không đọc được hoá đơn)',
+    cmd: 'capo-report.mjs --days 30 [--usd <N>]',
+    what: 'đối chiếu chi tiêu THẬT với trần tháng. Gói METERED cần `--usd` (chép từ dashboard — harness không đọc được hoá đơn); '
+      + 'gói PHẲNG thì KHÔNG cần: mẫu số ở đó là lần chạm rate limit, và harness tự đếm',
     check: (s) => {
       const b = s.budget;
       // TEMPLATE (#92): trần không khai được ở đây — `setup.mjs:55` từ chối, và đúng. Nhưng
@@ -384,9 +385,16 @@ export const RITUALS = [
       if (b.mode === 'flat-unmeasured') return { state: '?', why: b.advice };
       if (b.mode === 'flat-limited') return { state: 'due', why: b.advice };
       if (b.mode === 'flat-ok') {
-        return b.measured
-          ? { state: 'ok', why: `gói PHẲNG · 0 lần chạm rate limit trong 30 ngày · CAPO đo ${b.ageDays} ngày trước — CAPO ở đây là giá trị rút ra trên phí cố định, không phải tiền tiêu` }
-          : { state: 'due', why: 'gói PHẲNG: 0 lần chạm rate limit (tốt), nhưng CAPO chưa lần nào đo — không biết harness có đang tốt lên không. `node tooling/capo-report.mjs --days 7 --usd <phí tháng>`' };
+        // KHÔNG còn treo vào `b.measured`. Cờ đó hỏi *"đã có ai NHẬP một con số USD chưa"* — câu
+        // hỏi chỉ có nghĩa với gói METERED, nơi con số phải chép tay từ dashboard. Với gói phẳng,
+        // mẫu số là LẦN CHẠM TRẦN và harness tự đếm được nó bất cứ lúc nào, nên không có việc gì
+        // đang "tới hạn" cả.
+        //
+        // Giữ `b.measured` ở đây tạo một nghi thức KHÔNG BAO GIỜ TẮT ĐƯỢC: người gói phẳng không
+        // cần `--usd` (v2.61.0 để họ khỏi cần), nên sổ USD mãi rỗng, nên mục này đỏ vĩnh viễn dù
+        // họ đã làm đúng mọi thứ. Đó là `knowledge/lessons/0002-guard-ban-nham.md`.
+        return { state: 'ok', why: 'gói PHẲNG · 0 lần chạm rate limit trong 30 ngày — cổ chai đang không siết. '
+          + 'CAPO-TRẦN (lần chạm trần / kết quả được chấp nhận) tính được bất cứ lúc nào và KHÔNG cần dashboard: `node tooling/capo-report.mjs --days 30`' };
       }
       if (b.mode === 'off') return { state: '?', why: 'budget.monthlyUsdCap = 0 — chưa khai trần, nên không có gì để đối chiếu. Đây KHÔNG phải "ổn"' };
       if (b.mode === 'unmeasured') return { state: 'due', why: b.advice };

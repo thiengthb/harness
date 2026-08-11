@@ -1431,6 +1431,10 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     [{ mode: 'stale', advice: 'số đo chi tiêu gần nhất đã 90 ngày' }, 'due', /90 ngày/, 'số đo quá cũ ⇒ tới hạn'],
     [{ mode: 'alert', advice: 'run-rate $171/tháng = 86% trần $200' }, 'due', /86%/, 'chạm ngưỡng cảnh báo ⇒ tới hạn'],
     [{ mode: 'ok', percent: 14, ageDays: 3 }, 'ok', /14%.*3 ngày/, 'dưới ngưỡng ⇒ im, nhưng NÓI RA số và tuổi số đo'],
+    // GÓI PHẲNG + 0 lần chạm ⇒ `ok`, và `measured: false` KHÔNG được kéo nó về `due`. Người gói
+    // phẳng không cần `--usd` (v2.61.0), nên sổ USD của họ mãi rỗng — treo mục này vào `measured`
+    // là một nghi thức không bao giờ tắt được dù họ làm đúng mọi thứ (L0002).
+    [{ mode: 'flat-ok', measured: false }, 'ok', /KHÔNG cần dashboard/, 'gói phẳng 0 lần chạm + sổ USD rỗng ⇒ ổn, KHÔNG đòi một con số vô nghĩa với gói đó'],
   ];
   for (const [budget, want, msg, label] of CAPO) {
     const r = get({ budget }, 'capo-report');
@@ -2399,6 +2403,69 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     declareNa(1, `cờ thiếu giá trị${L.slice(6)} 6 ca exit code + "không entry rác" ĐÃ kiểm; ca "ghi đúng 1 entry" `
       + 'KHÔNG kiểm được ở đây (0 merge trong cửa sổ 7 ngày — checkout nông ở CI). Chạy suite ở máy có lịch sử git để phủ nó.');
   } else ok.push(`cờ thiếu giá trị${L.slice(6)} 6 ca — cờ THIẾU GIÁ TRỊ dừng kèm chỉ dẫn, và sổ chỉ nhận entry hữu hạn`);
+}
+
+// ─── GÓI PHẲNG: mẫu số của CAPO là LẦN CHẠM TRẦN, không phải USD ─────────────
+//
+// Với subscription phẳng, chi tiêu tháng BẰNG ĐỊNH NGHĨA đúng bằng trần, nên `USD / accepted`
+// là một hằng số chia cho accepted — nó không đo gì về hiệu quả. `budgetStatus` đã biết điều
+// đó từ #111; `capo-report` thì chưa, và nó vẫn đòi một con số mà chính hint của nó ghi là
+// *"harness KHÔNG đọc được hoá đơn"*, trong khi con số RÀNG BUỘC nằm sẵn trong `budget-alarm.log`.
+//
+// BA CA, và ca thứ hai là ca tôi làm SAI ở bản đầu: tôi gộp "sổ vắng" với "đọc hỏng" thành `?`.
+// Nghe an toàn mà sai hai lần — nó biến một repo yên ả thành `?` vĩnh viễn, VÀ nó làm hai công
+// cụ đọc cùng một cái sổ trả lời khác nhau (đúng #125, thứ `budgetSnapshot` ra đời để chống).
+{
+  const L = ' '.repeat(13);
+  const bad = [];
+  const tel = mkdtempSync(join(tmpdir(), 'harness-capo-tel-'));
+  const st = mkdtempSync(join(tmpdir(), 'harness-capo-st-'));
+  const runCapo = (env) => spawnSync(process.execPath, [repoPath('tooling', 'capo-report.mjs'), '--days', '30'],
+    { encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, HARNESS_STATE_DIR: st, HARNESS_TELEMETRY_DIR: tel, ...env } });
+
+  // HAI VẾ CHO MỖI KHẲNG ĐỊNH, và đó KHÔNG phải nới lỏng. `accepted` đến từ lịch sử git của
+  // repo đang chạy suite; checkout `pull_request` ở CI có **0 merge** trong cửa sổ ⇒ nhánh
+  // `!accepted` chạy thay cho nhánh tính tỉ lệ. Bản đầu chỉ khớp nhánh tính tỉ lệ và **đỏ cả ba
+  // OS trong khi máy tôi xanh** — đúng `knowledge/lessons/0003` (self-test giả định repo của
+  // nó), và khối `capo` ngay trên đã ghi lại bài học đó trước khi tôi viết ca này.
+  //
+  // Con số HITS có mặt ở CẢ HAI nhánh, nên nó là bất biến không phụ thuộc lịch sử git. Hai vế
+  // dưới đây nêu ĐÍCH DANH hai câu thật, không phải một từ khoá lỏng lẻo bắt trúng chỗ khác.
+  const zero = /CAPO-TRẦN = 0\.00|gói PHẲNG: 0 lần chạm trần/;
+  const three_ = /\(3 lần ·|gói PHẲNG: 3 lần chạm trần/;
+
+  // ① sổ VẮNG ⇒ `0`, KHÔNG phải `?`. `observe.mjs` chưa từng ghi lần nào LÀ một số đo.
+  const empty = runCapo({ HARNESS_BUDGET_PLAN: 'flat' });
+  if (empty.status !== 0) bad.push(`sổ vắng: exit ${empty.status} ≠ 0`);
+  if (/ĐỌC HỎNG/.test(empty.stdout || '')) bad.push('sổ VẮNG bị đọc thành ĐỌC HỎNG — một repo chưa từng chạm trần thành `?` vĩnh viễn, và nó lệch với `budgetSnapshot` trên cùng cái sổ');
+  else if (!zero.test(empty.stdout || '')) bad.push('sổ vắng không khai ra 0 lần chạm trần');
+
+  // ② sổ CÓ ba lần chạm ⇒ con số phải là 3, và phải lọt vào cửa sổ `--days`.
+  const now = Date.now();
+  writeFileSync(join(tel, 'budget-alarm.log'),
+    [1, 2, 3].map(i => `${new Date(now - i * 3600_000).toISOString()}|fixture|rate_limit|money|attended`).join('\n') + '\n');
+  const three = runCapo({ HARNESS_BUDGET_PLAN: 'flat' });
+  if (!three_.test(three.stdout || '')) bad.push('3 dòng rate_limit trong sổ mà không đếm ra 3 — cửa sổ hoặc bộ lọc sai');
+
+  // ③ CHIỀU NGƯỢC (bắt buộc): gói METERED KHÔNG được có nhánh này, và vẫn phải nhắc `--usd`.
+  //    Không có ca này, một bản vá bật CAPO-TRẦN cho MỌI người vẫn xanh ở ① và ②.
+  const metered = runCapo({ HARNESS_BUDGET_PLAN: 'metered' });
+  if (/CAPO-TRẦN/.test(metered.stdout || '')) bad.push('gói METERED cũng in CAPO-TRẦN — với trả-theo-mức-dùng thì USD MỚI là cổ chai, và lời khuyên "cắt context" thay nhầm chỗ');
+  else if (!/Không có --usd/.test(metered.stdout || '')) bad.push('gói METERED thôi nhắc `--usd` — nhánh cũ bị nuốt, và người dùng metered mất luôn CAPO');
+
+  // PHÉP CHIA có được chạy không, hay ta chỉ đi qua nhánh `0 kết quả`? Nói ra, đừng đoán.
+  const ratioRan = /CAPO-TRẦN = \d/.test(three.stdout || '');
+  rmSync(tel, { recursive: true, force: true });
+  rmSync(st, { recursive: true, force: true });
+  if (bad.length) fail.push(`CAPO gói phẳng${L.slice(1)} ${bad.length} ca sai: ${bad.join(' | ')}`);
+  else if (!ratioRan) {
+    // Ba khẳng định ĐÃ kiểm; phép chia `hits / accepted` thì CHƯA — repo này không có merge nào
+    // trong cửa sổ. Ghi `n/a`, KHÔNG ghi pass: một ca không chạy tới mà báo xanh đọc y hệt một
+    // ca chạy tới và đạt, và đó là chế độ hỏng đắt nhất của cả lớp verification này.
+    declareNa(1, `CAPO gói phẳng${L.slice(1)} sổ vắng ⇒ 0 · 3 dòng ⇒ 3 · metered KHÔNG đổi hành vi ĐÃ kiểm; `
+      + 'phép chia `hits / accepted` KHÔNG kiểm được ở đây (0 merge trong cửa sổ — checkout nông ở CI). '
+      + 'Chạy suite ở máy có lịch sử git để phủ nó.');
+  } else ok.push(`CAPO gói phẳng${L.slice(1)} sổ vắng ⇒ 0 (không phải \`?\`) · 3 dòng ⇒ 3 · metered KHÔNG đổi hành vi · phép chia chạy thật`);
 }
 
 // ─── sổ ghi được thì phải ĐÓNG được ─────────────────────────────────────────

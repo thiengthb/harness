@@ -1,4 +1,4 @@
-<!-- version: 2026-08-11-e -->
+<!-- version: 2026-08-11-f -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,21 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-11 — Gói PHẲNG: CAPO đếm LẦN CHẠM TRẦN, không đếm USD (v2.61.0)
+
+`capo-report.mjs` từng đòi `--usd <N>` cho mọi người — kể cả khi hint của chính nó ghi *"harness
+KHÔNG đọc được hoá đơn"*. Với subscription phẳng, chi tiêu tháng **bằng định nghĩa** đúng bằng
+trần, nên `USD / accepted` không đo gì về hiệu quả. Nay:
+
+```
+CAPO-TRẦN = 0.15 lần chạm trần / kết quả được chấp nhận (19 lần · 126 kết quả · 30 ngày)
+```
+
+**Không cần dashboard** — harness tự đếm từ `budget-alarm.log`. Gói **metered không đổi gì**: ở
+đó USD vẫn là cổ chai. Sổ **vắng** ⇒ `0` (một số đo thật), đọc **hỏng** ⇒ `?`.
+
+---
 
 ## 2026-08-11 — Phép trừ nêu TÊN task nó đánh rơi, và vì sao (v2.60.0)
 
