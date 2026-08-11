@@ -11,6 +11,55 @@
 
 ---
 
+## 2.63.0 — 2026-08-11
+
+**minor.** Gói PHẲNG có **sổ đo riêng**, nên CAPO-TRẦN đọc được **xu hướng** — và nghi thức
+`capo-report` **tắt được**.
+
+### Defect: một nghi thức KHÔNG BAO GIỜ TẮT ĐƯỢC
+
+`budgetStatus` trả `flat-limited` khi `rateLimitHits > 0`, và `rituals` map thẳng nó thành
+`due`. Số lần chạm trần nằm trong một **cửa sổ trượt 30 ngày**: nó là quá khứ, và không hành
+động nào hôm nay làm nó nhỏ lại — kể cả hành động chính mục đó yêu cầu.
+
+Đo trên repo này: **19 lần chạm** ⇒ mục đỏ ở **mỗi SessionStart trong 30 ngày**, không cách
+nào tắt. Đây là lỗi vừa sửa cho `flat-ok` ở **v2.61.0**, dịch sang nhánh bên cạnh — lần đó
+`flat-ok` treo vào một cờ chỉ có nghĩa với gói metered; lần này `flat-limited` **không có
+khái niệm "đã đo" nào cả**, vì nhánh phẳng không ghi gì.
+
+### Defect thứ hai, đắt hơn: chỉ số đúng duy nhất là chỉ số duy nhất không có lịch sử
+
+`capo-report.mjs` tồn tại vì một CÁI ĐỌC: *"CAPO đi lên trong khi bạn cải thiện harness ⇒
+harness đang phình"*. Cái đọc đó là **xu hướng**. Nhánh `--usd` có nó; nhánh phẳng in một
+con số nổi không neo vào gì — `0.15` so với cái gì, sau 50 lần chạy vẫn không ai biết.
+
+### Bản vá
+
+- **`.claude/state/capo-flat-history.json`** — file **RIÊNG**, `{at, days, hits, accepted,
+  capoTran}`. Không phải hình dạng thứ hai trong `capo-history.json`: `latestCapoEntry()` đọc
+  `entries.at(-1)` và mong `{usd, days}`, nên trộn hai hình dạng là #107 ở dạng phòng ngừa.
+  Hai file thì bên đọc cũ **không thể** đọc nhầm — nó không mở file kia.
+- **Mode mới `flat-capo`** — `hits > 0` **và** có số đo còn hạn. `rituals` đọc là `ok` kèm
+  con số; `harness-doctor` in tỉ lệ thay vì một dấu ⚠️ không định lượng.
+- **Hạn 30 ngày**, bằng đúng cửa sổ đếm hits: số đo cũ hơn cửa sổ mô tả một khoảng thời gian
+  **rời hẳn** khoảng đang xét. Quá hạn ⇒ rơi **lại** `flat-limited` ⇒ `due`. Đo một lần rồi
+  tắt vĩnh viễn là đổi *cảnh báo luôn bật* lấy *cảnh báo không bao giờ bật* — chiều IM LẶNG
+  của cùng một lỗi (`lessons/0007`), và nó có mutant riêng.
+- **Xu hướng + cảnh báo >20%** ở nhánh phẳng, đúng chỗ nhánh `--usd` đặt nó. Hai kỳ khác
+  `--days` thì **TỪ CHỐI so** — trộn tỉ lệ 7 ngày với tỉ lệ 30 ngày là một phân số bịa.
+
+### Không có migration
+
+Sổ mới tự sinh ở lần chạy `capo-report` đầu tiên của gói phẳng. Project dùng gói metered
+không đổi gì: ca test ③ khoá đúng điều đó (`CAPO-TRẦN` **không** được in ở nhánh metered).
+
+Hợp đồng `MODES` trong `test-hooks.mjs` bắt buộc **cả hai** bên đọc phải rẽ nhánh cho mode
+mới — thiếu bên nào thì đỏ, không im lặng rơi xuống `ok`.
+
+**Mutation 4/4 giết, cả bốn chạy được.** Chi tiết: `docs/progress/180.md`.
+
+---
+
 ## 2.62.0 — 2026-08-11
 
 **minor.** Một nhóm fixlog **ĐÃ ĐÓNG** thôi nuốt một mục **CHƯA XONG**. Hai defect độc lập,

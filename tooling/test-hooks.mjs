@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -2171,7 +2171,7 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   // ca KHÔNG bảng thuần nào ở trên bắt được, vì lỗi nằm ở chỗ HIỂN THỊ. Không dựng repo có
   // `cap > 0` được (`harness.config.json` là vùng cấm), nên đối chiếu bằng mã nguồn.
   const MODES = ['off', 'unmeasured', 'stale', 'ok', 'alert', 'over', 'template-na', 'template-cap',
-    'flat-ok', 'flat-limited', 'flat-unmeasured'];
+    'flat-ok', 'flat-limited', 'flat-unmeasured', 'flat-capo'];
   const doc = readFileSync(repoPath('tooling', 'harness-doctor.mjs'), 'utf8');
   const budgetBlock = doc.slice(doc.indexOf('── NGÂN SÁCH ──'));
   // Hai dạng khoá: `off:` và `'template-na':` — mode có gạch ngang phải viết trong nháy.
@@ -2208,6 +2208,58 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   }
   if (badPlan.length) fail.push(`budgetStatus${L} gói phẳng ${badPlan.length}/${PLAN_TABLE.length} ca sai: ${badPlan.join(' | ')}`);
   else ok.push(`budgetStatus${L} ${PLAN_TABLE.length} ca gói phẳng — \`metered\` KHÔNG đổi, và "chưa đọc được sổ" ≠ "chưa chạm lần nào"`);
+
+  // ── CHẠM TRẦN N LẦN, VÀ N ĐÓ ĐỔI ĐƯỢC BAO NHIÊU (#180) ────────────────────
+  //
+  // `hits > 0` là một sự thật BẤT BIẾN trong 30 ngày: không hành động nào hôm nay làm nó nhỏ
+  // lại. Map thẳng nó thành `due` cho `rituals` một mục đỏ mà **người dùng không tắt được kể
+  // cả khi làm đúng mọi thứ** — `lessons/0002`, đúng dạng vừa sửa cho `flat-ok` ở v2.61.0.
+  //
+  // Ca đáng canh nhất là `capoTran: 0`: **0 là một số đo THẬT** (chạm trần trong cửa sổ 30
+  // ngày, nhưng 0 lần trong cửa sổ 7 ngày của mục). Một phép kiểm `if (!capoTran)` nuốt nó và
+  // rơi ngược về `flat-limited` — số đo có thật mà đọc thành chưa đo, `lessons/0006`.
+  const RD = [
+    // nhãn                          entries                                                  đọc được?
+    ['mục hợp lệ',                   [{ at: at(2), days: 30, capoTran: 0.15, hits: 19 }],      true ],
+    ['capoTran = 0 LÀ số đo',        [{ at: at(2), days: 7, capoTran: 0, hits: 0 }],           true ],
+    ['mục CUỐI thắng',               [{ at: at(2), days: 30, capoTran: 9 }, { at: at(1), days: 30, capoTran: 0.2 }], true ],
+    ['đúng hạn 30 ngày',             [{ at: at(30), days: 30, capoTran: 0.15 }],               true ],
+    ['quá hạn 31 ngày',              [{ at: at(31), days: 30, capoTran: 0.15 }],               false],
+    ['mục ở TƯƠNG LAI (lệch giờ)',   [{ at: at(-3), days: 30, capoTran: 0.15 }],               false],
+    ['thiếu capoTran',               [{ at: at(2), days: 30, hits: 19 }],                      false],
+    ['capoTran âm',                  [{ at: at(2), days: 30, capoTran: -1 }],                  false],
+    ['days = 0',                     [{ at: at(2), days: 0, capoTran: 0.15 }],                 false],
+    ['ngày không parse được',        [{ at: 'hôm qua', days: 30, capoTran: 0.15 }],            false],
+    ['sổ rỗng',                      [],                                                       false],
+    ['không phải mảng',              null,                                                     false],
+  ];
+  const badRd = [];
+  for (const [label, entries, want] of RD) {
+    const got = flatCapoReading(entries, NOW) !== null;
+    if (got !== want) badRd.push(`${label}: đọc được=${got}, cần ${want}`);
+  }
+  // Mục giữ NGUYÊN cửa sổ của nó. Giả định 30 ở bên đọc làm tỉ lệ 7 ngày bị in cạnh "19 lần
+  // trong 30 ngày" như thể cùng một cửa sổ — một phân số ghép từ hai khoảng thời gian.
+  const win = flatCapoReading([{ at: at(1), days: 7, capoTran: 0.4 }], NOW);
+  if (win?.days !== 7) badRd.push(`cửa sổ của mục bị mất: days=${win?.days} ≠ 7`);
+
+  // HAI ĐẦU: `budgetStatus` phải ĐỔI MODE theo số đo đó, không chỉ mang thêm một field mà
+  // không nhánh nào rẽ. Và chiều NGƯỢC — số đo quá hạn phải rơi LẠI `flat-limited`, nếu không
+  // thì mục này tắt vĩnh viễn sau đúng một lần đo, và ta đổi một cảnh báo luôn bật lấy một
+  // cảnh báo không bao giờ bật.
+  const FRESH = [{ at: at(2), days: 30, capoTran: 0.15, hits: 19 }];
+  const STALE = [{ at: at(60), days: 30, capoTran: 0.15, hits: 19 }];
+  const withCapo = budgetStatus({ cap: 0, role: 'consumer', plan: 'flat', rateLimitHits: 19, flatCapo: FRESH, now: NOW });
+  const withStale = budgetStatus({ cap: 0, role: 'consumer', plan: 'flat', rateLimitHits: 19, flatCapo: STALE, now: NOW });
+  const zeroHits = budgetStatus({ cap: 0, role: 'consumer', plan: 'flat', rateLimitHits: 0, flatCapo: FRESH, now: NOW });
+  if (withCapo.mode !== 'flat-capo') badRd.push(`đã đo mà mode = ${withCapo.mode} ≠ flat-capo`);
+  if (withCapo.flatCapo !== 0.15 || withCapo.flatDays !== 30) badRd.push(`flat-capo thiếu số đo: ${withCapo.flatCapo}/${withCapo.flatDays}`);
+  if (withCapo.advice) badRd.push('flat-capo vẫn còn `advice` — nó không phải việc tới hạn nữa');
+  if (withStale.mode !== 'flat-limited') badRd.push(`số đo 60 ngày mà mode = ${withStale.mode} ≠ flat-limited — mục sẽ tắt vĩnh viễn sau MỘT lần đo`);
+  if (zeroHits.mode !== 'flat-ok') badRd.push(`0 lần chạm + có số đo ⇒ ${zeroHits.mode} ≠ flat-ok — không chạm trần thì không có gì để chia`);
+
+  if (badRd.length) fail.push(`flatCapoReading${L.slice(3)} ${badRd.length}/${RD.length + 6} ca sai: ${badRd.join(' | ')}`);
+  else ok.push(`flatCapoReading${L.slice(3)} ${RD.length + 6} ca — \`capoTran: 0\` LÀ số đo · cửa sổ đi theo mục · quá hạn rơi LẠI \`flat-limited\``);
 
   // Hai tầng khai `plan`: env THEO NGƯỜI thắng config THEO ĐỘI. Ca thứ ba là ca có giá trị —
   // một đội có người dùng Pro phẳng và người dùng API theo mức dùng, và ép cả hai theo một
@@ -2488,6 +2540,42 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
 
   // PHÉP CHIA có được chạy không, hay ta chỉ đi qua nhánh `0 kết quả`? Nói ra, đừng đoán.
   const ratioRan = /CAPO-TRẦN = \d/.test(three.stdout || '');
+
+  // ④ SỔ RIÊNG (#180). Bất biến ở CẢ HAI nhánh — và vế `!ratioRan` mới là vế đắt: nhánh
+  //   "0 kết quả được chấp nhận" KHÔNG được ghi gì cả. Ghi một mục `capoTran: null` ở đó là
+  //   đúng lỗi #107 (sổ đo lường bị neo vào một mục rác), và nó sẽ làm `flatCapoReading` trả
+  //   một số đo bịa cho mọi kỳ sau.
+  const flatEntries = () => (readJson(join(st, 'capo-flat-history.json'), { entries: [] }).entries || []);
+  if (!ratioRan) {
+    if (readJson(join(st, 'capo-flat-history.json'), null)) {
+      bad.push('0 kết quả được chấp nhận mà sổ phẳng VẪN được ghi — một mục không có mẫu số neo mọi kỳ sau vào nó');
+    }
+  } else {
+    // MỘT mục cho MỖI lần chạy tính được, không hơn: ① (sổ rỗng ⇒ tỉ lệ 0.00) và ② (3 lần
+    // chạm) đều tính được. ③ chạy gói METERED — nó KHÔNG được chạm vào sổ phẳng, và số 2 ở
+    // đây là chỗ duy nhất bắt được điều đó.
+    const es = flatEntries();
+    if (es.length !== 2) bad.push(`hai lần chạy PHẲNG tính được ⇒ phải 2 entry, có ${es.length}`
+      + (es.length === 3 ? ' — lần chạy gói METERED cũng ghi vào sổ phẳng' : ''));
+    const junk = es.filter(e => !Number.isFinite(e.capoTran) || !Number.isFinite(e.days) || !Number.isFinite(e.hits));
+    if (junk.length) bad.push(`entry sổ phẳng thiếu số hữu hạn: ${JSON.stringify(junk[0])}`);
+    // KHÔNG được lẫn vào sổ của nhánh `--usd`: hai hình dạng trong một mảng là #107.
+    const meteredHist = readJson(join(st, 'capo-history.json'), { entries: [] });
+    if ((meteredHist.entries || []).some(e => 'capoTran' in e)) bad.push('mục hình dạng gói PHẲNG lọt vào `capo-history.json` — `latestCapoEntry()` sẽ đọc nó như một số đo USD');
+
+    // ⑤ XU HƯỚNG — lý do cả bản vá này tồn tại. Một con số nổi không đọc được; cái đọc được
+    //   là nó ĐI LÊN hay không. Lần chạy thứ hai phải so với lần thứ nhất.
+    const again = runCapo({ HARNESS_BUDGET_PLAN: 'flat' });
+    if (!/so kỳ trước:/.test(again.stdout || '')) bad.push('chạy lại KHÔNG in xu hướng — sổ ghi mà không ai đọc thì bằng không ghi');
+    if (flatEntries().length !== 3) bad.push(`lần chạy sau không nối thêm entry (${flatEntries().length} ≠ 3)`);
+
+    // ⑥ CỬA SỔ KHÁC NHAU thì KHÔNG so — trộn tỉ lệ 7 ngày với tỉ lệ 30 ngày là một phân số bịa.
+    const win7 = spawnSync(process.execPath, [repoPath('tooling', 'capo-report.mjs'), '--days', '7'],
+      { encoding: 'utf8', cwd: repoPath(''), env: { ...process.env, HARNESS_STATE_DIR: st, HARNESS_TELEMETRY_DIR: tel, HARNESS_BUDGET_PLAN: 'flat' } });
+    if (/CAPO-TRẦN = \d/.test(win7.stdout || '') && !/KHÔNG so được/.test(win7.stdout || '')) {
+      bad.push('đổi `--days` mà vẫn so với kỳ trước — hai cửa sổ khác nhau cho hai tỉ lệ khác nhau');
+    }
+  }
   rmSync(tel, { recursive: true, force: true });
   rmSync(st, { recursive: true, force: true });
   if (bad.length) fail.push(`CAPO gói phẳng${L.slice(1)} ${bad.length} ca sai: ${bad.join(' | ')}`);
@@ -2495,10 +2583,11 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     // Ba khẳng định ĐÃ kiểm; phép chia `hits / accepted` thì CHƯA — repo này không có merge nào
     // trong cửa sổ. Ghi `n/a`, KHÔNG ghi pass: một ca không chạy tới mà báo xanh đọc y hệt một
     // ca chạy tới và đạt, và đó là chế độ hỏng đắt nhất của cả lớp verification này.
-    declareNa(1, `CAPO gói phẳng${L.slice(1)} sổ vắng ⇒ 0 · 3 dòng ⇒ 3 · metered KHÔNG đổi hành vi ĐÃ kiểm; `
-      + 'phép chia `hits / accepted` KHÔNG kiểm được ở đây (0 merge trong cửa sổ — checkout nông ở CI). '
-      + 'Chạy suite ở máy có lịch sử git để phủ nó.');
-  } else ok.push(`CAPO gói phẳng${L.slice(1)} sổ vắng ⇒ 0 (không phải \`?\`) · 3 dòng ⇒ 3 · metered KHÔNG đổi hành vi · phép chia chạy thật`);
+    declareNa(1, `CAPO gói phẳng${L.slice(1)} sổ vắng ⇒ 0 · 3 dòng ⇒ 3 · metered KHÔNG đổi hành vi · `
+      + '"0 kết quả ⇒ KHÔNG ghi sổ" ĐÃ kiểm; phép chia `hits / accepted` và XU HƯỚNG KHÔNG kiểm được ở đây '
+      + '(0 merge trong cửa sổ — checkout nông ở CI). Chạy suite ở máy có lịch sử git để phủ nó.');
+  } else ok.push(`CAPO gói phẳng${L.slice(1)} sổ vắng ⇒ 0 (không phải \`?\`) · 3 dòng ⇒ 3 · metered KHÔNG đổi hành vi · `
+    + 'phép chia chạy thật · sổ RIÊNG một mục mỗi lần chạy, METERED không chạm vào, không lẫn vào sổ USD · xu hướng in ở lần sau · đổi cửa sổ thì TỪ CHỐI so');
 }
 
 // ─── sổ ghi được thì phải ĐÓNG được ─────────────────────────────────────────

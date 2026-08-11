@@ -384,6 +384,17 @@ export const RITUALS = [
       // con số đó do chính harness đếm, không phải người chép từ dashboard.
       if (b.mode === 'flat-unmeasured') return { state: '?', why: b.advice };
       if (b.mode === 'flat-limited') return { state: 'due', why: b.advice };
+      // ĐÃ ĐO ⇒ không còn việc tới hạn. Việc mà mục này đòi là *"đo CAPO-TRẦN"*, không phải
+      // *"đừng chạm trần"* — số lần chạm nằm trong quá khứ và không hành động nào hôm nay
+      // làm nó nhỏ lại. Treo đỏ vào một con số bất biến 30 ngày là một nghi thức KHÔNG TẮT
+      // ĐƯỢC, và đó là `lessons/0002` ở dạng tôi vừa sửa cho `flat-ok` ở v2.61.0 (#180).
+      //
+      // Nó ĐỎ LẠI khi số đo quá 30 ngày — bằng đúng cửa sổ đếm hits, xem `flatCapoReading`.
+      if (b.mode === 'flat-capo') {
+        return { state: 'ok', why: `gói PHẲNG · CAPO-TRẦN = ${b.flatCapo} lần chạm trần / kết quả được chấp nhận `
+          + `(${b.rateLimitHits} lần trong 30 ngày · tỉ lệ đo trên cửa sổ ${b.flatDays} ngày, ${b.flatAgeDays} ngày trước). `
+          + 'Xu hướng — con số ĐÁNG đọc, không phải giá trị tuyệt đối — in ra khi chạy lại lệnh trên' };
+      }
       if (b.mode === 'flat-ok') {
         // KHÔNG còn treo vào `b.measured`. Cờ đó hỏi *"đã có ai NHẬP một con số USD chưa"* — câu
         // hỏi chỉ có nghĩa với gói METERED, nơi con số phải chép tay từ dashboard. Với gói phẳng,

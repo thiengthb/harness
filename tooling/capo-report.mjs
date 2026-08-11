@@ -22,6 +22,8 @@ import { join } from 'node:path';
 // Cùng đường dẫn mà `latestCapoEntry()` đọc — qua `stateDir()` để HARNESS_STATE_DIR chuyển
 // được đích trong test. Ghi thẳng `.claude/state/` là cách một test ghi vào sổ THẬT của bạn.
 const CAPO_HISTORY = () => join(stateDir(), 'capo-history.json');
+// Sổ của gói PHẲNG — file RIÊNG. Bên đọc: `flatCapoEntries()` trong lib. Xem §GÓI PHẲNG.
+const CAPO_FLAT_HISTORY = () => join(stateDir(), 'capo-flat-history.json');
 
 /**
  * ═══ BA TRẠNG THÁI CỦA MỘT CỜ, KHÔNG PHẢI HAI ═══════════════════════════════
@@ -184,12 +186,39 @@ if (PLAN === 'flat') {
       + `(${hits} lần · ${accepted} kết quả · ${DAYS} ngày)`);
     ok.push('gói PHẲNG: đây MỚI là CAPO của bạn. Tiền không giảm được (chi phí biên = 0); '
       + 'thứ giảm được là số lần chạm trần — cắt context thừa, ít phiên song song hơn. Xem docs/WIP.md.');
+
+    // ── SỔ RIÊNG, KHÔNG PHẢI HÌNH DẠNG THỨ HAI TRONG SỔ CŨ (#180) ─────────────
+    //
+    // `capo-history.json` giữ nguyên là sổ của nhánh `--usd`: `budgetStatus` đọc
+    // `entries.at(-1)` và mong `{usd, days}`. Nhét `{capoTran}` vào cùng mảng là đúng lớp
+    // lỗi #107 — một sổ đo lường bị neo vào một mục nó không hiểu. Hai FILE thì bên đọc cũ
+    // không thể đọc nhầm: nó không mở file kia.
+    //
+    // Vì sao phải ghi, chứ không chỉ in: cái đọc mà file này tồn tại vì nó — *"CAPO ĐI LÊN
+    // trong khi bạn 'cải thiện harness' ⇒ harness đang PHÌNH"* — là một XU HƯỚNG, không phải
+    // một con số. Tới trước bản này nhánh phẳng in một con số nổi không neo vào gì, nên
+    // người dùng gói phẳng có chỉ số đúng mà không bao giờ đọc được nó.
+    //
+    // `days` đi theo mục, KHÔNG giả định 30: `--days 7` cho một tỉ lệ trên 7 ngày, và so nó
+    // với một mục 30 ngày là so hai thứ khác nhau. Bên đọc phải thấy được cửa sổ.
+    const capoTran = Number(perOutcome.toFixed(2));
+    const prev = readJson(CAPO_FLAT_HISTORY(), { entries: [] });
+    const last = prev.entries.at(-1);
+    if (last && Number.isFinite(Number(last.capoTran))) {
+      if (Number(last.days) !== DAYS) {
+        warn.push(`kỳ trước đo trên cửa sổ ${last.days} ngày, kỳ này ${DAYS} — KHÔNG so được. `
+          + `Hai cửa sổ khác nhau cho hai tỉ lệ khác nhau; dùng cùng \`--days\` nếu muốn xu hướng.`);
+      } else {
+        const delta = capoTran - Number(last.capoTran);
+        const pct = Number(last.capoTran) ? delta / Number(last.capoTran) * 100 : 0;
+        (delta > 0 ? warn : ok).push(`so kỳ trước: ${delta >= 0 ? '+' : ''}${delta.toFixed(2)} lần/kết quả (${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%)`);
+        if (pct > 20) warn.push('CAPO-TRẦN tăng >20%: mỗi kết quả đang tốn NHIỀU lần chạm trần hơn trước. '
+          + 'Nếu bạn vừa "cải thiện harness" thì harness đang PHÌNH — node tooling/harness-size.mjs.');
+      }
+    }
+    prev.entries.push({ at: new Date().toISOString(), days: DAYS, hits, accepted, capoTran, manualFixes });
+    writeJson(CAPO_FLAT_HISTORY(), prev);
   }
-  // KHÔNG ghi `capo-history.json` ở nhánh này — CỐ Ý. `budgetStatus` đọc `entries.at(-1)` và
-  // mong một mục hình dạng {usd, days}; nhét một mục hình dạng khác vào cùng mảng là đúng lớp
-  // lỗi mà header file này ghi lại từ #107 (một sổ đo lường bị neo vào một mục rác). Muốn có
-  // xu hướng cho gói phẳng thì cần một sổ RIÊNG, và đó là một quyết định, không phải một
-  // tác dụng phụ.
 } else if (!Number.isFinite(USD)) {
   warn.push('Không có --usd → không tính được CAPO. Lấy con số từ dashboard billing và chạy lại: node tooling/capo-report.mjs --usd 120');
 }
