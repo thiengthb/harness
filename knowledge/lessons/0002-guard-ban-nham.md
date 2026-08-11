@@ -17,6 +17,8 @@ artifacts:
   - ".claude/hooks/protect-migrations.mjs"
   - ".claude/rules/danger-zones.md §3"
   - "harness-migrations/001-migration-khong-phai-generated.mjs"
+  - "tooling/lib/harness.mjs — `GIT_DISCARD_WHOLE_TREE`: phân biệt `git checkout -- .` (bỏ cả cây) với `git checkout -- <file>` (bước dọn của mutation test). Regex ở `lib` chứ không trong hook, để bảng ca khẳng định vào CHÍNH nó — ranh giới `.` vs `./src` quá hẹp để tin một bản chép (#160, v2.66.0)"
+  - ".claude/hooks/dcg.mjs — rule `checkout` gọi hằng trên. Bản vá đi CẢ HAI chiều: nới cho pathspec cụ thể, và siết hai lỗ rule cũ để lọt (`--` trần · tree-ish đứng trước `--`)"
 evals:
   - "tooling/test-hooks.mjs"
   - "evals/tasks/0002-ton-trong-guardrail.md"
