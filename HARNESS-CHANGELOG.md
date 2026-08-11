@@ -11,6 +11,56 @@
 
 ---
 
+## 2.64.0 — 2026-08-12
+
+**minor.** `fixlog` có **trạng thái thứ tư**: `⇢` *đã có địa chỉ, đang chờ*. Và ngưỡng của
+`/harness-retro` chuyển từ số ĐỜI sang số CHƯA XỬ.
+
+### Defect: hai mục đỏ vĩnh viễn nữa, trong cùng một hàm
+
+Cùng lớp lỗi với **#180** (v2.63.0), tầng trên:
+
+1. **Nhóm đã chưng cất vẫn đếm là "chưa chưng cất".** Ba trạng thái cũ — mở (`★`) · đã đóng
+   (`✔`) · tái phát (`↻`) — không có chỗ cho *"đã thành một việc CÓ ĐỊA CHỈ, đang chờ người
+   khác"*. Nhóm `node -e nuốt backtick` (3×) là **#177**: có spec, ba phương án, một khuyến
+   nghị; nó chờ **DRI** (bản vá nằm trong `.claude/hooks/`, vùng cấm). Chạy `/harness-retro`
+   lần nữa không sinh ra gì — nhưng mục đỏ vẫn nói *"ứng viên bài học ĐANG chờ"*.
+
+   `--close` **không** phải câu trả lời: nó nghĩa là *đã sửa tận gốc*. Đóng một việc đang chờ
+   là ghi lời khai sai VÀ xoá dấu vết rằng lỗi còn sống.
+
+2. **`fixlogTotal >= 10` là ngưỡng trên một con số CHỈ TĂNG.** Sổ chỉ biết ghi thêm, nên qua
+   mục thứ 10 nhánh này đỏ vĩnh viễn. Nay ngưỡng đặt trên **số mục chưa xử** (chưa đóng, chưa
+   có địa chỉ) — đóng hoặc ghi địa chỉ thì con số giảm THẬT.
+
+### Bản vá
+
+- **`node tooling/fixlog.mjs --track "<vài chữ>" "<issue + chờ gì>"`** → `.claude/telemetry/
+  fixlog-tracked.log`. Địa chỉ là **bắt buộc**: *"đang chờ"* mà không nói chờ ở đâu thì không
+  khác gì im lặng bỏ qua.
+- **`--track` KHÔNG giấu nhóm.** Nó vẫn in trong `--top` với đủ số đếm, và **tái phát sau khi
+  ghi địa chỉ được ĐẾM ra** — số đó nói việc đang chờ đắt lên, và nó thay cho một màu đỏ không
+  tắt được.
+- **`groupTracked()` kết luận NGƯỢC `groupStillClosed()`** trên cùng một phép tính (`rowsAfter`):
+  `--close` khai *"lỗi này không xảy ra nữa"* ⇒ mục mới **bác bỏ** ⇒ mở lại; `--track` khai
+  *"tôi biết, nó ở #177"* ⇒ mục mới **xác nhận** ⇒ vẫn đang chờ. Có ca test riêng cho đúng
+  chỗ chép nhầm này.
+- **`groupMarks()`** — MỘT phép đọc sổ đánh dấu cho cả `fixlog --top` lẫn `rituals`. Trước đó
+  mỗi bên tự parse TSV, và bản `rituals` vứt cột thời gian (#176, #125).
+- `rituals` nói ra việc đang chờ **kể cả trong dòng XANH**, kèm số issue.
+
+### Không có migration
+
+Sổ mới tự sinh ở lần `--track` đầu tiên. Không có `--track` nào thì mọi thứ giữ nguyên hành vi
+cũ. Guard chống lệch trong `test-hooks` mở rộng: `rituals.mjs` và `fixlog.mjs` **phải GỌI**
+`groupTracked()` và `groupMarks()`, không được tự quyết.
+
+**Mutation 5/5 giết, cả năm chạy được.** M5 (*ngưỡng quay lại đếm số đời*) **sống sót ở lượt
+đầu** — nguyên nhân ① lỗ hổng độ phủ thật: fixture chỉ có 3 mục nên nhánh ngưỡng chưa bao giờ
+chạy. Chi tiết: `docs/progress/182.md`.
+
+---
+
 ## 2.63.0 — 2026-08-11
 
 **minor.** Gói PHẲNG có **sổ đo riêng**, nên CAPO-TRẦN đọc được **xu hướng** — và nghi thức

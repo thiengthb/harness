@@ -15,11 +15,12 @@
  */
 import { readFileSync, existsSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { telemetry, telemetryDir, currentBranch, fixlogKey, fixlogGroupRules, FIXLOG_GROUPS_FILE, groupStillClosed } from './lib/harness.mjs';
+import { telemetry, telemetryDir, currentBranch, fixlogKey, fixlogGroupRules, FIXLOG_GROUPS_FILE,
+  FIXLOG_CLOSED_FILE, FIXLOG_TRACKED_FILE, groupMarks, groupStillClosed, groupTracked } from './lib/harness.mjs';
 
 const args = process.argv.slice(2);
 const file = join(telemetryDir(), 'manual-fixes.log');
-const closedFile = join(telemetryDir(), 'fixlog-closed.log');
+const closedFile = FIXLOG_CLOSED_FILE();
 
 // Luật gom nhóm do NGƯỜI khai. Đọc MỘT lần rồi truyền xuống mọi chỗ gọi `fixlogKey` trong file
 // này — `--top` và `--close` phải nhìn thấy đúng một tập nhóm, nếu không thì `--close` đóng một
@@ -37,16 +38,9 @@ function groupLog() {
   return groups;
 }
 
-/** Nhóm đã đóng → { ts, why }. Cùng thư mục telemetry với fixlog: cả hai là dữ liệu MÁY NÀY. */
-function readClosed() {
-  const m = new Map();
-  if (!existsSync(closedFile)) return m;
-  for (const l of readFileSync(closedFile, 'utf8').split('\n').filter(Boolean)) {
-    const [ts, key, ...why] = l.split('\t');
-    m.set(key, { ts, why: why.join(' ').trim() });
-  }
-  return m;
-}
+/** Nhóm đã đóng / đã có địa chỉ → { ts, note }. Cùng thư mục telemetry: dữ liệu MÁY NÀY. */
+const readClosed = () => groupMarks(closedFile);
+const readTracked = () => groupMarks(FIXLOG_TRACKED_FILE());
 
 function readLog() {
   if (!existsSync(file)) return [];
@@ -70,15 +64,21 @@ if (args[0] === '--list') {
 if (args[0] === '--top') {
   const groups = groupLog();
   const closed = readClosed();
+  const tracked = readTracked();
   const manual = new Set(RULES.map(r => r.key));
   const sorted = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
   console.log('\n=== NHÓM THEO TẦN SUẤT ===');
   for (const [k, rows] of sorted.slice(0, 15)) {
     const done = closed.get(k);
+    const track = tracked.get(k);
     // TÁI PHÁT: đã đóng, mà vẫn có mục ghi SAU ngày đóng. Dấu ✔ khi đó là một lời khai sai —
     // và nó sai theo chiều im lặng (`L0006`): việc chưa xong đọc y hệt việc đã xong.
     const { closed: stillClosed, recurred } = groupStillClosed(done?.ts, rows.map(r => r.ts));
-    const flag = recurred.length ? '↻' : stillClosed ? '✔' : rows.length >= 2 ? '★' : ' ';
+    const trk = groupTracked(track?.ts, rows.map(r => r.ts));
+    // THỨ TỰ ƯU TIÊN, và nó không tuỳ ý: `↻` trước vì nó BÁC BỎ một lời khai (đã đóng mà vẫn
+    // xảy ra); `✔` trước `⇢` vì đã sửa xong thì cái địa chỉ kia không còn là việc. `⇢` đứng
+    // trên `★` vì `★` nghĩa là *"chưa ai chưng cất"* — với nhóm đã có địa chỉ thì đó là sai.
+    const flag = recurred.length ? '↻' : stillClosed ? '✔' : trk.tracked ? '⇢' : rows.length >= 2 ? '★' : ' ';
     const by = manual.has(k) ? ' ⊕' : '';
     console.log(`${flag} ${String(rows.length).padStart(3)}×${by}  ${rows[0].text}`);
     // Nhóm THỦ CÔNG in HẾT các văn bản khác nhau nó đã gom. Nếu chỉ in dòng đầu như nhóm từ
@@ -90,18 +90,28 @@ if (args[0] === '--top') {
     if (recurred.length) {
       console.log(`         ↻ MỞ LẠI — đóng ngày ${String(done.ts).slice(0, 10)} nhưng có ${recurred.length} mục ghi SAU đó `
         + `(gần nhất ${recurred.at(-1).slice(0, 10)}). Lý do đóng cũ KHÔNG còn phủ được nhóm này.`);
-      console.log(`         lý do đóng cũ: ${String(done.why).slice(0, 150)}`);
-    } else if (done) console.log(`         ĐÃ ĐÓNG ${String(done.ts).slice(0, 10)}: ${done.why}`);
+      console.log(`         lý do đóng cũ: ${String(done.note).slice(0, 150)}`);
+    } else if (done) console.log(`         ĐÃ ĐÓNG ${String(done.ts).slice(0, 10)}: ${done.note}`);
+    else if (trk.tracked) {
+      // Tái phát KHÔNG đổi dấu — nó là bằng chứng CỘNG THÊM cho việc đang chờ, không phải một
+      // lời khai bị bác bỏ (xem `groupTracked` ở lib). Nhưng nó phải HIỆN RA: đó là con số nói
+      // cho bạn biết việc đang chờ kia đắt lên, và nó thay cho một màu đỏ không tắt được.
+      console.log(`         ⇢ ĐANG CHỜ ${trk.recurred.length ? `— và đã TÁI PHÁT ${trk.recurred.length} lần kể từ khi ghi` : ''}`.trimEnd());
+      console.log(`         ${String(track.note).slice(0, 150)} (ghi ${String(track.ts).slice(0, 10)})`);
+    }
   }
   console.log('\n  ★ = xuất hiện ≥2 lần → ĐỦ ĐIỀU KIỆN promote thành bài học (một lần là ngẫu nhiên).');
   console.log('  ✔ = đã xử lý xong, không tính là việc tới hạn nữa.');
+  console.log('  ⇢ = ĐÃ CÓ ĐỊA CHỈ (issue/PR), đang chờ — retro đã làm xong phần của nó, việc chờ NGƯỜI KHÁC.');
+  console.log('      Tái phát KHÔNG mở lại nhóm này, nhưng số lần tái phát in ra: nó nói việc đang chờ đắt lên.');
   console.log('  ↻ = ĐÃ ĐÓNG rồi mà TÁI PHÁT — có mục ghi sau ngày đóng. Đóng lại bằng `--close` mới, hoặc tách nhóm.');
   console.log('  ⊕ = nhóm do BẠN khai (--group), không phải máy đoán. Mọi văn bản trong nhóm in ngay dưới.');
   console.log('\n  Nhóm mặc định là phép LEXICAL "6 từ đầu" — nó chỉ gom được khi bạn tình cờ mở đầu');
   console.log('  giống nhau, nên "0 nhóm ★" KHÔNG có nghĩa là "không có gì lặp lại". Thấy hai dòng');
   console.log('  cùng một gốc rễ mà nằm rời nhau thì khai nhóm:');
   console.log('    node tooling/fixlog.mjs --group "<tên-nhóm>" "<vài chữ chung của các dòng đó>"');
-  console.log('    node tooling/fixlog.mjs --close "<vài chữ trong mục>" "<đã làm gì>"   # sau khi xử xong\n');
+  console.log('    node tooling/fixlog.mjs --track "<vài chữ trong mục>" "<issue + chờ gì>"  # đã có địa chỉ');
+  console.log('    node tooling/fixlog.mjs --close "<vài chữ trong mục>" "<đã làm gì>"       # sau khi xử XONG\n');
   process.exit(0);
 }
 
@@ -151,14 +161,10 @@ if (args[0] === '--group') {
 // KHỚP THEO VĂN BẢN, không theo số thứ tự: thứ tự trong `--top` đổi mỗi lần có dòng mới, nên
 // `--close 2` hôm nay và `--close 2` ngày mai là hai nhóm khác nhau. Khớp 0 hoặc >1 nhóm thì
 // TỪ CHỐI kèm danh sách ứng viên — đóng nhầm nhóm là làm tắt một cảnh báo đang đúng.
-if (args[0] === '--close') {
-  const needle = (args[1] || '').trim().toLowerCase();
-  const why = args.slice(2).join(' ').trim();
-  if (!needle || !why) {
-    console.error('Cách dùng: node tooling/fixlog.mjs --close "<vài chữ trong mục>" "<đã xử lý thế nào>"');
-    console.error('  Lý do là BẮT BUỘC: một nhóm bị đóng mà không ghi vì sao thì lần sau không ai dựng lại được quyết định.');
-    process.exit(1);
-  }
+// Khớp ĐÚNG MỘT nhóm theo văn bản, hoặc dừng kèm danh sách ứng viên. Dùng chung bởi `--close`
+// và `--track`: hai lệnh khác nhau về NGHĨA, nhưng phép chọn nhóm phải giống hệt nhau — lệch
+// nhau thì `--track` đánh dấu một nhóm mà `--close` không nhìn thấy.
+function findOneGroup(needle) {
   const groups = groupLog();
   const hits = [...groups.entries()].filter(([, rows]) => rows[0].text.toLowerCase().includes(needle));
   if (hits.length !== 1) {
@@ -168,7 +174,43 @@ if (args[0] === '--close') {
     }
     process.exit(1);
   }
-  const [key, rows] = hits[0];
+  return hits[0];
+}
+
+// ── --track : nhóm ĐÃ THÀNH một việc có địa chỉ, đang chờ ────────────────────
+//
+// Trạng thái thứ tư. Xem `groupTracked()` ở `lib/harness.mjs` cho lý do đầy đủ; tóm tắt:
+// `--close` khai *"đã sửa tận gốc"*, còn đây khai *"tôi biết, nó ở #177, đang chờ người khác"*.
+// Không có trạng thái này thì một nhóm bị chặn ngoài tầm tay bạn đội `★` mãi mãi, và
+// `/harness-retro` bảo bạn chưng cất một thứ đã chưng cất rồi.
+if (args[0] === '--track') {
+  const needle = (args[1] || '').trim().toLowerCase();
+  const ref = args.slice(2).join(' ').trim();
+  if (!needle || !ref) {
+    console.error('Cách dùng: node tooling/fixlog.mjs --track "<vài chữ trong mục>" "<issue/PR + đang chờ gì>"');
+    console.error('  Ví dụ:   node tooling/fixlog.mjs --track "nuot backtick" "#177 — chờ DRI, bản vá nằm trong .claude/hooks/"');
+    console.error('  ĐỊA CHỈ là BẮT BUỘC: "đang chờ" mà không nói chờ ở đâu thì không khác gì im lặng bỏ qua.');
+    process.exit(1);
+  }
+  const [key, rows] = findOneGroup(needle);
+  appendFileSync(FIXLOG_TRACKED_FILE(), [new Date().toISOString(), key, ref].join('\t') + '\n', 'utf8');
+  console.log(`\n⇢ đã ghi địa chỉ cho nhóm (${rows.length}×): ${rows[0].text.slice(0, 100)}`);
+  console.log(`  đang chờ: ${ref}`);
+  console.log('  Nhóm KHÔNG bị giấu: nó vẫn in trong `--top` với đủ số đếm, và nếu tái phát thì số lần');
+  console.log('  tái phát hiện ra cạnh nó. Sửa xong thì `--close`, đừng để nguyên ở đây.\n');
+  process.exit(0);
+}
+
+if (args[0] === '--close') {
+  const needle = (args[1] || '').trim().toLowerCase();
+  const why = args.slice(2).join(' ').trim();
+  if (!needle || !why) {
+    console.error('Cách dùng: node tooling/fixlog.mjs --close "<vài chữ trong mục>" "<đã xử lý thế nào>"');
+    console.error('  Lý do là BẮT BUỘC: một nhóm bị đóng mà không ghi vì sao thì lần sau không ai dựng lại được quyết định.');
+    console.error('  Chưa sửa xong mà chỉ đang chờ ai đó? Dùng `--track`, đừng dùng `--close`.');
+    process.exit(1);
+  }
+  const [key, rows] = findOneGroup(needle);
   appendFileSync(closedFile, [new Date().toISOString(), key, why].join('\t') + '\n', 'utf8');
   console.log(`\n✔ đã đóng nhóm (${rows.length}×): ${rows[0].text.slice(0, 100)}`);
   console.log(`  lý do: ${why}`);
@@ -183,7 +225,8 @@ if (!text) {
   node tooling/fixlog.mjs --list     # 7 ngày qua
   node tooling/fixlog.mjs --top      # nhóm theo tần suất, đánh dấu cái đủ điều kiện promote
   node tooling/fixlog.mjs --group "<tên-nhóm>" "<vài chữ chung>"     # khai hai dòng là cùng gốc rễ
-  node tooling/fixlog.mjs --close "<vài chữ>" "<đã xử lý thế nào>"   # đóng một nhóm đã xử xong`);
+  node tooling/fixlog.mjs --track "<vài chữ>" "<issue + chờ gì>"     # đã thành việc CÓ ĐỊA CHỈ, đang chờ
+  node tooling/fixlog.mjs --close "<vài chữ>" "<đã xử lý thế nào>"   # đóng một nhóm đã xử XONG`);
   process.exit(1);
 }
 

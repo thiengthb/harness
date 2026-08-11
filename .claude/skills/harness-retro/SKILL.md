@@ -102,10 +102,21 @@ Mỗi thay đổi promote phải kèm một đề xuất cắt bỏ. Không nh�
 Không có bước này, mọi retro chỉ thêm, và harness thành nghĩa địa của những
 giả định đã hết hạn.
 
-## Bước 5 — Ghi ra file
+## Bước 5 — Ghi ra file, VÀ đóng vòng trên chính cái sổ
 
 `.claude/learnings/<năm>-W<tuần>-<tên>.md`. **KHÔNG tự sửa harness.**
 Người quyết định promote → `/knowledge-promote`.
+
+Rồi trả lời sổ fixlog, nếu không nó hỏi lại bạn đúng câu đó mỗi phiên:
+
+```
+node tooling/fixlog.mjs --track "<vài chữ>" "#<issue> — chờ gì"   # đã thành việc CÓ ĐỊA CHỈ
+node tooling/fixlog.mjs --close "<vài chữ>" "<đã sửa tận gốc thế nào>"
+```
+
+`--track` **không giấu** nhóm: nó vẫn in với đủ số đếm, và mỗi lần tái phát sau đó được đếm
+ra cạnh nó. Đừng dùng `--close` cho việc mới chỉ *đang chờ* — `✔` nghĩa là **đã sửa tận gốc**,
+và một nhóm đội `✔` sai làm bạn mù đúng chỗ lỗi vẫn đang xảy ra.
 
 ## Bước 6 — Nhìn ba con số
 

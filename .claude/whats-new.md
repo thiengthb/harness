@@ -1,4 +1,4 @@
-<!-- version: 2026-08-11-i -->
+<!-- version: 2026-08-12-a -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,26 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-12 — `fixlog`: trạng thái thứ tư `⇢` ĐANG CHỜ (v2.64.0)
+
+Một nhóm fixlog đã thành issue nhưng bị chặn ngoài tầm tay bạn thì trước đây **không có cách
+nào khai báo**: `--close` nghĩa là *đã sửa tận gốc*, còn để nguyên thì `/harness-retro` đỏ
+vĩnh viễn và bảo bạn chưng cất một thứ đã chưng cất rồi.
+
+```
+node tooling/fixlog.mjs --track "<vài chữ>" "#177 — chờ DRI, bản vá nằm trong .claude/hooks/"
+```
+
+1. Nhóm mang dấu **`⇢`**, **không bị giấu**: vẫn in đủ số đếm, và mỗi lần **tái phát sau khi
+   ghi địa chỉ** được đếm ra cạnh nó — con số đó nói việc đang chờ đang đắt lên.
+2. `/harness-retro` thôi tính nó là *"ứng viên chờ chưng cất"*, và **nói ra số issue kể cả
+   trong dòng xanh**.
+3. Ngưỡng *"≥10 mục thì đáng đọc một lượt"* nay đếm **mục CHƯA XỬ**, không đếm số đời — sổ chỉ
+   ghi thêm, nên ngưỡng cũ đỏ vĩnh viễn sau mục thứ 10.
+
+Trên sổ thật: hai nhóm đã ghi địa chỉ (**#177** · **#160**), bảng nghi thức từ **2 mục đỏ** về
+**0**.
 
 ## 2026-08-11 — gói PHẲNG: CAPO-TRẦN có sổ, nên có XU HƯỚNG (v2.63.0)
 
