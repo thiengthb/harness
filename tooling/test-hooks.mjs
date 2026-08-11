@@ -73,18 +73,15 @@ sweepStaleTestRuns();
 /**
  * Chạy một MUTANT của hook và trả { killed, ran, note }.
  *
- * `ran` là trường quan trọng, không phải `killed`. Một mutant CHỈ CRASH chứng minh
- * suite nhận ra file hỏng — nó KHÔNG nói gì về hành vi mà mutant tuyên bố đã gỡ bỏ.
- * Đây là cái bẫy giết mọi mutation test: mutant crash → probe thấy "không phải
- * output khoẻ mạnh" → suite ghi nhận "đã giết mutant" → XANH MÀ CHƯA KIỂM GÌ CẢ.
- * Đó là thất bại tệ nhất có thể xảy ra ở đúng cơ chế sinh ra để chứng minh một
- * check CÓ THỂ đỏ. Cách vá an toàn: `[].push(...)` thay vì `if (false)`.
+ * `ran` là trường quan trọng, không phải `killed` — một mutant CHỈ CRASH chứng minh suite nhận
+ * ra file hỏng, KHÔNG nói gì về hành vi mà mutant tuyên bố đã gỡ. Vá an toàn: `[].push(...)`
+ * thay vì `if (false)`.
  *
- * VÀ KHI MUTANT SỐNG SÓT: nhìn PHẠM VI của check TRƯỚC khi nhìn logic. Logic là thứ
- * tác giả đang nghĩ tới lúc viết test nên nó được phủ; còn phạm vi — áp cho file nào,
- * dòng nào — được khai một lần rồi không ai khẳng định lại. Nên mutant ĐẦU TIÊN hãy
- * tiêu vào phạm vi: thay bộ lọc bằng `() => true`. Suite vẫn xanh ⇒ dòng khai báo
- * phạm vi đó là trang trí.
+ * ĐỌC `knowledge/lessons/0006-do-khong-duoc-khong-phai-la-khong.md` §"Ba cách một MUTANT SỐNG
+ * SÓT" TRƯỚC KHI đi sửa bản vá: hai trong ba nguyên nhân KHÔNG nằm ở bản vá (mutant tương
+ * đương · ca test neo rộng hơn thứ nó khoá), và mutant đầu tiên phải tiêu vào PHẠM VI chứ
+ * không vào logic. Kiến thức đó ở MỘT chỗ, không ở đây — bản trước giữ nó cả ở đây lẫn trong
+ * bài học, và tôi vẫn tự viết lại script mutation bốn lần mà không đọc chỗ nào (2026-08-11).
  *
  * Mutant chạy trên một BẢN SAO cạnh file gốc (cần cùng thư mục để import tương đối
  * `../../tooling/lib/harness.mjs` còn resolve được). File gốc KHÔNG BAO GIỜ bị ghi.
