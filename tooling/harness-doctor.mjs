@@ -17,7 +17,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, devId, TEST_TELEMETRY_DIR, TEST_RUN_ID, sweepStaleTestRuns, coordinationLayer, verificationCoverage, readPacks, packPending, budgetSnapshot, configCoverage } from './lib/harness.mjs';
+import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, devId, TEST_TELEMETRY_DIR, TEST_RUN_ID, sweepStaleTestRuns, coordinationLayer, verificationCoverage, readPacks, packPending, budgetSnapshot, configCoverage, stuckRituals, readRitualStates } from './lib/harness.mjs';
 
 const QUICK = process.argv.includes('--quick');
 // PHẢI chụp TRƯỚC khi chạy các suite bên dưới: nó là mốc phân biệt "telemetry suite của lần
@@ -355,6 +355,34 @@ console.log(`  fixlog: ${fixCount} mục  ·  bài học: ${lessonCount}  ·  ev
   + `  ·  pack chờ quyết: ${pend === null ? '?' : pend.count}`);
 if (pend === null) advice.push('không đọc được knowledge/incoming/ — đây là `?`, không phải "không có pack nào"');
 else if (pend.count) advice.push(`${pend.count} pack chờ quyết (${pend.material} mục nguyên liệu) ở knowledge/incoming/ — quyết đi: node tooling/knowledge/accept.mjs --list`);
+
+// ── Nghi thức nào ĐỎ mà không tắt được bằng hành động nó đề nghị (L0008) ─────
+//
+// VÌ SAO Ở DOCTOR, KHÔNG PHẢI Ở `rituals`: một nghi thức canh các nghi thức khác rơi vào đúng
+// cái bẫy nó canh — nó đỏ khi có mục đỏ lâu, mà mục đỏ lâu thường là mục KHÔNG TẮT ĐƯỢC, nên nó
+// cũng không tắt được. Doctor chạy THEO YÊU CẦU, không in ở mỗi phiên, nên nó không có bề mặt
+// gây nhiễu. Cùng lý do W32 §3 bắt canary trước khi cắm hook.
+//
+// CÂU CHỮ LÀ SỐ ĐO, KHÔNG PHẢI SUY DIỄN. *"14 ngày liên tục đỏ, 0 lần xanh"* kiểm được;
+// *"nghi thức này hỏng"* thì không, và nó sai với người vừa nghỉ phép hai tuần (`L0002`).
+{
+  const sr = stuckRituals(readRitualStates());
+  const names = (rs) => rs.map(r => `${r.id} (${r.dueDays}ng)`).join(' · ');
+  const LINE = {
+    unmeasured: '  ?    chưa có sổ trạng thái nghi thức — nó tự ghi mỗi lần `rituals` chạy (SessionStart)',
+    warming: `  ?    sổ nghi thức mới quan sát được ${sr.spanDays}/${sr.days} ngày — chưa đủ cửa sổ để nói mục nào KHÔNG tắt được`,
+    stale: `  ?    sổ nghi thức ngừng cập nhật ${sr.staleDays} ngày trước — số này nói về quá khứ, không về hôm nay`,
+    stuck: `  ⚠️   ${sr.stuck?.length} nghi thức \`due\` liên tục ≥${sr.days} ngày với 0 lần \`ok\`: ${names(sr.stuck ?? [])}`,
+    pending: `  ok   ${sr.tracked} nghi thức · ${sr.pending?.length} mục đỏ lâu nhưng ĐÃ TỪNG xanh (${names(sr.pending ?? [])}) — việc tồn, không phải tín hiệu hỏng`,
+    ok: `  ok   ${sr.tracked} nghi thức theo dõi ${sr.spanDays} ngày — không mục nào đỏ liên tục ≥${sr.days} ngày`,
+  };
+  console.log(LINE[sr.mode]);
+  if (sr.mode === 'stuck') {
+    advice.push(`${sr.stuck.length} nghi thức đỏ ≥${sr.days} ngày mà CHƯA LẦN NÀO xanh: ${names(sr.stuck)}. `
+      + 'Hỏi đúng một câu: hành động ghi ở `cmd` có đổi được đại lượng đang lái mục đó không? '
+      + 'Nếu không thì đây không phải việc của bạn — đó là bug của nghi thức (knowledge/lessons/0008).');
+  }
+}
 
 if (fixCount === 0) advice.push('fixlog trống — vòng học chưa có nguyên liệu. Đây là việc RẺ NHẤT và GIÁ TRỊ NHẤT: `node tooling/fixlog.mjs "..."` mỗi lần bạn phải sửa tay (3 giây)');
 if (evalCount === 0) advice.push('không có eval task — bạn đang TỐI ƯU MÙ: không có cách nào biết một thay đổi harness làm tốt lên hay tệ đi');

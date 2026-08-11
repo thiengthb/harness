@@ -1,4 +1,4 @@
-<!-- version: 2026-08-12-a -->
+<!-- version: 2026-08-12-b -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,25 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-12 — harness tự đo: mục đỏ nào KHÔNG tắt được (v2.65.0)
+
+Năm lần trong hai tuần, một mục "tới hạn" đỏ vĩnh viễn vì đại lượng lái nó **không đổi được
+bằng hành động mà chính nó đề nghị**. Nay có phép đo thay cho trí nhớ:
+
+```
+node tooling/harness-doctor.mjs      # §VÒNG HỌC — hình dạng dòng bạn sẽ thấy:
+  ⚠️  2 nghi thức `due` liên tục ≥14 ngày với 0 lần `ok`: <tên> (31ng) · <tên> (19ng)
+  ?   sổ nghi thức mới quan sát được 0/14 ngày   ← hôm nay, và đó là câu trả lời ĐÚNG
+```
+
+1. `rituals` ghi trạng thái mỗi lượt vào `.claude/state/ritual-states.json` (bạn không phải gõ
+   gì — nó đã chạy ở mọi SessionStart). Sổ **O(1)**, không phình.
+2. Thấy dòng đó thì hỏi **đúng một câu**: *lệnh ghi ở `cmd` có đổi được con số đang lái mục này
+   không?* Không → đó không phải việc của bạn, đó là bug của nghi thức
+   (`knowledge/lessons/0008`).
+3. **CẮT:** `fixlog --list` thôi cảnh báo `≥10 lần/tuần` trên số ĐỜI. Sổ thật hôm nay: 11 mục,
+   9 mục đã đóng hoặc đã có địa chỉ, **2** mục thật sự chưa xử.
 
 ## 2026-08-12 — `fixlog`: trạng thái thứ tư `⇢` ĐANG CHỜ (v2.64.0)
 

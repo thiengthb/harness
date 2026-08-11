@@ -19,7 +19,7 @@ harness của một người rất dễ là sở thích cá nhân được đón
 ```
 node tooling/fixlog.mjs --top
 node tooling/fixlog.mjs --list
-node tooling/harness-doctor.mjs            # DANH MỤC HOOK: cột "N qua · M chặn"
+node tooling/harness-doctor.mjs            # cột "N qua · M chặn" + mục nào đỏ ≥14 ngày mà CHƯA lần nào xanh
 git log --oneline -50
 gh pr list --state merged --limit 30 --json number,title,additions,deletions
 node tooling/harness-size.mjs

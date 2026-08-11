@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, handledGroups, mergeRitualStates, stuckRituals } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -1836,6 +1836,26 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   if (badTrk.length) fail.push(`lib/harness.mjs${' '.repeat(13)} groupTracked() sai ở ${badTrk.length}/${TRK.length + 1} ca: ${badTrk.map(([, , l]) => l).join(' · ')}`);
   else ok.push(`lib/harness.mjs${' '.repeat(13)} groupTracked(): tái phát ĐẾM được nhưng KHÔNG mở lại nhóm — ngược hẳn \`--close\` — ${TRK.length + 1} ca`);
 
+  // ⑥d PHÉP TRỪ "nhóm đã xử" là MỘT (#185). `rituals.fixlogState()` và `fixlog --list` hỏi
+  //     cùng câu hỏi; trước lô này chỉ bên thứ nhất trừ, nên `--list` bật cảnh báo ≥10/tuần
+  //     với 11 mục trong khi 9 mục thuộc nhóm đã đóng hoặc đã có địa chỉ.
+  //
+  //     Ca 3 là ca CHỊU LỰC: nó ép `handledGroups` phải hỏi HAI câu khác nhau. Một bản vá
+  //     `handled = nhóm nào còn đóng` (bỏ vế `tracked`) xanh cả bốn ca còn lại.
+  const HG = [
+    [['g1', ['2026-08-05']], { closed: ['g1', '2026-08-07'] }, true, 'đã đóng, không tái phát ⇒ ĐÃ XỬ'],
+    [['g2', ['2026-08-09']], { closed: ['g2', '2026-08-07'] }, false, 'đã đóng NHƯNG tái phát ⇒ mở lại, CHƯA xử'],
+    [['g3', ['2026-08-09']], { tracked: ['g3', '2026-08-07'] }, true, 'đã có địa chỉ, VẪN tái phát ⇒ vẫn ĐÃ XỬ (ngược `--close`)'],
+    [['g4', ['2026-08-09']], {}, false, 'không dấu nào ⇒ CHƯA xử'],
+    [['g5', ['2026-08-09']], { closed: ['g5', '2026-08-07'], tracked: ['g5', '2026-08-08'] }, true, 'đóng rồi tái phát rồi có địa chỉ ⇒ ĐÃ XỬ'],
+  ];
+  const badHG = HG.filter(([[k, tss], marks, want]) => {
+    const mk = (p) => new Map(p ? [[p[0], { ts: p[1], note: '' }]] : []);
+    return handledGroups(new Map([[k, tss]]), mk(marks.closed), mk(marks.tracked)).has(k) !== want;
+  });
+  if (badHG.length) fail.push(`lib/harness.mjs${' '.repeat(13)} handledGroups() sai ở ${badHG.length}/${HG.length} ca: ${badHG.map(([, , , l]) => l).join(' · ')}`);
+  else ok.push(`lib/harness.mjs${' '.repeat(13)} handledGroups(): MỘT phép trừ cho cả \`rituals\` lẫn \`fixlog --list\` — ${HG.length} ca`);
+
   // ⑦ CHỐNG LỆCH HAI BẢNG. `fixlog.mjs --top` và `rituals.mjs` trả lời CÙNG một câu hỏi
   //    ("nhóm nào đã ≥2 lần"). Nếu chỉ một bên đọc luật gom nhóm, người dùng thấy "★ đủ điều
   //    kiện promote" ở một chỗ và "chưa nhóm nào đạt ngưỡng" ở chỗ kia — hai sự thật, không
@@ -1859,6 +1879,9 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     // TSV của `fixlog-closed.log`, và bản `rituals` vứt cột thời gian đi (#176).
     if (!/groupTracked\s*\(/.test(codeOnly(src))) drift.push(`${name} tự quyết "nhóm đã có địa chỉ chưa" thay vì GỌI groupTracked()`);
     if (!/groupMarks\s*\(/.test(codeOnly(src))) drift.push(`${name} tự parse sổ đánh dấu thay vì GỌI groupMarks() — bản trước lệch nhau đúng ở đó (#176)`);
+    // #185: và phép TRỪ "nhóm nào đã xử" — `rituals` trừ từ #182, `fixlog --list` thì không,
+    // nên cảnh báo ≥10/tuần bật với 11 mục trong khi 9 mục đã đóng hoặc đã có địa chỉ.
+    if (!/handledGroups\s*\(/.test(codeOnly(src))) drift.push(`${name} tự quyết "nhóm nào đã xử" thay vì GỌI handledGroups() — hai ngưỡng, hai mẫu số (#185)`);
   }
   // Gọi `fixlogKey(x)` một tham số = bỏ qua luật. Bắt tại nguồn, vì hậu quả của nó là im lặng.
   for (const [name, src] of [['rituals.mjs', ritSrc], ['fixlog.mjs', fixSrc]]) {
@@ -1911,8 +1934,10 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
 
   // Và `rituals` phải thấy CÙNG một sự thật: nhóm đã có địa chỉ thôi là "ứng viên chờ distill".
   const retroState = () => {
+    // `HARNESS_STATE_DIR` cũng phải chuyển: từ #185 `collect()` GHI sổ trạng thái nghi thức, nên
+    // thiếu dòng này thì mỗi lần chạy suite bơm một lượt đo của FIXTURE vào sổ thật.
     const r = spawnSync(process.execPath, [repoPath('tooling', 'rituals.mjs'), '--json'],
-      { encoding: 'utf8', cwd: repoPath(), env: { ...process.env, HARNESS_TELEMETRY_DIR: t9 } });
+      { encoding: 'utf8', cwd: repoPath(), env: { ...process.env, HARNESS_TELEMETRY_DIR: t9, HARNESS_STATE_DIR: t9 } });
     try { return (JSON.parse(r.stdout || '[]').find(x => x.id === 'harness-retro')) || {}; } catch { return {}; }
   };
   const st9 = retroState();
@@ -1933,6 +1958,142 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
 
   if (badT9.length) fail.push(`fixlog --track${' '.repeat(15)} ${badT9.length} ca sai: ${badT9.join(' | ')}`);
   else ok.push(`fixlog --track${' '.repeat(15)} ★ → ⇢ · địa chỉ BẮT BUỘC và được in · số đếm không bị giấu · tái phát ĐẾM mà KHÔNG đổi dấu · rituals đồng ý`);
+}
+
+// ─── L0008: một tín hiệu TỚI HẠN phải TẮT ĐƯỢC bằng hành động nó đề nghị ─────
+//
+// Bốn lần trong hai tuần (W32 §1 · #174 · #181 · #183). Cơ chế ĐO chứ không bắt KHAI: `rituals`
+// ghi trạng thái mỗi lượt, `harness-doctor` hỏi *"mục nào đỏ ≥14 ngày mà chưa lần nào xanh?"*.
+//
+// Bảng dưới canh CHIỀU IM LẶNG của nó: một sổ tự đặt lại `since` mỗi lượt vẫn chạy, vẫn ghi
+// file, vẫn có dữ liệu — và cảnh báo KHÔNG BAO GIỜ nổ. Không triệu chứng nào ngoài ca test.
+{
+  const L8 = ' '.repeat(9);
+  const bad = [];
+  const T0 = Date.parse('2026-08-12T00:00:00.000Z');
+  const T = (d) => new Date(T0 + d * 86400000).toISOString();
+
+  // ① Trạng thái KHÔNG ĐỔI ⇒ `since` GIỮ NGUYÊN. Đặt lại mỗi lượt ⇒ `dueDays` luôn 0.
+  const r1 = mergeRitualStates(null, [{ id: 'a', state: 'due' }], T(-20));
+  const r2 = mergeRitualStates(r1, [{ id: 'a', state: 'due' }], T(0));
+  if (r2.rituals.a.since !== T(-20)) bad.push('trạng thái KHÔNG đổi mà `since` bị đặt lại — quãng đỏ luôn bằng 0, cảnh báo không bao giờ nổ');
+  if (r2.firstRunAt !== T(-20)) bad.push('`firstRunAt` bị ghi đè — quãng quan sát co về 0 và sổ mãi ở `warming`');
+  if (r2.lastRunAt !== T(0) || r2.runs !== 2) bad.push('`lastRunAt`/`runs` không tiến theo lượt đo');
+
+  // ② Trạng thái ĐỔI ⇒ `since` PHẢI đặt lại. Chiều ngược của ①, và nó nổ NHẦM (`L0002`).
+  const r3 = mergeRitualStates(r2, [{ id: 'a', state: 'ok' }], T(1));
+  if (r3.rituals.a.since !== T(1)) bad.push('trạng thái ĐỔI mà `since` không đặt lại — mục xanh rồi đỏ lại bị tính là đỏ suốt');
+  if (r3.rituals.a.lastOkAt !== T(1) || r3.rituals.a.okRuns !== 1) bad.push('lượt `ok` không được ghi — mọi mục sẽ trông như chưa từng xanh');
+
+  // ③ Lượt đo RỖNG ⇒ không ghi gì. Bơm `lastRunAt` cho một lượt không thấy gì là sổ tự khai
+  //    "tôi vẫn đang nhìn", và đó là thứ duy nhất phân biệt `stale` với dữ liệu thật.
+  if (mergeRitualStates(r3, [], T(2)) !== r3) bad.push('lượt đo RỖNG vẫn ghi — sổ tự khai đang nhìn trong khi không thấy gì');
+  if (mergeRitualStates(r3, null, T(2)) !== r3) bad.push('`results` không phải mảng vẫn ghi');
+
+  // ④ Nghi thức bị XOÁ khỏi `RITUALS` mang theo dòng của nó — nếu không, sổ giữ một mục kẹt
+  //    vĩnh viễn về thứ không còn tồn tại, đúng bệnh cơ chế này đi chữa.
+  const r4 = mergeRitualStates(r3, [{ id: 'b', state: 'ok' }], T(2));
+  if (r4.rituals.a) bad.push('nghi thức đã xoá vẫn nằm trong sổ — một mục kẹt vĩnh viễn về thứ không còn tồn tại');
+
+  // ⑤ Bảng phán quyết. `mode` mang kết luận; ba mode "chưa trả lời được" KHÔNG được trả `[]`.
+  const rit = (state, sinceD, okRuns = 0) => ({ state, since: T(sinceD), lastOkAt: okRuns ? T(sinceD) : null, okRuns, runs: 40 });
+  const snap = (over) => ({ firstRunAt: T(-40), lastRunAt: T(0), runs: 40, rituals: {}, ...over });
+  const SR = [
+    [null, 'unmeasured', 'chưa có sổ'],
+    [{ lastRunAt: T(0) }, 'unmeasured', 'sổ không có khoá `rituals`'],
+    [snap({ firstRunAt: T(0) }), 'warming', 'quãng quan sát 0 ngày < 14'],
+    [snap({ firstRunAt: T(-60), lastRunAt: T(-20) }), 'stale', 'lượt ghi cuối 20 ngày trước ⇒ cửa sổ nằm hẳn trong quá khứ'],
+    [snap({ lastRunAt: T(3) }), 'stale', 'mốc ghi ở TƯƠNG LAI ⇒ phép so không còn nghĩa'],
+    [snap({ rituals: { x: rit('due', -20) } }), 'stuck', 'đỏ 20 ngày, 0 lần xanh'],
+    [snap({ rituals: { x: rit('due', -20, 5) } }), 'pending', 'đỏ 20 ngày NHƯNG đã từng xanh ⇒ việc tồn, không phải tín hiệu hỏng'],
+    [snap({ rituals: { x: rit('due', -3) } }), 'ok', 'đỏ 3 ngày — dưới cửa sổ'],
+    [snap({ rituals: { x: rit('ok', -40) } }), 'ok', 'xanh suốt'],
+    [snap({ rituals: { x: { state: 'due', since: 'khong-phai-mot-ngay' } } }), 'ok', 'mốc hỏng ⇒ bỏ qua dòng đó, không crash và không bịa'],
+  ];
+  for (const [s, want, label] of SR) {
+    const got = stuckRituals(s, { now: T0 }).mode;
+    if (got !== want) bad.push(`mode \`${got}\` ≠ \`${want}\` — ${label}`);
+  }
+
+  // ⑥ `dueDays` đo từ `lastRunAt`, KHÔNG từ `now`. Ca này là ca DUY NHẤT phân biệt hai phép
+  //    tính: ngừng chạy `rituals` 10 ngày thì con số phải ĐỨNG YÊN ở 8 ngày đã quan sát, không
+  //    lớn lên thành 18. Cùng lý do `tallyLines()` có `sinceMs` — bằng chứng cũ đọc thành bằng
+  //    chứng hôm nay là cách một bảng nói "ổn" trong khi nó chưa nhìn.
+  const observed = stuckRituals(snap({ lastRunAt: T(-10), rituals: { x: rit('due', -18) } }), { now: T0 });
+  if (observed.mode !== 'ok') {
+    bad.push(`quãng đỏ tính từ HÔM NAY thay vì từ lượt ghi cuối (mode \`${observed.mode}\`) — 8 ngày đã quan sát bị đọc thành 18`);
+  }
+
+  // ⑦ `null` ≠ `[]`. `[]` là câu "đã nhìn, không có mục nào"; với sổ mới một ngày thì đó là lời
+  //    khai sai, và nó sai theo chiều dễ chịu (`L0005`).
+  for (const [s, m] of [[null, 'unmeasured'], [snap({ firstRunAt: T(0) }), 'warming'], [snap({ firstRunAt: T(-60), lastRunAt: T(-20) }), 'stale']]) {
+    if (stuckRituals(s, { now: T0 }).stuck !== null) bad.push(`mode \`${m}\` trả \`[]\` thay vì \`null\` — "đã nhìn, không có gì" ≠ "chưa nhìn"`);
+  }
+  if (!Array.isArray(stuckRituals(snap({ rituals: { x: rit('ok', -40) } }), { now: T0 }).stuck)) {
+    bad.push('mode `ok` phải trả MẢNG rỗng — ở đó phép đo ĐÃ chạy, và `null` sẽ nói dối theo chiều ngược lại');
+  }
+
+  // ⑧ HỢP ĐỒNG mode ↔ bên đọc. Thiếu một dòng ⇒ doctor in `undefined`, và `undefined` trên một
+  //    bảng sức khoẻ đọc y hệt "không có gì để nói". Cùng khuôn với `MODES` của `budgetStatus`,
+  //    và neo vào ĐÚNG khối (`const sr = stuckRituals` … `LINE[sr.mode]`), không quét cả file.
+  const MODES8 = ['unmeasured', 'warming', 'stale', 'stuck', 'pending', 'ok'];
+  const docSrc = readFileSync(repoPath('tooling', 'harness-doctor.mjs'), 'utf8');
+  const block8 = docSrc.match(/const sr = stuckRituals[\s\S]*?LINE\[sr\.mode\]/)?.[0] ?? '';
+  if (!block8) bad.push('không tìm thấy khối đọc `stuckRituals` trong harness-doctor.mjs — cơ chế có sổ mà không có bên đọc');
+  else {
+    const miss8 = MODES8.filter(m => !new RegExp(`^\\s+'?${m}'?:`, 'm').test(block8));
+    if (miss8.length) bad.push(`harness-doctor thiếu dòng cho mode: ${miss8.join(' · ')} — sẽ in \`undefined\``);
+  }
+  // Và chiều ngược: mode khai trong bảng trên phải THẬT SỰ được hàm sinh ra. Một mode chết nằm
+  // trong hợp đồng làm hợp đồng đó thôi có nghĩa.
+  const fn8 = codeOnly(readFileSync(repoPath('tooling', 'lib', 'harness.mjs'), 'utf8'))
+    .match(/export function stuckRituals[\s\S]*?\n}/)?.[0] ?? '';
+  const dead8 = MODES8.filter(m => !fn8.includes(`'${m}'`));
+  if (dead8.length) bad.push(`mode khai ở hợp đồng nhưng \`stuckRituals\` không bao giờ trả: ${dead8.join(' · ')}`);
+
+  // ⑨ ĐẦU-CUỐI: `rituals` có THẬT SỰ ghi sổ không, và ghi ở đường nào. Sổ riêng trong `tmpdir`.
+  //    Chỗ dễ hỏng nhất không phải phép hợp nhất mà là CHỖ GỌI: `session-start` import
+  //    `collect()`/`evaluate()` chứ không spawn CLI, nên một lời gọi đặt trong `main()` sẽ chỉ
+  //    ghi những lượt chạy TAY — cơ chế vẫn "chạy", vẫn có file, và vẫn đo sai quần thể.
+  const t8 = mkdtempSync(join(tmpdir(), 'harness-ledger-'));
+  const runRit = () => spawnSync(process.execPath, [repoPath('tooling', 'rituals.mjs'), '--json'],
+    { encoding: 'utf8', cwd: repoPath(), env: { ...process.env, HARNESS_STATE_DIR: t8, HARNESS_TELEMETRY_DIR: t8 } });
+  runRit();
+  const led1 = readJson(join(t8, 'ritual-states.json'), null);
+  if (!led1 || !led1.rituals) bad.push('`rituals` chạy xong mà KHÔNG có sổ trạng thái — cơ chế không được cắm vào đường chạy thật');
+  else {
+    if (Object.keys(led1.rituals).length < 10) bad.push(`sổ chỉ ghi ${Object.keys(led1.rituals).length} nghi thức — bảng có 14`);
+    runRit();
+    const led2 = readJson(join(t8, 'ritual-states.json'), null);
+    if (led2?.runs !== 2) bad.push(`lượt thứ hai không được cộng vào sổ (runs = ${led2?.runs})`);
+    const moved = Object.keys(led1.rituals).filter(k => led2?.rituals?.[k]?.state === led1.rituals[k].state
+      && led2.rituals[k].since !== led1.rituals[k].since);
+    if (moved.length) bad.push(`${moved.length} nghi thức giữ nguyên trạng thái mà \`since\` vẫn nhảy: ${moved.slice(0, 3).join(' · ')}`);
+  }
+
+  // ⑩ CẮT BỎ của lô này, đo đầu-cuối: ngưỡng `≥10/tuần` của `fixlog --list` đặt trên số CHƯA
+  //    XỬ. Đo trên sổ thật 2026-08-12 trước khi cắt: cảnh báo bật với 11 mục, thật sự chưa xử 2.
+  const now = Date.now();
+  const day = (d, txt) => `${new Date(now - d * 86400000).toISOString()}|fixture|main|${txt}\n`;
+  let log = '';
+  for (let i = 0; i < 12; i++) log += day(1, 'mot nhom loi lap lai rat nhieu lan trong tuan nay');
+  log += day(2, 'mot loi hoan toan khac khong lien quan gi ca');
+  writeFileSync(join(t8, 'manual-fixes.log'), log, 'utf8');
+  const runList = () => spawnSync(process.execPath, [repoPath('tooling', 'fixlog.mjs'), '--list'],
+    { encoding: 'utf8', cwd: repoPath(), env: { ...process.env, HARNESS_TELEMETRY_DIR: t8 } }).stdout || '';
+  const l1 = runList();
+  if (!/⚠️/.test(l1)) bad.push('13 mục CHƯA XỬ trong 7 ngày mà `--list` không cảnh báo — phép cắt đã cắt cả tín hiệu thật');
+  spawnSync(process.execPath, [repoPath('tooling', 'fixlog.mjs'), '--track', 'mot nhom loi lap lai', '#999 — chờ upstream'],
+    { encoding: 'utf8', cwd: repoPath(), env: { ...process.env, HARNESS_TELEMETRY_DIR: t8 } });
+  const l2 = runList();
+  if (/⚠️/.test(l2)) bad.push('nhóm đã có ĐỊA CHỈ vẫn tính vào ngưỡng ≥10 — cảnh báo bật cho một backlog đã xử');
+  if (!/13 — 1 CHƯA XỬ/.test(l2)) bad.push(`\`--list\` không nói ra mẫu số thật (được: "${(l2.split('\n')[1] || '').slice(0, 44)}")`);
+  if (!/^· /m.test(l2)) bad.push('mục đã xử không mang dấu `·` — người đọc không đối chiếu được 13 với 1');
+  rmSync(t8, { recursive: true, force: true });
+
+  if (bad.length) fail.push(`stuckRituals${L8} ${bad.length} ca sai: ${bad.join(' | ')}`);
+  else ok.push(`stuckRituals${L8} sổ trạng thái nghi thức: \`since\` chỉ nhảy khi trạng thái đổi · quãng đỏ đo từ lượt ghi CUỐI · `
+    + `${MODES8.length} mode đều có bên đọc · ngưỡng fixlog --list đặt trên số CHƯA XỬ`);
 }
 
 // ─── LỚP PHỐI HỢP: `chưa khai` KHÔNG ĐƯỢC gộp vào `solo` ─────────────────────
@@ -2261,7 +2422,14 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   const MODES = ['off', 'unmeasured', 'stale', 'ok', 'alert', 'over', 'template-na', 'template-cap',
     'flat-ok', 'flat-limited', 'flat-unmeasured', 'flat-capo'];
   const doc = readFileSync(repoPath('tooling', 'harness-doctor.mjs'), 'utf8');
-  const budgetBlock = doc.slice(doc.indexOf('── NGÂN SÁCH ──'));
+  // CẮT ĐÚNG KHỐI, không cắt tới cuối file. Bản trước lấy từ `── NGÂN SÁCH ──` tới hết file, nên
+  // một bảng `mode → dòng` KHÁC ở phía dưới (§VÒNG HỌC có `unmeasured:` · `stale:` · `ok:`) đủ
+  // sức thoả mãn check này thay cho bảng ngân sách — ca sẽ xanh cả khi ba dòng kia bị xoá.
+  // Đúng nguyên nhân ③ của `L0006` §mutant: neo RỘNG HƠN thứ nó khoá, và lô #185 vừa vô tình
+  // tạo ra đúng cái bảng thứ hai đó.
+  const bStart = doc.indexOf('── NGÂN SÁCH ──'), bEnd = doc.indexOf('── Git / phối hợp ─');
+  const budgetBlock = (bStart >= 0 && bEnd > bStart) ? doc.slice(bStart, bEnd) : '';
+  if (!budgetBlock) fail.push(`budgetStatus${L} không định vị được khối NGÂN SÁCH trong harness-doctor.mjs — mốc cắt đã trôi`);
   // Hai dạng khoá: `off:` và `'template-na':` — mode có gạch ngang phải viết trong nháy.
   const missing = MODES.filter(m => !new RegExp(`^\\s{4}'?${m}'?:`, 'm').test(budgetBlock));
   if (missing.length) fail.push(`budgetStatus${L} harness-doctor thiếu dòng cho mode: ${missing.join(' · ')} — sẽ in \`undefined\``);

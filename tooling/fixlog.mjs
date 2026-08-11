@@ -16,7 +16,7 @@
 import { readFileSync, existsSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { telemetry, telemetryDir, currentBranch, fixlogKey, fixlogGroupRules, FIXLOG_GROUPS_FILE,
-  FIXLOG_CLOSED_FILE, FIXLOG_TRACKED_FILE, groupMarks, groupStillClosed, groupTracked } from './lib/harness.mjs';
+  FIXLOG_CLOSED_FILE, FIXLOG_TRACKED_FILE, groupMarks, groupStillClosed, groupTracked, handledGroups } from './lib/harness.mjs';
 
 const args = process.argv.slice(2);
 const file = join(telemetryDir(), 'manual-fixes.log');
@@ -50,14 +50,34 @@ function readLog() {
   });
 }
 
+// ── --list : 7 ngày qua, và MẪU SỐ là số mục CHƯA XỬ ────────────────────────
+//
+// Ngưỡng cũ đếm MỌI mục trong 7 ngày, kể cả mục thuộc nhóm đã `--close` và (từ v2.64.0) đã
+// `--track`. Đo 2026-08-12: cảnh báo bật với **11 mục** — 5 thuộc nhóm đã đóng từ 08-07, 4
+// thuộc hai nhóm đã có địa chỉ (#177, #160). Thật sự chưa xử: **2**.
+//
+// `rituals` đã sửa đúng chỗ này ở #182 (`fixlogOpen`) và KHÔNG sửa ở đây — vá một chỗ, để lại
+// chỗ bên cạnh, đúng lỗi mà learnings W32 §1 (`so-khong-bao-gio-dong-duoc`) đã mắc. Nên phép trừ là MỘT hàm
+// dùng chung (`handledGroups()` ở lib), không phải hai bản chép.
 if (args[0] === '--list') {
   const since = Date.now() - 7 * 86400_000;
   const rows = readLog().filter(r => new Date(r.ts).getTime() >= since);
-  console.log(`\n=== SỬA TAY 7 NGÀY QUA (${rows.length}) ===`);
-  for (const r of rows) console.log(`  ${r.ts.slice(0, 16).replace('T', ' ')}  [${r.branch || '-'}]  ${r.text}`);
-  console.log(rows.length >= 10
-    ? '\n  ⚠️  ≥10 lần/tuần. Đây là backlog harness của bạn. Chạy /harness-retro.\n'
-    : '\n  Chạy /harness-retro thứ Sáu để chưng cất thành đề xuất.\n');
+  // Gom nhóm trên CẢ sổ rồi mới cắt cửa sổ. Cắt trước khi gom thì nhóm được dựng lại từ mảnh
+  // 7 ngày, và một nhóm đóng từ tháng trước mất luôn dấu đã-xử của nó.
+  const groups = groupLog();
+  const handled = handledGroups(new Map([...groups].map(([k, rs]) => [k, rs.map(r => r.ts)])), readClosed(), readTracked());
+  const done = (r) => handled.has(fixlogKey(r.text, RULES));
+  const open = rows.filter(r => !done(r));
+  const hidden = rows.length - open.length;
+  console.log(`\n=== SỬA TAY 7 NGÀY QUA (${rows.length} — ${open.length} CHƯA XỬ) ===`);
+  for (const r of rows) console.log(`${done(r) ? '·' : ' '} ${r.ts.slice(0, 16).replace('T', ' ')}  [${r.branch || '-'}]  ${r.text}`);
+  console.log(open.length >= 10
+    ? `\n  ⚠️  ${open.length} mục CHƯA XỬ trong 7 ngày. Đây là backlog harness của bạn. Chạy /harness-retro.\n`
+    : hidden
+      ? `\n  ${hidden} mục mang dấu \`·\`: nhóm đã đóng (✔) hoặc đã có địa chỉ (⇢) — xem \`--top\`.`
+        + `\n  Ngưỡng ≥10 đặt trên ${open.length} mục CHƯA XỬ, không trên ${rows.length}: sổ chỉ biết ghi thêm,`
+        + '\n  nên một ngưỡng đếm cả việc đã xong sẽ đỏ vĩnh viễn và thôi là tín hiệu.\n'
+      : '\n  Chạy /harness-retro thứ Sáu để chưng cất thành đề xuất.\n');
   process.exit(0);
 }
 
