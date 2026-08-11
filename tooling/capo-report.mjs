@@ -15,8 +15,8 @@
  * Đọc kèm: nếu CAPO ĐI LÊN trong khi bạn "cải thiện harness" → harness của bạn
  * đang phình, không đang tốt lên.
  */
-import { git, report, readJson, writeJson, repoPath, stateDir } from './lib/harness.mjs';
-import { readFileSync } from 'node:fs';
+import { git, report, readJson, writeJson, repoPath, stateDir, config, budgetPlan, rateLimitHitsIn, telemetryDir } from './lib/harness.mjs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Cùng đường dẫn mà `latestCapoEntry()` đọc — qua `stateDir()` để HARNESS_STATE_DIR chuyển
@@ -131,7 +131,66 @@ if (Number.isFinite(USD)) {
     prev.entries.push({ at: new Date().toISOString(), days: DAYS, usd: Number(USD), accepted, capo: Number(capo.toFixed(2)), manualFixes });
     writeJson(CAPO_HISTORY(), prev);
   }
-} else {
+}
+
+// ── GÓI PHẲNG: mẫu số là LẦN CHẠM TRẦN, không phải USD ───────────────────────
+//
+// Với subscription phẳng, chi tiêu tháng **bằng định nghĩa** đúng bằng trần (xem `budgetStatus`
+// §GÓI PHẲNG). Nên `USD / accepted` là *một hằng số chia cho accepted* — nó đo được mỗi việc
+// "tháng này ra nhiều kết quả hay ít", và KHÔNG đo gì về hiệu quả của một lần chạy. Chi phí
+// BIÊN của một lần chạy là 0.
+//
+// Cổ chai thật là **rate limit**, và số đó ĐỌC ĐƯỢC — `budget-alarm.log` đã nằm trên đĩa và đã
+// có bên phân tích (`rateLimitHitsIn`). Tới trước bản này, `capo-report` đòi người dùng một con
+// số mà chính nó ghi trong hint là *"harness KHÔNG đọc được hoá đơn"*, trong khi con số RÀNG
+// BUỘC thì nằm sẵn đó không ai đọc. Đòi sai đầu vào thì lời khuyên đúng cũng thành vô dụng.
+//
+// BA TRẠNG THÁI, không hai: không đọc được sổ ⇒ `?`, KHÔNG phải 0. `rateLimitHitsIn` trả `null`
+// cho ca đó, và `null` phải chảy tới cuối chứ không được `|| 0` ở giữa đường.
+const PLAN = budgetPlan(config());
+if (PLAN === 'flat') {
+  // HÌNH DẠNG CHÉP TỪ `budgetSnapshot`, KHÔNG tự nghĩ lại — kể cả chỗ dễ nghĩ khác:
+  //
+  //   sổ VẮNG      ⇒ 0     (observe.mjs chưa từng ghi lần nào — đó là một số đo thật)
+  //   đọc HỎNG     ⇒ null  (`?` — không biết)
+  //
+  // Bản đầu của tôi gộp cả hai thành `null`. Nghe "an toàn" mà sai: nó biến một repo yên ả
+  // thành `?` vĩnh viễn, và quan trọng hơn — nó làm HAI công cụ đọc CÙNG một cái sổ trả lời
+  // khác nhau. Đó đúng là #125 (`harness-doctor` nói "12 lần", `rituals` nói "không đo được"),
+  // và `budgetSnapshot` ra đời để không ai phải tự lắp lại phép đọc này nữa.
+  //
+  // Không gọi thẳng `budgetSnapshot()` được vì nó chốt cứng cửa sổ 30 ngày, còn ở đây cửa sổ
+  // phải BẰNG cửa sổ đếm merge (`--days`) — trộn hai cửa sổ vào một phân số là một tỉ lệ bịa.
+  let hits = null;
+  try {
+    const f = join(telemetryDir(), 'budget-alarm.log');
+    hits = existsSync(f) ? rateLimitHitsIn(readFileSync(f, 'utf8'), Date.now() - DAYS * 86400_000) : 0;
+  } catch { hits = null; }
+
+  if (hits === null) {
+    warn.push('gói PHẲNG: ĐỌC HỎNG `budget-alarm.log` ⇒ CAPO-TRẦN là `?`, KHÔNG phải 0. '
+      + '"Không đọc được sổ" và "chưa lần nào chạm trần" là hai chuyện khác nhau.');
+  } else if (!accepted) {
+    // WARN, không FAIL — và nhánh USD ngay trên KIA thì FAIL cho cùng tình huống. Khác biệt
+    // không phải sự thiếu nhất quán mà là **ai bật nó**: `--usd` là người TỰ khai ("tôi đã tiêu
+    // ngần này"), còn nhánh này chạy TỰ ĐỘNG chỉ vì gói cước là phẳng. Một tuần nghỉ phép sẽ
+    // làm báo cáo đỏ mà không ai làm gì sai, và một cảnh báo đỏ vô cớ dạy người ta bỏ qua cả
+    // khối — `knowledge/lessons/0002-guard-ban-nham.md`.
+    warn.push(`gói PHẲNG: ${hits} lần chạm trần trong ${DAYS} ngày nhưng 0 kết quả được chấp nhận `
+      + `⇒ chưa có mẫu số, KHÔNG tính được CAPO-TRẦN. Nới cửa sổ (\`--days 30\`) hoặc chờ có merge.`);
+  } else {
+    const perOutcome = hits / accepted;
+    ok.push(`CAPO-TRẦN = ${perOutcome.toFixed(2)} lần chạm trần / kết quả được chấp nhận `
+      + `(${hits} lần · ${accepted} kết quả · ${DAYS} ngày)`);
+    ok.push('gói PHẲNG: đây MỚI là CAPO của bạn. Tiền không giảm được (chi phí biên = 0); '
+      + 'thứ giảm được là số lần chạm trần — cắt context thừa, ít phiên song song hơn. Xem docs/WIP.md.');
+  }
+  // KHÔNG ghi `capo-history.json` ở nhánh này — CỐ Ý. `budgetStatus` đọc `entries.at(-1)` và
+  // mong một mục hình dạng {usd, days}; nhét một mục hình dạng khác vào cùng mảng là đúng lớp
+  // lỗi mà header file này ghi lại từ #107 (một sổ đo lường bị neo vào một mục rác). Muốn có
+  // xu hướng cho gói phẳng thì cần một sổ RIÊNG, và đó là một quyết định, không phải một
+  // tác dụng phụ.
+} else if (!Number.isFinite(USD)) {
   warn.push('Không có --usd → không tính được CAPO. Lấy con số từ dashboard billing và chạy lại: node tooling/capo-report.mjs --usd 120');
 }
 
