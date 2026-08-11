@@ -648,6 +648,81 @@ ${assertions}
     rmSync(p, { force: true });
   }
 
+  // ⑲i · ⑲j · ⑲k RÀO THỨ SÁU (#144): TRẦN NGÂN SÁCH LÀM CO MẪU SỐ, VÀ CO CÓ HƯỚNG.
+  //
+  //     `maxTurns` của mọi task đang hiệu chỉnh trên chiều ĐẦY ĐỦ. Lớp harness tiết kiệm lượt ⇒
+  //     chiều TRẦN cần nhiều lượt hơn cho cùng công việc ⇒ chiều trần chạm trần TRƯỚC ⇒ `?` ⇒
+  //     rơi khỏi phép trừ. Task nào harness giúp NHIỀU nhất rơi ra TRƯỚC, nên hiệu số còn lại chỉ
+  //     nói về phần harness giúp ít. Đo 2026-08-10 trên `0003`: đầy đủ 15/15 lượt (`completed`),
+  //     trần 16/15 (`max_turns`, cắt giữa `tool_use`).
+  //
+  //     Ba nửa. ⑲i vế BASELINE, ⑲j vế ĐANG CHẠY (lỗ mà bản cũ không thấy: nó đếm trên `mine`,
+  //     mà task không đo được thì không có trong `mine`), ⑲k/⑲l chống BẮN NHẦM (L0002).
+  {
+    const p = writeTask('9040', NEUTRAL);
+    runEval(CMD, 'ok', '9040', { flags: ['--bare', '--baseline'], stateDir: BARE_STATE });
+    // Giả lập chiều trần bị CẮT VÌ TRẦN — hình dạng lấy từ `runAgent`, số lượt lấy từ `0003`.
+    const bp = join(BARE_STATE, 'eval-baseline-bare.json');
+    const b = JSON.parse(readFileSync(bp, 'utf8'));
+    for (const x of b.results) {
+      x.measured = false;
+      x.agent = { ...(x.agent || {}), infra: null, budget: 'chạm trần LƯỢT do task khai', turns: 16, maxTurns: 15 };
+    }
+    writeFileSync(bp, JSON.stringify(b));
+    const r = runEval(CMD, 'ok', '9040', { stateDir: BARE_STATE });
+    if (!/9040 — RA KHỎI PHÉP TRỪ VÌ TRẦN NGÂN SÁCH/.test(r.out)) fail.push('⑲i task rơi khỏi phép trừ vì CHẠM TRẦN bị gộp vào một con số không tên — "chạm trần" đòi đo lại trần, "hạ tầng" đòi chạy lại y nguyên, và một con số gộp không nói được phải làm gì');
+    else if (!/trần: cạn NGÂN SÁCH DO TASK KHAI/.test(r.out)) fail.push('⑲i không nói VẾ NÀO chạm trần — mà vế chính là thông tin: trần bó ở chiều trần là sai số CÓ HƯỚNG, bó ở chiều đầy đủ thì không');
+    else if (!/16\/15 lượt/.test(r.out)) fail.push('⑲i không in CẶP SỐ lượt — không có nó thì trần mới lại là số đoán, đúng thứ #153 vừa gỡ');
+    else ok.push('⑲i chạm trần ở vế baseline ⇒ nêu tên task + vế + cặp số lượt, tách khỏi mọi nguyên nhân khác');
+    rmSync(p, { force: true });
+  }
+  {
+    const p = writeTask('9041', NEUTRAL);
+    runEval(CMD, 'ok', '9041', { flags: ['--baseline'], stateDir: BARE_STATE });
+    const r = runEval(CMD, 'jsonmaxturns', '9041', { flags: ['--bare'], stateDir: BARE_STATE, extraEnv: { FAKE_AGENT_TURNS: '9' } });
+    if (!/9041 — RA KHỎI PHÉP TRỪ VÌ TRẦN NGÂN SÁCH/.test(r.out)) fail.push('⑲j task chạm trần Ở CHÍNH LẦN CHẠY NÀY biến mất khỏi phần kế toán của phép trừ — nó không đo được nên không có trong `mine`, mà phép đếm cũ đếm trên `mine`, nên nó không để lại một con số nào');
+    else if (!/trần: cạn NGÂN SÁCH/.test(r.out)) fail.push('⑲j gán nhầm VẾ — vế chạm trần là vế ĐANG CHẠY (trần), không phải baseline');
+    else ok.push('⑲j chạm trần ở vế đang chạy vẫn được nêu tên và gán ĐÚNG vế — lỗ "đếm trên `mine`" đã bịt');
+    rmSync(p, { force: true });
+  }
+  {
+    const p = writeTask('9042', NEUTRAL);
+    runEval(CMD, 'ok', '9042', { flags: ['--baseline'], stateDir: BARE_STATE });
+    const r = runEval(CMD, 'quota', '9042', { flags: ['--bare'], stateDir: BARE_STATE });
+    if (/RA KHỎI PHÉP TRỪ VÌ TRẦN NGÂN SÁCH/.test(r.out)) fail.push('⑲k HẠ TẦNG hỏng bị gán nhãn CHẠM TRẦN NGÂN SÁCH — người đọc sẽ đi nâng một cái trần không hề bó, và lần chạy lại (thứ THẬT SỰ chữa được ca này) không bao giờ xảy ra');
+    // NEO VÀO ĐÚNG DÒNG, không quét cả output. Bản đầu dùng `/hạ tầng/` trần trụi và nó XANH cả
+    // khi bản vá phân loại sai — vì dòng `KHÔNG ĐO ĐƯỢC` ở khối trên cũng chứa hai chữ đó. Mutant
+    // "bỏ hẳn nhánh infra" SỐNG SÓT ở lượt mutation đầu tiên vì đúng chỗ này (2026-08-11).
+    else if (!/9042 — ra khỏi phép trừ: [^\n]*hạ tầng/.test(r.out)) fail.push('⑲k task rơi khỏi phép trừ mà DÒNG KẾ TOÁN không nói đúng nguyên nhân — "không assertion nào chạy" là một câu SAI về một agent chưa từng chạy, và nó đẩy người đọc đi sửa task thay vì chạy lại');
+    else ok.push('⑲k hạ tầng ⇒ nêu tên + `?` + đúng nguyên nhân TRÊN CHÍNH DÒNG ĐÓ, KHÔNG gán nhãn trần ngân sách');
+    rmSync(p, { force: true });
+  }
+
+  // ⑲l THỨ TỰ khi CẢ HAI dấu hiệu cùng có. Một agent chạm quota GIỮA CHỪNG in cả chữ ký hạ tầng
+  //     lẫn chữ ký ngân sách, và đó là ca DUY NHẤT phân biệt được hai nhánh — ⑲k không phân biệt
+  //     được, vì `quota` chỉ bật một dấu hiệu (đo bằng mutation, 2026-08-11).
+  //
+  //     Hạ tầng là nguyên nhân GẦN HƠN: agent không chạy được, nên chuyện nó tiêu bao nhiêu lượt
+  //     là hệ quả chứ không phải nguyên nhân. Dòng `KHÔNG ĐO ĐƯỢC` phía trên đã chọn đúng thứ tự
+  //     đó từ #147 — hai chỗ đọc CÙNG một bản ghi mà xếp hạng khác nhau là hai câu trả lời khác
+  //     nhau cho một câu hỏi, và người đọc không có cách nào biết chỗ nào đúng.
+  {
+    const p = writeTask('9043', NEUTRAL);
+    runEval(CMD, 'ok', '9043', { flags: ['--bare', '--baseline'], stateDir: BARE_STATE });
+    const bp = join(BARE_STATE, 'eval-baseline-bare.json');
+    const b = JSON.parse(readFileSync(bp, 'utf8'));
+    for (const x of b.results) {
+      x.measured = false;
+      x.agent = { ...(x.agent || {}), infra: 'hết quota', budget: 'chạm trần LƯỢT do task khai', turns: 16, maxTurns: 15 };
+    }
+    writeFileSync(bp, JSON.stringify(b));
+    const r = runEval(CMD, 'ok', '9043', { stateDir: BARE_STATE });
+    if (/RA KHỎI PHÉP TRỪ VÌ TRẦN NGÂN SÁCH/.test(r.out)) fail.push('⑲l có CẢ HAI dấu hiệu mà chọn NGÂN SÁCH — nó bảo người đọc đi nâng trần cho một agent chưa từng chạy, và cảnh báo "sai số có hướng" kêu ở một ca không có hướng nào');
+    else if (!/9043 — ra khỏi phép trừ: [^\n]*hạ tầng/.test(r.out)) fail.push('⑲l có cả hai dấu hiệu ⇒ không chọn được nguyên nhân nào — task rơi ra mà dòng kế toán không nói được vì sao');
+    else ok.push('⑲l cả hai dấu hiệu ⇒ chọn HẠ TẦNG (nguyên nhân gần hơn), cùng thứ tự với dòng `KHÔNG ĐO ĐƯỢC`');
+    rmSync(p, { force: true });
+  }
+
   // ⑳ GIAO RỖNG ⇒ `?`. Task chỉ có assertion đọc lớp harness: đo được ở lần đầy đủ, KHÔNG đo
   //    được ở lần trần. Trừ hai tỉ lệ đó bằng mắt cho ra `100% − 0%` — một con số bịa hoàn
   //    toàn. Đây là chiều nói dối mà chính bản vá này có thể sinh ra nếu làm ẩu.

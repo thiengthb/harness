@@ -1,4 +1,4 @@
-<!-- version: 2026-08-11-d -->
+<!-- version: 2026-08-11-e -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,23 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-11 — Phép trừ nêu TÊN task nó đánh rơi, và vì sao (v2.60.0)
+
+Trần lượt của task hiệu chỉnh trên **chiều đầy đủ**. Lớp harness tiết kiệm lượt ⇒ chiều **trần**
+cần nhiều lượt hơn ⇒ nó chạm trần trước ⇒ `?` ⇒ rơi khỏi phép trừ. Task nào harness giúp **nhiều
+nhất** rơi ra **trước** — sai số có hướng, và hướng đó dễ chịu.
+
+```
+⚠  0003 — RA KHỎI PHÉP TRỪ VÌ TRẦN NGÂN SÁCH, không vì agent.
+          trần: cạn NGÂN SÁCH DO TASK KHAI (chạm trần LƯỢT do task khai, dùng 16/15 lượt)
+```
+
+**Khi nâng `maxTurns`: số của chiều đầy đủ chỉ là CẬN DƯỚI.** Vế ràng buộc là chiều trần — đo
+lại bằng `--bare` rồi lấy số lớn hơn. `0003` đã lên `30` (= 2× số đo, luật `0005/0006/0007` theo
+sẵn), và đó là **sàn**, chưa phải hiệu chỉnh xong.
+
+---
 
 ## 2026-08-11 — Task eval khai được assertion KHÔNG SO ĐƯỢC giữa hai chiều (v2.59.0)
 

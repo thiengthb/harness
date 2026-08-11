@@ -11,6 +11,82 @@
 
 ---
 
+## 2.60.0 — 2026-08-11
+
+**minor.** Phép trừ nói ra **từng task** rơi khỏi nó và **vì sao** — và tách riêng nguyên nhân
+*"chạm trần ngân sách"*, thứ làm mẫu số co lại **theo một hướng cố định**.
+
+### Rào thứ sáu của #144: trần lượt lẫn với thứ đang đo
+
+Lớp harness tồn tại một phần để **tiết kiệm lượt**. Nên cùng một task luôn tốn nhiều lượt hơn
+ở **chiều trần** — nó phải tự suy lại những gì `AGENTS.md`/rules nói sẵn.
+
+`maxTurns` của mọi task đang hiệu chỉnh trên **chiều đầy đủ**. Hệ quả là một vòng khép kín:
+
+```
+chiều trần cần nhiều lượt hơn  →  chạm trần trước  →  `?`  →  rơi khỏi phép trừ
+                                                                    ↓
+              task nào harness giúp NHIỀU nhất rơi ra TRƯỚC — hiệu số còn lại
+              chỉ nói về phần harness giúp ít, và nó nói theo chiều dễ chịu
+```
+
+Đo 2026-08-10 trên `0003`: đầy đủ **15/15** lượt (`completed`), trần **16/15** (`max_turns`,
+cắt giữa `tool_use`). Task duy nhất so được lúc đó, và nó rơi ra vì đúng chuyện này.
+
+### Bản cũ đếm chúng bằng MỘT con số không tên, và con số đó có hai lỗ
+
+```js
+const absent = mine.size - common.length - skew.length - unknownDen.length;
+```
+
+- **Lỗ ①** — nó GỘP *"hạ tầng hỏng, chạy lại là có"* với *"trần bó, chạy lại VẪN THẾ"*.
+  Hai nguyên nhân, hai hành động ngược nhau, một con số.
+- **Lỗ ②** — nó đếm trên `mine`, mà `mine` chỉ chứa task **đo được**. Một task chạm trần **ở
+  chính lần chạy này** không nằm trong bất kỳ số hạng nào của nó: nó biến mất khỏi phần kế
+  toán mà không để lại một con số. Đúng chiều im lặng của **L0007**.
+
+Nay phép trừ duyệt **HỢP** của hai lần chạy, nêu tên từng task, ở **vế nào**, và **vì sao**:
+
+```
+⚠  0003 — RA KHỎI PHÉP TRỪ VÌ TRẦN NGÂN SÁCH, không vì agent.
+          trần: cạn NGÂN SÁCH DO TASK KHAI (chạm trần LƯỢT do task khai, dùng 16/15 lượt)
+?  0006 — ra khỏi phép trừ: trần: hạ tầng (hết quota)
+```
+
+`hạ tầng` xếp **trước** `ngân sách` — cùng thứ tự với dòng `KHÔNG ĐO ĐƯỢC` từ #147: agent chạm
+quota giữa chừng in **cả hai** dấu hiệu, và hạ tầng là nguyên nhân gần hơn.
+
+### Cảnh báo TRẦN SẮP BÓ nay nói rõ số của chiều nào mới dùng được
+
+Nâng trần theo số đo của **chiều đầy đủ** là tái tạo lại đúng thiên lệch trên. Nên cảnh báo
+khai thẳng: số của chiều đầy đủ là **CẬN DƯỚI**, vế ràng buộc là **chiều TRẦN**.
+
+### `0003`: `maxTurns` 15 → 30
+
+`0005`/`0006`/`0007` đều đặt trần **≈2× số đo** (45/22 · 105/51 · 55/26). `15` là trần duy nhất
+không theo luật đó — **1.07×** số đo 14 — và là trần duy nhất đã **cắt thật** một lượt chạy.
+
+`30` là **SÀN**, chưa phải hiệu chỉnh xong: chiều trần vẫn chưa có số đo hoàn chỉnh, vì chính
+trần `15` cắt nó trước khi nó kịp khai.
+
+### Test
+
+47 ca trong `tooling/test-evals.mjs` (+4). Năm mutant, **5/5 chết**:
+
+| mutant | ca đỏ |
+|---|---|
+| đếm lại trên `mine` (bỏ HỢP) | ⑲j |
+| bỏ nhánh `infra` | ⑲k ⑲l |
+| xét `budget` TRƯỚC `infra` | ⑲l |
+| đảo nhãn hai vế | ⑲i ⑲j |
+| bỏ cặp số lượt | ⑲i |
+
+`⑲k` bản đầu dùng regex `/hạ tầng/` quét **cả output**, nên nó xanh cả khi phân loại sai —
+dòng `KHÔNG ĐO ĐƯỢC` ở khối trên cũng chứa hai chữ đó. Mutant *"bỏ nhánh `infra`"* **sống sót**
+vì đúng chỗ này. Ca nay neo vào **đúng dòng kế toán**.
+
+---
+
 ## 2.59.0 — 2026-08-11
 
 **minor.** `# full-arm-only: <lý do>` — task tự khai assertion **không so được do bản chất**.
