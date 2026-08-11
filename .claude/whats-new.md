@@ -1,4 +1,4 @@
-<!-- version: 2026-08-11-g -->
+<!-- version: 2026-08-11-h -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,23 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-11 — `fixlog`: nhóm ĐÃ ĐÓNG thôi nuốt mục CHƯA XONG (v2.62.0)
+
+Hai defect, cùng hậu quả: backlog báo *"không có gì tới hạn"* trong khi có.
+
+1. **Luật gom nhóm rộng hơn, khai trước, thắng luật hẹp khai sau.** Nay **luật cụ thể hơn
+   (needle dài hơn) thắng**; bằng độ dài thì giữ thứ tự file.
+2. **`--close` KHÔNG vĩnh viễn.** Mục ghi **sau** ngày đóng là **tái phát** — dấu mới **`↻`**.
+   Đây là ca đáng canh nhất: cùng một lỗi quay lại sau khi bạn tuyên bố đã sửa tận gốc.
+
+Trên sổ thật: nhóm `dcg` đã đóng từ `5×` xuống `4×`, và mục ngày 08-10 (issue **#160**) hiện ra
+thành nhóm riêng, **không còn đội dấu ✔**.
+
+`rituals` và `fixlog --top` nay dùng **cùng một hàm** `groupStillClosed()` — trước đó `rituals`
+vứt cột thời gian nên không thể thấy tái phát dù có muốn.
+
+---
 
 ## 2026-08-11 — L0006 nay có HAI CHIỀU (promote, không thêm bài học mới)
 

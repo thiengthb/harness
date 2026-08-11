@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -1779,10 +1779,35 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     // một nhóm ≥2 khổng lồ — đúng chiều nguy hiểm mà cả cơ chế này tránh.
     [['dcg gi do', [{ key: 'X', needle: '' }]], '', 'needle RỖNG bị bỏ qua, không nuốt mọi dòng'],
     [['dcg gi do', [{ key: 'X', needle: '   ' }]], '', 'needle toàn khoảng trắng cũng vậy'],
+    // LUẬT CỤ THỂ HƠN THẮNG. Đo 2026-08-11: sổ thật có `dcg` (khai 08-06, ĐÃ ĐÓNG 08-07) và
+    // `buoc DON DEP cua mutation` (khai 08-10, đang mở). Mục 08-10 khớp cả hai; luật rộng tới
+    // trước nên nó thắng, và mục đó thừa hưởng dấu ✔ của một nhóm đóng TRƯỚC KHI nó tồn tại.
+    [['dcg chan buoc DON DEP cua mutation', [{ key: 'rong', needle: 'dcg' }, { key: 'hep', needle: 'buoc don dep cua mutation' }]], 'hep',
+      'luật CỤ THỂ HƠN thắng luật RỘNG hơn khai TRƯỚC'],
+    // CHIỀU NGƯỢC — bắt buộc. Nếu bản vá chỉ đổi "đầu thắng" thành "cuối thắng" thì ca trên vẫn
+    // xanh, mà kết quả lại phụ thuộc thứ tự khai. Độ dài là thuộc tính của CHÍNH luật.
+    [['dcg chan buoc DON DEP cua mutation', [{ key: 'hep', needle: 'buoc don dep cua mutation' }, { key: 'rong', needle: 'dcg' }]], 'hep',
+      'đảo thứ tự khai KHÔNG đổi kết quả'],
   ];
   const badK = KEY.filter(([[t, r], want]) => fixlogKey(t, r) !== want);
   if (badK.length) fail.push(`lib/harness.mjs${' '.repeat(13)} fixlogKey() sai ở ${badK.length}/${KEY.length} ca: ${badK.map(([, , l]) => l).join(' · ')}`);
-  else ok.push(`lib/harness.mjs${' '.repeat(13)} fixlogKey(): luật người-khai thắng phép từ vựng, luật đầu thắng, needle rỗng bị bỏ — ${KEY.length} ca`);
+  else ok.push(`lib/harness.mjs${' '.repeat(13)} fixlogKey(): luật người-khai thắng từ vựng, luật CỤ THỂ HƠN thắng luật rộng, needle rỗng bị bỏ — ${KEY.length} ca`);
+
+  // ⑥b `--close` KHÔNG PHẢI VĨNH VIỄN. Một mục ghi SAU ngày đóng là TÁI PHÁT, và dấu ✔ khi đó
+  //     là lời khai sai theo chiều IM LẶNG của `L0006`: việc chưa xong đọc y hệt việc đã xong.
+  //     Ca thứ nhất là chiều SỬA QUÁ TAY — "chưa từng đóng" KHÔNG được đọc thành "tái phát".
+  const GSC = [
+    [[null, ['2026-08-10']], [false, 0], 'chưa từng đóng ⇒ không đóng, và KHÔNG phải tái phát'],
+    [['2026-08-07', ['2026-08-05', '2026-08-06']], [true, 0], 'mọi mục CŨ hơn ngày đóng ⇒ vẫn đóng'],
+    [['2026-08-07', ['2026-08-05', '2026-08-10']], [false, 1], 'có mục MỚI hơn ⇒ TÁI PHÁT, nhóm mở lại'],
+    [['2026-08-07', []], [true, 0], 'nhóm rỗng ⇒ vẫn đóng, không bịa ra tái phát'],
+  ];
+  const badG = GSC.filter(([[ts, rows], [wantClosed, wantN]]) => {
+    const r = groupStillClosed(ts, rows);
+    return r.closed !== wantClosed || r.recurred.length !== wantN;
+  });
+  if (badG.length) fail.push(`lib/harness.mjs${' '.repeat(13)} groupStillClosed() sai ở ${badG.length}/${GSC.length} ca: ${badG.map(([, , l]) => l).join(' · ')}`);
+  else ok.push(`lib/harness.mjs${' '.repeat(13)} groupStillClosed(): mục ghi SAU ngày đóng ⇒ nhóm mở lại; chưa đóng ≠ tái phát — ${GSC.length} ca`);
 
   // ⑦ CHỐNG LỆCH HAI BẢNG. `fixlog.mjs --top` và `rituals.mjs` trả lời CÙNG một câu hỏi
   //    ("nhóm nào đã ≥2 lần"). Nếu chỉ một bên đọc luật gom nhóm, người dùng thấy "★ đủ điều
@@ -1793,6 +1818,17 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   const drift = [];
   if (!/fixlogGroupRules/.test(ritSrc)) drift.push('rituals.mjs không đọc luật gom nhóm');
   if (!/fixlogGroupRules/.test(fixSrc)) drift.push('fixlog.mjs không đọc luật gom nhóm');
+  // Phép "nhóm này còn đóng không" cũng phải là MỘT. `rituals` từng chỉ đọc KHOÁ trong
+  // `fixlog-closed.log` và vứt cột thời gian, nên nó KHÔNG THỂ thấy tái phát dù có muốn —
+  // và `--top` thì thấy. Đó đúng là hai câu trả lời cho một câu hỏi mà ca ⑦ này canh.
+  //
+  // NEO VÀO LỜI GỌI (`tên(`), không vào SỰ CÓ MẶT của cái tên. Bản đầu dùng `.includes(tên)` và
+  // mutant "thôi gọi, tự quyết bằng `closedAt.has(k)`" SỐNG SÓT — vì dòng `import` vẫn còn cái
+  // tên đó. Đúng `L0006` §"Ba cách một MUTANT SỐNG SÓT" ③: ca neo RỘNG HƠN thứ nó khoá, nên nó
+  // xanh cả khi code sai. Lần thứ ba trong tuần (2026-08-11).
+  for (const [name, src] of [['rituals.mjs', ritSrc], ['fixlog.mjs', fixSrc]]) {
+    if (!/groupStillClosed\s*\(/.test(codeOnly(src))) drift.push(`${name} tự quyết "nhóm còn đóng không" thay vì GỌI groupStillClosed()`);
+  }
   // Gọi `fixlogKey(x)` một tham số = bỏ qua luật. Bắt tại nguồn, vì hậu quả của nó là im lặng.
   for (const [name, src] of [['rituals.mjs', ritSrc], ['fixlog.mjs', fixSrc]]) {
     const bare = src.match(/fixlogKey\([^),]*\)/g)?.filter(s => !/^fixlogKey\(\s*\)$/.test(s)) || [];

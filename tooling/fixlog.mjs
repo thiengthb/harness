@@ -15,7 +15,7 @@
  */
 import { readFileSync, existsSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { telemetry, telemetryDir, currentBranch, fixlogKey, fixlogGroupRules, FIXLOG_GROUPS_FILE } from './lib/harness.mjs';
+import { telemetry, telemetryDir, currentBranch, fixlogKey, fixlogGroupRules, FIXLOG_GROUPS_FILE, groupStillClosed } from './lib/harness.mjs';
 
 const args = process.argv.slice(2);
 const file = join(telemetryDir(), 'manual-fixes.log');
@@ -75,7 +75,10 @@ if (args[0] === '--top') {
   console.log('\n=== NHÓM THEO TẦN SUẤT ===');
   for (const [k, rows] of sorted.slice(0, 15)) {
     const done = closed.get(k);
-    const flag = done ? '✔' : rows.length >= 2 ? '★' : ' ';
+    // TÁI PHÁT: đã đóng, mà vẫn có mục ghi SAU ngày đóng. Dấu ✔ khi đó là một lời khai sai —
+    // và nó sai theo chiều im lặng (`L0006`): việc chưa xong đọc y hệt việc đã xong.
+    const { closed: stillClosed, recurred } = groupStillClosed(done?.ts, rows.map(r => r.ts));
+    const flag = recurred.length ? '↻' : stillClosed ? '✔' : rows.length >= 2 ? '★' : ' ';
     const by = manual.has(k) ? ' ⊕' : '';
     console.log(`${flag} ${String(rows.length).padStart(3)}×${by}  ${rows[0].text}`);
     // Nhóm THỦ CÔNG in HẾT các văn bản khác nhau nó đã gom. Nếu chỉ in dòng đầu như nhóm từ
@@ -84,10 +87,15 @@ if (args[0] === '--top') {
     if (manual.has(k)) {
       for (const t of [...new Set(rows.slice(1).map(r => r.text))]) console.log(`         · ${t.slice(0, 110)}`);
     }
-    if (done) console.log(`         ĐÃ ĐÓNG ${String(done.ts).slice(0, 10)}: ${done.why}`);
+    if (recurred.length) {
+      console.log(`         ↻ MỞ LẠI — đóng ngày ${String(done.ts).slice(0, 10)} nhưng có ${recurred.length} mục ghi SAU đó `
+        + `(gần nhất ${recurred.at(-1).slice(0, 10)}). Lý do đóng cũ KHÔNG còn phủ được nhóm này.`);
+      console.log(`         lý do đóng cũ: ${String(done.why).slice(0, 150)}`);
+    } else if (done) console.log(`         ĐÃ ĐÓNG ${String(done.ts).slice(0, 10)}: ${done.why}`);
   }
   console.log('\n  ★ = xuất hiện ≥2 lần → ĐỦ ĐIỀU KIỆN promote thành bài học (một lần là ngẫu nhiên).');
   console.log('  ✔ = đã xử lý xong, không tính là việc tới hạn nữa.');
+  console.log('  ↻ = ĐÃ ĐÓNG rồi mà TÁI PHÁT — có mục ghi sau ngày đóng. Đóng lại bằng `--close` mới, hoặc tách nhóm.');
   console.log('  ⊕ = nhóm do BẠN khai (--group), không phải máy đoán. Mọi văn bản trong nhóm in ngay dưới.');
   console.log('\n  Nhóm mặc định là phép LEXICAL "6 từ đầu" — nó chỉ gom được khi bạn tình cờ mở đầu');
   console.log('  giống nhau, nên "0 nhóm ★" KHÔNG có nghĩa là "không có gì lặp lại". Thấy hai dòng');

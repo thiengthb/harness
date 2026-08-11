@@ -41,7 +41,7 @@
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, readJson, writeJson, readPacks, packPending, budgetSnapshot, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue } from './lib/harness.mjs';
+import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, groupStillClosed, readJson, writeJson, readPacks, packPending, budgetSnapshot, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue } from './lib/harness.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHẦN THUẦN — không đọc đĩa, không gọi git. Test khẳng định trực tiếp vào đây.
@@ -861,23 +861,35 @@ function fixlogState() {
     // ngưỡng" ở chỗ kia — hai câu trả lời khác nhau cho cùng một câu hỏi, và không gì báo.
     const rules = fixlogGroupRules();
     const norm = (t) => fixlogKey(t, rules);
+    // GIỮ MỐC THỜI GIAN của từng mục, không chỉ đếm. Bản trước chỉ đếm, nên khi tới chỗ trừ
+    // nhóm đã đóng nó KHÔNG THỂ biết mục nào ghi sau ngày đóng — dữ liệu đã bị vứt trước đó.
     const groups = new Map();
     for (const l of lines) {
-      const text = l.split('|').slice(3).join('|').trim() || l;
+      const parts = l.split('|');
+      const text = parts.slice(3).join('|').trim() || l;
       const k = norm(text);
-      groups.set(k, (groups.get(k) ?? 0) + 1);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(parts[0] || '');
     }
     // Trừ nhóm ĐÃ ĐÓNG. Không trừ thì một nhóm ≥2 lần ĐỎ VĨNH VIỄN: fixlog chỉ biết ghi thêm,
     // không biết việc đã được xử. Đo ở `sakubun`: nhóm `gen-clean chẩn đoán sai` đạt 2 lần và
     // đã được sửa ở template v2.10.0 — fixlog cục bộ không biết, nên mục này sẽ nhắc mãi.
     // Cùng hình dạng với bug đếm pack ở 2.10.4: đếm cái TỒN TẠI thay vì cái CHƯA XỬ.
+    //
+    // Và đóng KHÔNG PHẢI VĨNH VIỄN: một mục ghi SAU ngày đóng là TÁI PHÁT, nhóm mở lại.
+    // `groupStillClosed()` ở `lib` quyết định điều đó cho CẢ hai bảng — `fixlog --top` gọi đúng
+    // hàm ấy. Bản trước ở đây đọc `l.split('\t')[1]` (chỉ lấy KHOÁ) và vứt cột thời gian, nên
+    // hai bảng không thể cùng câu trả lời dù có muốn (ca ⑦ của test-hooks canh đúng chuyện này).
     const closedFile = join(telemetryDir(), 'fixlog-closed.log');
-    const closed = new Set();
+    const closedAt = new Map();
     try {
-      for (const l of readFileSync(closedFile, 'utf8').split('\n').filter(Boolean)) closed.add(l.split('\t')[1]);
+      for (const l of readFileSync(closedFile, 'utf8').split('\n').filter(Boolean)) {
+        const [ts, key] = l.split('\t');
+        if (key) closedAt.set(key, ts);
+      }
     } catch { /* chưa đóng nhóm nào */ }
-    const open = [...groups.entries()].filter(([k]) => !closed.has(k));
-    return { fixlogTotal: lines.length, fixlogRepeated: open.filter(([, n]) => n >= 2).length };
+    const open = [...groups.entries()].filter(([k, tss]) => !groupStillClosed(closedAt.get(k), tss).closed);
+    return { fixlogTotal: lines.length, fixlogRepeated: open.filter(([, tss]) => tss.length >= 2).length };
   } catch { return { fixlogTotal: null, fixlogRepeated: null }; }
 }
 

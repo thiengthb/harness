@@ -11,6 +11,72 @@
 
 ---
 
+## 2.62.0 — 2026-08-11
+
+**minor.** Một nhóm fixlog **ĐÃ ĐÓNG** thôi nuốt một mục **CHƯA XONG**. Hai defect độc lập,
+cùng một hậu quả: backlog báo *"không có gì tới hạn"* trong khi có.
+
+### Defect ①: luật gom nhóm RỘNG hơn, khai TRƯỚC, thắng luật hẹp khai sau
+
+`fixlog-groups.log` thật:
+
+```
+2026-08-06  dcg-chuoi-khong-phai-lenh            khớp: "dcg"                       ← ĐÃ ĐÓNG 08-07
+2026-08-10  dcg-rule-qua-rong-chan-buoc-don-dep  khớp: "buoc DON DEP cua mutation"
+```
+
+Mục ngày **08-10** khớp **cả hai**. `fixlogKey` lấy luật **đầu tiên** khớp, nên mục đó thừa
+hưởng dấu **✔** của một nhóm đóng **ba ngày TRƯỚC KHI nó tồn tại** — trong khi việc đó đang mở
+dưới dạng **#160**.
+
+Nay **luật CỤ THỂ HƠN (needle dài hơn) thắng**; bằng độ dài thì giữ thứ tự file. *"Dài hơn"*
+chứ không *"mới hơn"*: độ dài là thuộc tính của **chính luật**, nên phép chọn không đổi theo
+thứ tự người ta khai. Chọn *"mới hơn"* thì một luật rộng khai sau sẽ nuốt mọi luật hẹp khai
+trước — đúng chiều hỏng vừa gặp, chỉ đảo trục.
+
+### Defect ②: `--close` được hiểu là VĨNH VIỄN
+
+Một mục ghi **sau** ngày đóng là **tái phát** — và đó là ca đáng canh nhất của cả cơ chế đóng
+nhóm: *cùng một lỗi quay lại sau khi bạn tuyên bố đã sửa tận gốc*.
+
+`groupStillClosed(closedTs, rowTimestamps)` (thuần) quyết định điều này cho **cả hai** bảng.
+`fixlog --top` có dấu mới **`↻`** kèm số mục mới hơn và ngày gần nhất.
+
+### Vì sao phải là MỘT hàm
+
+`rituals.fixlogState()` đọc `fixlog-closed.log` bằng `l.split('\t')[1]` — **chỉ lấy khoá, vứt
+cột thời gian**. Nó không thể phát hiện tái phát dù có muốn, trong khi `--top` thì có thể. Hai
+bảng trả lời cùng một câu hỏi bằng hai câu khác nhau — đúng thứ ca ⑦ của `test-hooks` sinh ra
+để chống. `rituals` nay giữ mốc thời gian từng mục và gọi cùng một hàm.
+
+### Đo trên sổ thật
+
+```
+trước:  ✔ 5× ⊕ dcg… (gồm mục 08-10)          ⇒ 0 nhóm ★, retro thấy "không có gì tới hạn"
+sau:    ✔ 4× ⊕ dcg…   ·   1× ⊕ dcg chan git checkout --  ← hiện ra, KHÔNG còn dấu ✔
+```
+
+### Test
+
+228 ca (+5). Năm mutant, **5/5 chết**:
+
+| mutant | ca đỏ |
+|---|---|
+| quay lại "luật đầu thắng" | fixlogKey ⑥ |
+| "luật cuối thắng" (phụ thuộc thứ tự khai) | fixlogKey ⑥ ×2 |
+| đã đóng là đóng vĩnh viễn | groupStillClosed ⑥b |
+| chưa từng đóng bị đọc thành tái phát | groupStillClosed ⑥b |
+| `rituals` tự quyết, thôi gọi hàm chung | fixlog ↔ rituals ⑦ |
+
+Mutant thứ năm **SỐNG SÓT ở lượt đầu**: ca dùng `codeOnly(src).includes('groupStillClosed')`,
+mà dòng `import` vẫn còn cái tên đó — ca chứng minh *"có nhắc tên"*, không chứng minh *"có
+GỌI"*. Đúng `L0006` §*"Ba cách một mutant sống sót"* ③, lần thứ ba trong tuần. Neo lại vào
+`/groupStillClosed\s*\(/`.
+
+Refs: retro W33
+
+---
+
 ## 2.61.0 — 2026-08-11
 
 **minor.** Gói **PHẲNG**: CAPO tính bằng **lần chạm trần**, không bằng USD. `capo-report.mjs`
