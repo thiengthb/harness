@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -1809,6 +1809,33 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   if (badG.length) fail.push(`lib/harness.mjs${' '.repeat(13)} groupStillClosed() sai ở ${badG.length}/${GSC.length} ca: ${badG.map(([, , l]) => l).join(' · ')}`);
   else ok.push(`lib/harness.mjs${' '.repeat(13)} groupStillClosed(): mục ghi SAU ngày đóng ⇒ nhóm mở lại; chưa đóng ≠ tái phát — ${GSC.length} ca`);
 
+  // ⑥c TRẠNG THÁI THỨ TƯ (#182). `groupTracked` và `groupStillClosed` tính CÙNG một thứ
+  //     (`rowsAfter`) nhưng KẾT LUẬN NGƯỢC NHAU, và đó là chỗ dễ chép nhầm nhất của bản vá:
+  //
+  //       `--close` khai "lỗi này không xảy ra nữa"  ⇒ mục mới BÁC BỎ  ⇒ nhóm mở lại (`↻`)
+  //       `--track` khai "tôi biết, nó ở #177"       ⇒ mục mới XÁC NHẬN ⇒ nhóm VẪN đang chờ
+  //
+  //     Chép `closed: recurred.length === 0` sang đây là biến `--track` thành một nút tắt
+  //     dùng một lần: ghi địa chỉ xong, mọi lần tái phát tự động bị xoá khỏi bảng.
+  const TRK = [
+    [[null, ['2026-08-10']], [false, 0], 'chưa ghi địa chỉ ⇒ không tracked, không tái phát'],
+    [['2026-08-07', ['2026-08-05']], [true, 0], 'mục CŨ hơn ngày ghi ⇒ tracked, chưa tái phát'],
+    [['2026-08-07', ['2026-08-09', '2026-08-11']], [true, 2], 'mục MỚI hơn ⇒ VẪN tracked, và ĐẾM được 2 lần tái phát'],
+    [['2026-08-07', []], [true, 0], 'nhóm rỗng ⇒ tracked, không bịa tái phát'],
+  ];
+  const badTrk = TRK.filter(([[ts, rows], [wantTracked, wantN]]) => {
+    const r = groupTracked(ts, rows);
+    return r.tracked !== wantTracked || r.recurred.length !== wantN;
+  });
+  // Và chiều NGƯỢC, ở mức hành vi: cùng đầu vào, hai hàm phải KHÁC KẾT LUẬN. Không có ca này
+  // thì một bản vá `groupTracked = groupStillClosed` (đổi tên field) xanh cả 4 ca trên.
+  const same = ['2026-08-07', ['2026-08-09']];
+  if (groupStillClosed(...same).closed === groupTracked(...same).tracked) {
+    badTrk.push([, , 'mục ghi SAU mốc: `closed` và `tracked` cho CÙNG kết luận — `--track` đã thành nút tắt một lần']);
+  }
+  if (badTrk.length) fail.push(`lib/harness.mjs${' '.repeat(13)} groupTracked() sai ở ${badTrk.length}/${TRK.length + 1} ca: ${badTrk.map(([, , l]) => l).join(' · ')}`);
+  else ok.push(`lib/harness.mjs${' '.repeat(13)} groupTracked(): tái phát ĐẾM được nhưng KHÔNG mở lại nhóm — ngược hẳn \`--close\` — ${TRK.length + 1} ca`);
+
   // ⑦ CHỐNG LỆCH HAI BẢNG. `fixlog.mjs --top` và `rituals.mjs` trả lời CÙNG một câu hỏi
   //    ("nhóm nào đã ≥2 lần"). Nếu chỉ một bên đọc luật gom nhóm, người dùng thấy "★ đủ điều
   //    kiện promote" ở một chỗ và "chưa nhóm nào đạt ngưỡng" ở chỗ kia — hai sự thật, không
@@ -1828,6 +1855,10 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   // xanh cả khi code sai. Lần thứ ba trong tuần (2026-08-11).
   for (const [name, src] of [['rituals.mjs', ritSrc], ['fixlog.mjs', fixSrc]]) {
     if (!/groupStillClosed\s*\(/.test(codeOnly(src))) drift.push(`${name} tự quyết "nhóm còn đóng không" thay vì GỌI groupStillClosed()`);
+    // #182: cùng lý do, cho trạng thái thứ tư. Và `groupMarks()` — bản trước mỗi bên tự parse
+    // TSV của `fixlog-closed.log`, và bản `rituals` vứt cột thời gian đi (#176).
+    if (!/groupTracked\s*\(/.test(codeOnly(src))) drift.push(`${name} tự quyết "nhóm đã có địa chỉ chưa" thay vì GỌI groupTracked()`);
+    if (!/groupMarks\s*\(/.test(codeOnly(src))) drift.push(`${name} tự parse sổ đánh dấu thay vì GỌI groupMarks() — bản trước lệch nhau đúng ở đó (#176)`);
   }
   // Gọi `fixlogKey(x)` một tham số = bỏ qua luật. Bắt tại nguồn, vì hậu quả của nó là im lặng.
   for (const [name, src] of [['rituals.mjs', ritSrc], ['fixlog.mjs', fixSrc]]) {
@@ -1845,6 +1876,63 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   if (g.status === 0) fail.push(`fixlog.mjs${' '.repeat(18)} --group với từ khoá khớp 0 dòng vẫn exit 0 — luật vô hiệu được ghi im lặng`);
   else if (!/Không dòng fixlog nào/.test(g.stderr || '')) fail.push(`fixlog.mjs${' '.repeat(18)} --group từ chối nhưng không nói vì sao`);
   else ok.push(`fixlog.mjs${' '.repeat(18)} --group từ chối từ khoá khớp 0 dòng và nói rõ — không ghi luật chết`);
+
+  // ⑨ TRẠNG THÁI THỨ TƯ, đầu-cuối (#182). Sổ RIÊNG trong `tmpdir` — chạy trên sổ thật thì
+  //    test ghi vào backlog của người dùng, đúng thứ `fixture-phai-an-toan` cấm.
+  const t9 = mkdtempSync(join(tmpdir(), 'harness-track-'));
+  const runFix = (...a) => spawnSync(process.execPath, [repoPath('tooling', 'fixlog.mjs'), ...a],
+    { encoding: 'utf8', cwd: repoPath(), env: { ...process.env, HARNESS_TELEMETRY_DIR: t9 } });
+  const line = (d, txt) => `${d}|fixture|main|${txt}\n`;
+  const badT9 = [];
+  writeFileSync(join(t9, 'manual-fixes.log'),
+    line('2026-08-01T00:00:00.000Z', 'agent quen chay gen sau khi sua contract abcdef') +
+    line('2026-08-02T00:00:00.000Z', 'agent quen chay gen sau khi sua contract abcdef'), 'utf8');
+
+  // ĐỊA CHỈ bắt buộc: "đang chờ" mà không nói chờ ở đâu thì không khác gì im lặng bỏ qua.
+  const noRef = runFix('--track', 'quen chay gen');
+  if (noRef.status === 0) badT9.push('--track KHÔNG có địa chỉ vẫn exit 0 — một nút tắt không ghi lý do');
+
+  const before = runFix('--top');
+  if (!/^★\s+2×/m.test(before.stdout || '')) badT9.push(`trước khi track, nhóm 2× phải là ★ (được: ${(before.stdout || '').split('\n')[1]?.slice(0, 40)})`);
+
+  const tr = runFix('--track', 'quen chay gen', '#177 — chờ DRI');
+  if (tr.status !== 0) badT9.push(`--track hợp lệ exit ${tr.status} ≠ 0: ${(tr.stderr || '').slice(0, 90)}`);
+  const after = runFix('--top');
+  if (!/^⇢\s+2×/m.test(after.stdout || '')) badT9.push('sau khi track, nhóm vẫn không mang dấu ⇢');
+  if (!/#177/.test(after.stdout || '')) badT9.push('--top KHÔNG in địa chỉ — "đang chờ" mà không nói chờ đâu thì vô dụng');
+  if (!/2×/.test(after.stdout || '')) badT9.push('--top giấu số đếm của nhóm đã track — `--track` không được là nút giấu');
+
+  // TÁI PHÁT sau khi track: VẪN `⇢`, nhưng số lần phải HIỆN RA. Đây là ca phân biệt `--track`
+  // với `--close`; nếu bản vá chép `groupStillClosed` thì dòng này thành `↻` hoặc mất hẳn.
+  appendFileSync(join(t9, 'manual-fixes.log'), line(new Date(Date.now() + 86400_000).toISOString(), 'agent quen chay gen sau khi sua contract abcdef'), 'utf8');
+  const recur = runFix('--top');
+  if (!/^⇢\s+3×/m.test(recur.stdout || '')) badT9.push('tái phát sau khi track làm ĐỔI dấu — `--track` bị chép nhầm thành `--close`');
+  if (!/TÁI PHÁT 1 lần/.test(recur.stdout || '')) badT9.push('tái phát sau khi track KHÔNG được đếm ra — mất đúng tín hiệu thay cho màu đỏ');
+
+  // Và `rituals` phải thấy CÙNG một sự thật: nhóm đã có địa chỉ thôi là "ứng viên chờ distill".
+  const retroState = () => {
+    const r = spawnSync(process.execPath, [repoPath('tooling', 'rituals.mjs'), '--json'],
+      { encoding: 'utf8', cwd: repoPath(), env: { ...process.env, HARNESS_TELEMETRY_DIR: t9 } });
+    try { return (JSON.parse(r.stdout || '[]').find(x => x.id === 'harness-retro')) || {}; } catch { return {}; }
+  };
+  const st9 = retroState();
+  if (/ứng viên bài học ĐANG chờ/.test(st9.why || '')) badT9.push(`rituals vẫn đòi distill một nhóm ĐÃ có địa chỉ: ${String(st9.why).slice(0, 90)}`);
+  if (!/#177/.test(st9.why || '')) badT9.push('rituals im về việc ĐANG CHỜ — mục xanh phải nói ra nó, nếu không `--track` là một nút giấu');
+
+  // NGƯỠNG ĐẶT TRÊN SỐ CHƯA XỬ, KHÔNG trên số ĐỜI. Ca này cần `fixlogTotal ≥ 10` mà
+  // `fixlogOpen < 10` — tức phải có ĐỦ mục và chúng phải ĐÃ ĐƯỢC XỬ. Không dựng được tình
+  // huống đó thì nhánh ngưỡng không bao giờ chạy, và mutant "quay lại đếm `fixlogTotal`" SỐNG
+  // SÓT: đúng thế, đo 2026-08-12, nguyên nhân ① — lỗ hổng độ phủ thật, không phải neo rộng.
+  for (let i = 0; i < 12; i++) {
+    appendFileSync(join(t9, 'manual-fixes.log'), line(`2026-07-${String(i + 10).padStart(2, '0')}T00:00:00.000Z`, 'mot loai loi hoan toan khac de gom nhom rieng'), 'utf8');
+  }
+  runFix('--track', 'mot loai loi hoan toan khac', '#999 — chờ upstream');
+  const big = retroState();
+  if (big.state !== 'ok') badT9.push(`${'15'} mục mà chỉ 0 mục chưa xử ⇒ phải \`ok\`, được \`${big.state}\`: ${String(big.why).slice(0, 110)}`);
+  rmSync(t9, { recursive: true, force: true });
+
+  if (badT9.length) fail.push(`fixlog --track${' '.repeat(15)} ${badT9.length} ca sai: ${badT9.join(' | ')}`);
+  else ok.push(`fixlog --track${' '.repeat(15)} ★ → ⇢ · địa chỉ BẮT BUỘC và được in · số đếm không bị giấu · tái phát ĐẾM mà KHÔNG đổi dấu · rituals đồng ý`);
 }
 
 // ─── LỚP PHỐI HỢP: `chưa khai` KHÔNG ĐƯỢC gộp vào `solo` ─────────────────────

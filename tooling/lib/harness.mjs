@@ -1728,6 +1728,29 @@ export function fixlogKey(text, rules = []) {
 
 /** Đường dẫn file luật gom nhóm. Cùng thư mục telemetry với fixlog: đều là dữ liệu MÁY NÀY. */
 export const FIXLOG_GROUPS_FILE = () => join(telemetryDir(), 'fixlog-groups.log');
+export const FIXLOG_CLOSED_FILE = () => join(telemetryDir(), 'fixlog-closed.log');
+export const FIXLOG_TRACKED_FILE = () => join(telemetryDir(), 'fixlog-tracked.log');
+
+/**
+ * Sổ đánh dấu nhóm (`fixlog-closed.log` · `fixlog-tracked.log`) → `Map<key, {ts, note}>`.
+ *
+ * MỘT phép đọc cho cả `fixlog --top` lẫn `rituals.fixlogState()`. Trước #182 mỗi bên tự parse
+ * TSV này, và bản `rituals` **vứt cột thời gian** — nên hai bảng không thể cùng câu trả lời dù
+ * có muốn (bug #176). Hai bên đọc tự lắp lại một phép đọc là hình dạng chính xác của #125.
+ *
+ * Khoá trùng: mục SAU đè mục trước — `--close` lần hai (sau tái phát) phải thắng lần một.
+ */
+export function groupMarks(file) {
+  const m = new Map();
+  try {
+    if (!existsSync(file)) return m;
+    for (const l of readFileSync(file, 'utf8').split('\n').filter(Boolean)) {
+      const [ts, key, ...note] = l.split('\t');
+      if (key) m.set(key, { ts, note: note.join(' ').trim() });
+    }
+  } catch { /* sổ hỏng ⇒ coi như chưa đánh dấu gì: mất một phép TRỪ, không mất mục fixlog nào */ }
+  return m;
+}
 
 /**
  * Một nhóm ĐÃ ĐÓNG có còn đóng không — **THUẦN**, nhận mốc đóng + mốc các mục, trả phán quyết.
@@ -1745,9 +1768,43 @@ export const FIXLOG_GROUPS_FILE = () => join(telemetryDir(), 'fixlog-groups.log'
  * Hai chuyện đó khác nhau và `recurred` phân biệt được: rỗng ở ca một, có phần tử ở ca hai.
  */
 export function groupStillClosed(closedTs, rowTimestamps = []) {
-  if (!closedTs) return { closed: false, recurred: [] };
-  const recurred = [...rowTimestamps].map(String).filter(ts => ts > String(closedTs)).sort();
-  return { closed: recurred.length === 0, recurred };
+  const recurred = rowsAfter(closedTs, rowTimestamps);
+  return { closed: Boolean(closedTs) && recurred.length === 0, recurred };
+}
+
+/** Mục ghi SAU một mốc, đã sắp. Không có mốc ⇒ `[]` (không có mốc thì không có "sau"). */
+export function rowsAfter(ts, rowTimestamps = []) {
+  if (!ts) return [];
+  return [...rowTimestamps].map(String).filter(t => t > String(ts)).sort();
+}
+
+/**
+ * ═══ TRẠNG THÁI THỨ TƯ: ĐÃ CÓ ĐỊA CHỈ, ĐANG CHỜ (#182) ══════════════════════
+ *
+ * Ba trạng thái cũ — mở (`★` khi ≥2) · đã đóng (`✔`) · tái phát (`↻`) — không có chỗ cho
+ * *"đã chưng cất thành một việc có địa chỉ, và việc đó đang chờ NGƯỜI KHÁC"*. Không có nó thì
+ * nhóm đội `★` mãi và `/harness-retro` đỏ vĩnh viễn trên một việc mà retro đã làm xong phần
+ * của nó.
+ *
+ * Đo 2026-08-11: nhóm `node -e nuốt backtick` (3×) là **#177** — có spec, ba phương án, một
+ * khuyến nghị; nó chờ DRI (bản vá nằm trong `.claude/hooks/`, vùng cấm), không chờ retro.
+ * Chạy `/harness-retro` lần nữa không sinh ra gì mới, nhưng mục đỏ vẫn nói *"ứng viên bài học
+ * ĐANG chờ"* — sai về việc đang chờ ai.
+ *
+ * VÌ SAO KHÔNG DÙNG `--close`. `--close` nghĩa là **đã sửa tận gốc** (cả hai mục trong sổ đóng
+ * đều ghi *"sua tan goc o vX.Y.Z"*). Đóng một việc đang chờ là ghi lời khai sai VÀ xoá dấu vết
+ * rằng lỗi còn sống — nhóm đội `✔` trong khi nó vẫn xảy ra hằng ngày. Chính comment của
+ * `--close` đã cảnh báo đúng lớp lỗi này một tầng thấp hơn: *một mục đỏ vĩnh viễn dạy người ta
+ * bỏ qua màu đỏ*.
+ *
+ * TÁI PHÁT **KHÔNG** làm nhóm mở lại — khác hẳn `groupStillClosed`, và đây là chỗ dễ chép nhầm
+ * nhất. Lý do: `--close` khai *"lỗi này không thể xảy ra nữa"*, nên một mục mới **bác bỏ** lời
+ * khai đó. `--track` khai *"tôi biết, nó đây, đang chờ"* — một mục mới **xác nhận** lời khai
+ * ấy, và làm issue đắt thêm. Nên số đó đi vào THÔNG ĐIỆP (`recurred`), không đi vào màu.
+ */
+export function groupTracked(trackedTs, rowTimestamps = []) {
+  const recurred = rowsAfter(trackedTs, rowTimestamps);
+  return { tracked: Boolean(trackedTs), recurred };
 }
 
 /**

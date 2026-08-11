@@ -41,7 +41,7 @@
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, groupStillClosed, readJson, writeJson, readPacks, packPending, budgetSnapshot, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue } from './lib/harness.mjs';
+import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, groupStillClosed, groupTracked, groupMarks, FIXLOG_CLOSED_FILE, FIXLOG_TRACKED_FILE, readJson, writeJson, readPacks, packPending, budgetSnapshot, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue } from './lib/harness.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHẦN THUẦN — không đọc đĩa, không gọi git. Test khẳng định trực tiếp vào đây.
@@ -205,14 +205,24 @@ export const RITUALS = [
     what: 'chưng fixlog thành bài học — bước DISTILL của vòng học',
     check: (s) => {
       if (s.fixlogTotal == null) return { state: '?', why: 'không đọc được fixlog — không đo được' };
+      // NHÓM ĐÃ CÓ ĐỊA CHỈ không tính là ứng viên chờ chưng cất (#182): retro đã làm xong phần
+      // của nó, việc đang chờ NGƯỜI KHÁC. Nhưng nó phải hiện ra trong câu trả lời — kể cả câu
+      // XANH — kèm số lần tái phát, vì đó là thứ nói cho bạn biết việc chờ kia đang đắt lên.
+      const waiting = s.fixlogTracked
+        ? ` · ${s.fixlogTracked} nhóm ĐÃ CÓ ĐỊA CHỈ, đang chờ (${s.fixlogTrackedRefs.join(' · ')})`
+          + (s.fixlogTrackedRecur ? `, đã tái phát ${s.fixlogTrackedRecur} lần kể từ khi ghi` : '')
+        : '';
       if (s.fixlogRepeated > 0) {
-        return { state: 'due', why: `${s.fixlogRepeated} nhóm fixlog đã ≥2 lần (ngưỡng promote) trên tổng ${s.fixlogTotal} mục — mỗi nhóm là một ứng viên bài học ĐANG chờ` };
+        return { state: 'due', why: `${s.fixlogRepeated} nhóm fixlog đã ≥2 lần (ngưỡng promote) trên tổng ${s.fixlogTotal} mục — mỗi nhóm là một ứng viên bài học ĐANG chờ${waiting}` };
       }
-      if (s.fixlogTotal >= 10) return { state: 'due', why: `${s.fixlogTotal} mục fixlog mà chưa nhóm nào ≥2 — đủ nhiều để đáng đọc một lượt` };
+      // NGƯỠNG ĐẶT TRÊN SỐ CHƯA XỬ, không trên số ĐỜI. `fixlogTotal` chỉ tăng, nên `>= 10` trên
+      // nó là mục đỏ VĨNH VIỄN sau mục thứ 10 — cùng lỗi với `flat-limited` ở #180, trong cùng
+      // hàm này. Đóng hoặc ghi địa chỉ cho một nhóm thì con số này giảm thật.
+      if (s.fixlogOpen >= 10) return { state: 'due', why: `${s.fixlogOpen} mục fixlog CHƯA xử (chưa đóng, chưa có địa chỉ) mà chưa nhóm nào ≥2 — đủ nhiều để đáng đọc một lượt${waiting}` };
       // Nói rõ phép nhóm là TỪ VỰNG. "Chưa nhóm nào ≥2" đọc như "không có gì lặp lại", nhưng nó
       // chỉ có nghĩa "không có hai dòng nào mở đầu giống nhau" — đo 2026-08-06: 3 mục cùng một
       // gác nằm ở 3 nhóm rời. Một dòng xanh nói quá thì tệ hơn một dòng đỏ nói thiếu.
-      return { state: 'ok', why: `${s.fixlogTotal} mục fixlog, chưa nhóm nào đạt ngưỡng ≥2 — nhóm mặc định theo TỪ VỰNG, hai dòng cùng gốc rễ mà khác cách diễn đạt thì khai bằng \`fixlog.mjs --group\`` };
+      return { state: 'ok', why: `${s.fixlogOpen}/${s.fixlogTotal} mục fixlog chưa xử, chưa nhóm nào đạt ngưỡng ≥2${waiting} — nhóm mặc định theo TỪ VỰNG, hai dòng cùng gốc rễ mà khác cách diễn đạt thì khai bằng \`fixlog.mjs --group\`` };
     },
   },
   {
@@ -864,7 +874,7 @@ export function collect() {
 function fixlogState() {
   try {
     const f = join(telemetryDir(), 'manual-fixes.log');
-    if (!existsSync(f)) return { fixlogTotal: 0, fixlogRepeated: 0 };
+    if (!existsSync(f)) return { fixlogTotal: 0, fixlogOpen: 0, fixlogRepeated: 0, fixlogTracked: 0, fixlogTrackedRefs: [], fixlogTrackedRecur: 0 };
     const lines = readFileSync(f, 'utf8').split('\n').filter(Boolean);
     // `fixlogKey` ở `lib/harness.mjs` — MỘT nguồn cho cả `--top`, `--close` và chỗ này.
     // Luật gom nhóm thủ công phải đọc Ở ĐÂY NỮA: nếu `--top` thấy một nhóm ≥2 mà bảng nghi thức
@@ -891,17 +901,43 @@ function fixlogState() {
     // `groupStillClosed()` ở `lib` quyết định điều đó cho CẢ hai bảng — `fixlog --top` gọi đúng
     // hàm ấy. Bản trước ở đây đọc `l.split('\t')[1]` (chỉ lấy KHOÁ) và vứt cột thời gian, nên
     // hai bảng không thể cùng câu trả lời dù có muốn (ca ⑦ của test-hooks canh đúng chuyện này).
-    const closedFile = join(telemetryDir(), 'fixlog-closed.log');
-    const closedAt = new Map();
-    try {
-      for (const l of readFileSync(closedFile, 'utf8').split('\n').filter(Boolean)) {
-        const [ts, key] = l.split('\t');
-        if (key) closedAt.set(key, ts);
-      }
-    } catch { /* chưa đóng nhóm nào */ }
-    const open = [...groups.entries()].filter(([k, tss]) => !groupStillClosed(closedAt.get(k), tss).closed);
-    return { fixlogTotal: lines.length, fixlogRepeated: open.filter(([, tss]) => tss.length >= 2).length };
-  } catch { return { fixlogTotal: null, fixlogRepeated: null }; }
+    //
+    // MỘT phép đọc sổ đánh dấu, dùng chung với `fixlog --top` — `groupMarks()` ở lib. Bản
+    // trước tự parse TSV Ở ĐÂY và vứt cột thời gian đi; đó chính là hình dạng của #125 (hai
+    // bên đọc tự lắp lại một phép đọc, rồi lệch nhau trên cùng cái sổ).
+    const closed = groupMarks(FIXLOG_CLOSED_FILE());
+    const tracked = groupMarks(FIXLOG_TRACKED_FILE());
+    const open = [...groups.entries()].filter(([k, tss]) => !groupStillClosed(closed.get(k)?.ts, tss).closed);
+    const repeated = open.filter(([, tss]) => tss.length >= 2);
+    // TRẠNG THÁI THỨ TƯ (#182): nhóm ĐÃ có địa chỉ không còn là *"ứng viên chờ chưng cất"* —
+    // retro đã làm xong phần của nó. Nhưng nó KHÔNG biến mất khỏi số đo: `fixlogTracked` và
+    // tổng số lần tái phát đi kèm, để mục xanh vẫn nói ra việc đang chờ và giá của nó.
+    // HAI tập, và gộp chúng là một câu trả lời lệch: `waitingRepeated` là thứ được TRỪ khỏi
+    // "ứng viên chờ chưng cất" (chỉ nhóm ≥2 mới từng là ứng viên), còn `waiting` là thứ được
+    // KỂ RA. Nhóm 1× đã có địa chỉ không phải ứng viên, nhưng nó vẫn được trừ khỏi `fixlogOpen`
+    // — im lặng về nó thì con số "2/11 chưa xử" không cộng lại được với bất cứ gì người đọc thấy.
+    const waiting = [...groups.entries()].filter(([k]) => tracked.has(k));
+    const waitingRepeated = repeated.filter(([k]) => tracked.has(k));
+    // `fixlogTotal` là số ĐỜI, và sổ chỉ biết ghi thêm — nên một ngưỡng đặt trên nó là một mục
+    // đỏ VĨNH VIỄN sau lần thứ 10, y như `flat-limited` ở #180. Thứ đo được backlog thật là số
+    // mục nằm trong nhóm CHƯA xử: chưa đóng, và chưa có địa chỉ.
+    const handled = new Set([...groups.keys()].filter(k =>
+      groupStillClosed(closed.get(k)?.ts, groups.get(k)).closed || groupTracked(tracked.get(k)?.ts, []).tracked));
+    const openCount = [...groups.entries()].filter(([k]) => !handled.has(k)).reduce((s, [, tss]) => s + tss.length, 0);
+    return {
+      fixlogTotal: lines.length,
+      fixlogOpen: openCount,
+      fixlogRepeated: repeated.length - waitingRepeated.length,
+      fixlogTracked: waiting.length,
+      // Lấy SỐ ISSUE nếu có, không cắt bừa 60 ký tự: một ref bị cắt giữa câu (`... + set`)
+      // đọc như dữ liệu hỏng, và bảng nghi thức là thứ người ta liếc chứ không đọc kỹ.
+      fixlogTrackedRefs: waiting.map(([k]) => {
+        const note = String(tracked.get(k)?.note || '');
+        return (note.match(/#\d+/) || [note.slice(0, 24)])[0];
+      }),
+      fixlogTrackedRecur: waiting.reduce((s, [k, tss]) => s + groupTracked(tracked.get(k)?.ts, tss).recurred.length, 0),
+    };
+  } catch { return { fixlogTotal: null, fixlogOpen: null, fixlogRepeated: null, fixlogTracked: null, fixlogTrackedRefs: [], fixlogTrackedRecur: null }; }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
