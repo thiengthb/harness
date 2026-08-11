@@ -124,20 +124,32 @@ const SETUP_SECTION = /^##\s+Dựng cảnh\s*$/m;
  */
 function splitCommands(src) {
   const out = [];
-  let cur = '', agentNext = false, pendingAgent = false;
+  let cur = '', agentNext = false, pendingAgent = false, fullNext = '', pendingFull = '';
   const flush = () => {
     if (!cur.trim()) return;
-    out.push({ cmd: cur.trim(), requiresAgent: pendingAgent });
-    cur = ''; pendingAgent = false;
+    out.push({ cmd: cur.trim(), requiresAgent: pendingAgent, fullArmOnly: pendingFull });
+    cur = ''; pendingAgent = false; pendingFull = '';
   };
   for (const raw of src.split('\n')) {
     const line = raw.replace(/\s+$/, '');
     if (!cur && /^\s*#/.test(line)) {                 // chú thích chỉ là chú thích khi ở NGOÀI một lệnh
       if (/^\s*#\s*requires-agent\b/.test(line)) agentNext = true;
+      // `# full-arm-only: <lý do>` — assertion KHÔNG SO ĐƯỢC giữa hai chiều, do BẢN CHẤT nó.
+      // Lý do BẮT BUỘC: đây là cửa để một task tự đưa mình ra khỏi phép trừ, và một cửa như
+      // vậy không có lý do sẽ được dùng để làm đẹp con số. Xem `runAssertions`.
+      // RÀNG BUỘC "PHẢI CÓ LÝ DO" ĐƯỢC GIỮ BỞI **HAI** LỚP, và đo được điều đó:
+      //   · regex đòi `:` + ít nhất một ký tự;
+      //   · `fm[1].trim()` rỗng ⇒ falsy ⇒ dấu không được nhận.
+      // Mutation 2026-08-11: phá RIÊNG lớp nào cũng cho mutant **TƯƠNG ĐƯƠNG** (nới regex ⇒
+      // capture rỗng ⇒ vẫn falsy; điền hộ lý do ⇒ regex vẫn chặn ở `fm === null`). Chỉ mutant
+      // phá **cả hai cùng lúc** mới giết được ca ⑲g — và nó giết thật. Ghi ra vì một mutant
+      // sống sót ở đây là "phòng thủ hai lớp", KHÔNG phải "test hở"; đừng gỡ một lớp cho gọn.
+      const fm = line.match(/^\s*#\s*full-arm-only\s*:\s*(.+)$/);
+      if (fm) fullNext = fm[1].trim();
       continue;
     }
     if (!cur && !line.trim()) continue;
-    if (!cur) pendingAgent = agentNext, agentNext = false;
+    if (!cur) pendingAgent = agentNext, agentNext = false, pendingFull = fullNext, fullNext = '';
     cur += (cur ? '\n' : '') + line;
     // Nháy còn lẻ ⇒ lệnh chưa kết thúc. Đếm trên chuỗi đã bỏ ký tự thoát.
     const bare = cur.replace(/\\./g, '');
@@ -154,17 +166,42 @@ function assertionsOf(body) {
   return block ? splitCommands(block[1]) : [];
 }
 
+/**
+ * `# full-arm-only: <lý do>` — assertion CHỈ CHẤM ĐƯỢC Ở CHIỀU ĐẦY ĐỦ, do bản chất của nó.
+ *
+ * Khác hẳn "assertion đỏ sẵn vì `--bare` gỡ mất file nó đọc" — ca đó là **công cụ báo oan** và
+ * phải VÁ (v2.57.0/v2.58.0 vá bốn công cụ như vậy). Ca này thì không vá được: mẫu vật là
+ * `0007`, mà assertion của nó chạy `tooling/test-evals.mjs`, và suite đó kiểm chính `--bare`.
+ * Trong một cây ĐÃ trần, `--bare` **từ chối chạy** ("KHÔNG gỡ được gì") — đúng thiết kế.
+ *
+ * HAI THỨ, KHÔNG MỘT. Đánh dấu như vậy KHÔNG làm assertion biến mất:
+ *   · chiều ĐẦY ĐỦ vẫn CHẠY và vẫn chấm nó — giá trị regression giữ nguyên;
+ *   · phép TRỪ loại nó khỏi **cả hai** vế — vì một assertion chỉ chạy ở một bên thì hai bên
+ *     đang chấm trên hai tập, và đó là đúng bệnh v2.54.0 sinh ra để chữa.
+ *
+ * Nên mỗi task có HAI phán quyết: `passed` (mọi assertion — tỉ lệ regression) và
+ * `passedComparable` (chỉ assertion so được — phép trừ). Gộp chúng lại là quay về lỗi cũ.
+ *
+ * CỬA NÀY CÓ THỂ BỊ LẠM DỤNG, nên nó đắt một cách cố ý: lý do BẮT BUỘC (không có `:` thì không
+ * nhận), lý do được IN RA ở cả `--denominators` lẫn báo cáo, và task nào đánh dấu tới mức
+ * `ranComparable === 0` thì ra khỏi phép trừ hoàn toàn — làm đẹp con số bằng cách đánh dấu hết
+ * sẽ cho ra **giao rỗng**, tức không có con số nào.
+ */
 function runAssertions(body, agentRan, root, skip = null) {
   // `bare` chỉ để NÓI ĐÚNG TÊN cây trong thông điệp — hai chiều có hai nguyên nhân khác nhau
   // cho cùng một hiện tượng, và gộp chúng vào một câu là gửi người đọc đi sai hướng.
   const bare = BARE;
   const cmds = assertionsOf(body);
   const failed = [], na = [];
-  let ran = 0;
-  for (const { cmd, requiresAgent } of cmds) {
+  let ran = 0, ranComparable = 0, failedComparable = 0;
+  for (const { cmd, requiresAgent, fullArmOnly } of cmds) {
     const one = cmd.split('\n')[0].slice(0, 70);
     if (PLACEHOLDER.test(cmd)) { na.push(`${one} — còn placeholder chưa điền`); continue; }
     if (requiresAgent && !agentRan) { na.push(`${one} — chấm output của agent, mà \`evals.command\` chưa khai`); continue; }
+    if (fullArmOnly && bare) {
+      na.push(`${one} — task khai \`full-arm-only\`: ${fullArmOnly}. Không chạy ở chiều trần, và ra khỏi phép trừ ở CẢ HAI chiều.`);
+      continue;
+    }
     if (skip?.has(cmd)) {
       na.push(`${one} — ĐỎ SẴN trên ${bare ? 'cây trần' : 'cây đầy đủ'} TRƯỚC KHI agent chạy ⇒ `
         + (bare
@@ -173,10 +210,14 @@ function runAssertions(body, agentRan, root, skip = null) {
       continue;
     }
     ran++;
+    if (!fullArmOnly) ranComparable++;
     const r = spawnSync(cmd, { shell: true, encoding: 'utf8', cwd: root });
-    if ((r.status ?? 1) !== 0) failed.push(cmd);
+    if ((r.status ?? 1) !== 0) {
+      failed.push(cmd);
+      if (!fullArmOnly) failedComparable++;
+    }
   }
-  return { ran, failed, na };
+  return { ran, ranComparable, failed, failedComparable, na };
 }
 
 /**
@@ -565,15 +606,38 @@ const results = [];
 // Đo lần đầu: 6/7 task lệch. Một gate đỏ từ ngày đầu là guard bắn nhầm, và guard bắn nhầm dạy
 // người ta lách (L0002). Nên: vượt mốc ⇒ ĐỎ; dưới mốc ⇒ đỏ kèm yêu cầu HẠ MỐC trong cùng
 // commit (không hạ thì backlog bị che); bằng mốc ⇒ xanh.
+/**
+ * MỐC 0 — VÀ TỪ ĐÂY NÓ KHÔNG CÒN LÀ RATCHET, NÓ LÀ BẤT BIẾN.
+ *
+ * `harness-size.mjs` khai luật cho cả nhà: *"một ratchet không thể về 0 thì không phải ratchet,
+ * nó là một dòng trang trí vĩnh viễn"*. Cái này về 0 được, và đã về:
+ *
+ *   5 lệch · trần 13/24   đo lần đầu 2026-08-10
+ *   4 · 16/24             `0002` thôi hỏi về `AGENTS.md` (chính `BARE_STRIP` đổi tên nó)
+ *   2 · 20/24             `test-hooks` phân biệt "gỡ có chủ ý" với "repo hỏng"
+ *   1 · 23/24             `harnessStripped()` lên lib; test-migrations · apply-to · test-evals
+ *   0 · 23/23             `0007` khai `full-arm-only` cho ĐÚNG dòng không so được
+ *
+ * Nên `n` ở đây KHÔNG phải "backlog còn lại" nữa mà là **điều kiện phải giữ**: mọi task đo được
+ * phải cùng mẫu số SO ĐƯỢC ở hai chiều, nếu không `eval − eval --bare` trừ hai thứ khác nhau.
+ *
+ * Số này về 0 bằng HAI đường khác nhau, và trộn chúng là hỏng:
+ *   · **vá công cụ báo oan** — nó đọc file `--bare` vừa gỡ ⇒ `harnessStripped()`;
+ *   · **task tự khai `full-arm-only: <lý do>`** — assertion không so được do BẢN CHẤT.
+ * Đường thứ hai là cửa thoát tường minh CÓ GHI LÝ DO (`danger-zones` §Cưỡng chế: không có cửa
+ * thoát thì người ta tự tạo cửa, và cửa đó không ghi log). Nó đắt một cách cố ý — xem
+ * `runAssertions`.
+ *
+ * ĐIỀU KIỆN THOÁT của chính dòng này: xoá khi `--bare` không còn tồn tại, hoặc khi phép trừ
+ * `eval − eval --bare` bị bỏ khỏi `docs/adr/harness/0002`. Còn phép trừ thì còn phải giữ nó.
+ */
 const SKEW_RATCHET = {
-  n: 1,
+  n: 0,
   since: '2026-08-11',
-  why: '5 → 4 (`0002` thôi hỏi về `AGENTS.md`) → 2 (`test-hooks` phân biệt "gỡ có chủ ý" với "repo hỏng") '
-    + '→ 1 (`harnessStripped()` lên lib; `test-migrations`, `apply-to`, `test-evals` dùng chung). '
-    + 'Còn ĐÚNG `0007`, và nó KHÔNG cùng lớp với bốn cái kia — nó là CẤU TRÚC: assertion của nó chạy '
-    + '`tooling/test-evals.mjs`, mà suite đó kiểm `--bare`; trong một cây ĐÃ trần thì `--bare` từ chối chạy '
-    + '("KHÔNG gỡ được gì") — đúng thiết kế. Ép nó thành `n/a` chỉ dời lệch mẫu số xuống TRONG assertion, '
-    + 'nơi không ai đếm được. Lối ra là ở TASK: `0007` đừng lấy cả một bộ test làm assertion. Xem #163.',
+  why: 'BẤT BIẾN, không còn là ratchet: mọi task đo được phải CÙNG mẫu số so được ở hai chiều. '
+    + 'Về 0 bằng hai đường — vá công cụ báo oan (`harnessStripped()`), và task tự khai '
+    + '`full-arm-only: <lý do>` cho assertion không so được do bản chất. Đường thứ hai là cửa thoát '
+    + 'tường minh có ghi lý do; đánh dấu hết cho ra GIAO RỖNG, không phải con số đẹp. Xem #163.',
 };
 
 if (has('--denominators')) {
@@ -591,11 +655,22 @@ if (has('--denominators')) {
       console.log(`  n/a  ${label} — khai \`## Dựng cảnh\` ⇒ ra khỏi mẫu số ở CẢ HAI chiều`);
       continue;
     }
-    const cmds = assertionsOf(t.body).filter(c => !PLACEHOLDER.test(c.cmd));
+    const all = assertionsOf(t.body).filter(c => !PLACEHOLDER.test(c.cmd));
+    // ĐẾM THEO ĐÚNG THƯỚC CỦA PHÉP TRỪ. Assertion task tự khai `full-arm-only` ra khỏi cả hai
+    // vế (xem `runAssertions`), nên đếm nó ở đây sẽ báo "lệch" cho một thứ phép trừ không hề
+    // so — hai dụng cụ nói hai câu về cùng một task là cách chắc chắn nhất để không ai tin cái
+    // nào. Chúng vẫn được IN RA, ở một dòng riêng, kèm lý do task đã khai.
+    const cmds = all.filter(c => !c.fullArmOnly);
+    const fullOnly = all.filter(c => c.fullArmOnly);
     const deadF = preflight(t.body, full.root), deadB = preflight(t.body, nude.root);
-    const nF = cmds.length - deadF.size, nB = cmds.length - deadB.size;
+    const nF = cmds.length - [...deadF].filter(c => cmds.some(x => x.cmd === c)).length;
+    const nB = cmds.length - [...deadB].filter(c => cmds.some(x => x.cmd === c)).length;
     liveFull += nF; liveBare += nB;
-    if (nF === nB) { console.log(`  OK   ${label} — mẫu số ${nF} ở cả hai chiều`); continue; }
+    for (const c of fullOnly) {
+      console.log(`  n/a  ${label} — \`full-arm-only\`: ${c.fullArmOnly}`);
+      console.log(`         ↳ ${c.cmd.split('\n')[0].slice(0, 62)} — chạy ở chiều đầy đủ, ra khỏi phép trừ ở CẢ HAI`);
+    }
+    if (nF === nB) { console.log(`  OK   ${label} — mẫu số so được ${nF} ở cả hai chiều`); continue; }
     skewed++;
     console.log(`  LỆCH ${label} — đầy đủ ${nF} · trần ${nB}`);
     for (const c of [...deadB].filter(x => !deadF.has(x))) console.log(`         ↳ chỉ đỏ ở TRẦN:    ${c.split('\n')[0].slice(0, 62)}`);
@@ -616,6 +691,8 @@ if (has('--denominators')) {
   } else if (skewed < SKEW_RATCHET.n) {
     console.log(`\n  RATCHET xuống ${skewed} (mốc ${SKEW_RATCHET.n}) — HẠ MỐC trong CÙNG commit này, nếu không backlog bị che.`);
     code = 1;
+  } else if (SKEW_RATCHET.n === 0) {
+    console.log(`\n  BẤT BIẾN giữ: 0 task lệch mẫu số — hai chiều chấm trên cùng tập assertion.\n  ${SKEW_RATCHET.why}`);
   } else {
     console.log(`\n  ratchet task-lech-mau-so: ${skewed} = mốc\n  ${SKEW_RATCHET.why}`);
   }
@@ -764,7 +841,14 @@ for (const t of tasks) {
   const passed = measured && asserts.failed.length === 0 && (!agent || agent.ok);
   // `ran` đi vào bản ghi vì PHÉP TRỪ ở cuối file cần nó: `passed` là một boolean, và hai
   // boolean sinh ra từ hai MẪU SỐ khác nhau không trừ được cho nhau. Xem khối "PHÉP TRỪ".
-  results.push({ id: t.id, kind: t.kind, type: t.type, measured, passed, ran: asserts.ran, failedAssertions: asserts.failed, na: asserts.na, agent });
+  //
+  // `ranComparable`/`passedComparable` là cặp SONG SONG, chỉ cho phép trừ: chúng bỏ assertion
+  // task tự khai `# full-arm-only`. Tỉ lệ regression vẫn dùng `passed` — hai câu hỏi khác nhau,
+  // hai con số khác nhau. Xem `runAssertions`.
+  const passedComparable = measured && asserts.failedComparable === 0 && (!agent || agent.ok);
+  results.push({ id: t.id, kind: t.kind, type: t.type, measured, passed,
+    ran: asserts.ran, ranComparable: asserts.ranComparable, passedComparable,
+    failedAssertions: asserts.failed, na: asserts.na, agent });
 
   for (const n of asserts.na) warn.push(`${label}: n/a — ${n}`);
 
@@ -896,15 +980,23 @@ if (other) {
   const skew = [], unknownDen = [];
   const common = [...mine.keys()].filter(id => {
     if (!theirs.has(id)) return false;
-    const a = mine.get(id).ran, b = theirs.get(id).ran;
+    const a = mine.get(id).ranComparable, b = theirs.get(id).ranComparable;
     if (typeof a !== 'number' || typeof b !== 'number') { unknownDen.push(id); return false; }
+    // KHÔNG có nhánh riêng cho "task đánh dấu `full-arm-only` HẾT". Bản đầu của tôi có, và nó là
+    // CODE CHẾT: chiều trần bỏ qua mọi assertion đã đánh dấu ⇒ `ran === 0` ⇒ `measured === false`
+    // ⇒ task chưa từng vào `mine`/`theirs`, nên nhánh đó không bao giờ chạy tới. Đo bằng cách
+    // chạy thật một task đánh dấu hết (2026-08-11).
+    //
+    // Hành vi ĐÚNG vẫn xảy ra, chỉ bằng đường khác: giao rỗng ⇒ `?`, và dòng `n/a` của chiều trần
+    // nêu thẳng `full-arm-only` kèm lý do task đã khai. Một guard không bao giờ chạy tới là một
+    // guard nói dối về việc nó đang canh gì — xoá còn hơn giữ cho đẹp.
     if (a !== b) {
-      skew.push(`${id} (đầy đủ ${BARE ? b : a} · trần ${BARE ? a : b} assertion)`);
+      skew.push(`${id} (đầy đủ ${BARE ? b : a} · trần ${BARE ? a : b} assertion so được)`);
       return false;
     }
     return true;
   });
-  const pct = (m) => Math.round(common.filter(id => m.get(id).passed).length / common.length * 100);
+  const pct = (m) => Math.round(common.filter(id => m.get(id).passedComparable).length / common.length * 100);
 
   console.log('\n=== GIÁ TRỊ ĐO ĐƯỢC CỦA HARNESS ===');
   for (const s of skew) {
@@ -916,7 +1008,7 @@ if (other) {
     console.log('     Sửa ở TASK, không ở đây: assertion phải hỏi về sản phẩm, không hỏi về file của harness.');
   }
   for (const id of unknownDen) {
-    console.log(`  ?  ${id} — baseline kia không ghi \`ran\`, chưa biết mẫu số có bằng nhau không. Chạy lại cả hai chiều.`);
+    console.log(`  ?  ${id} — baseline kia không ghi mẫu số so được, chưa biết hai vế có bằng nhau không. Chạy lại cả hai chiều.`);
   }
   if (!common.length) {
     console.log('  ?  không task nào SO ĐƯỢC ở cả hai lần chạy — chưa trừ được gì.');

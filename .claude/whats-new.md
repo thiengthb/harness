@@ -1,4 +1,4 @@
-<!-- version: 2026-08-11-c -->
+<!-- version: 2026-08-11-d -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,27 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-11 — Task eval khai được assertion KHÔNG SO ĐƯỢC giữa hai chiều (v2.59.0)
+
+```bash
+# full-arm-only: <lý do BẮT BUỘC>
+node tooling/test-evals.mjs
+```
+
+Dùng khi một assertion không so được **do bản chất** — mẫu vật: `0007` chạy bộ test của chính
+cơ chế `--bare`, nên trong cây đã trần thì `--bare` từ chối chạy, đúng thiết kế.
+
+**HAI thứ, không một.** Chiều đầy đủ **vẫn chạy và vẫn chấm** nó (giá trị regression giữ
+nguyên); chỉ **phép trừ** loại nó khỏi cả hai vế. Mỗi task nay có hai phán quyết: `passed`
+(tỉ lệ regression) và `passedComparable` (phép trừ).
+
+**Đừng dùng nó cho assertion chỉ đang đỏ** — nếu công cụ đỏ vì nó đọc file `--bare` vừa gỡ,
+đó là **công cụ báo oan** và phải vá (xem `harnessStripped()`). Đánh dấu hết mọi assertion cho
+ra **giao rỗng**, không phải 100%.
+
+Kết quả: mẫu số lệch về **0**, hai chiều chấm trên **cùng tập assertion**, phép trừ so được
+**6/6 task đo được**.
 
 ## 2026-08-11 — `harnessStripped()` lên lib; ba công cụ nữa thôi báo oan trên cây trần (v2.58.0)
 
