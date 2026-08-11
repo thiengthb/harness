@@ -139,3 +139,90 @@ promote thì promote **một** bài học, không phải ba.
 
 Ứng viên bài học: **L0008 — "Phép đo không xảy ra đọc y hệt phép đo đạt"**, scope `universal`
 (không phụ thuộc stack: đúng với mọi CI, mọi suite, mọi fixture). `occurrences: 6`, có số PR.
+
+---
+
+# Bổ sung 2026-08-11 — rào thứ sáu, và một mutant sống sót vì CA TEST
+
+Hai phiên sau bản retro trên. Hai con số ở bảng *"Ba con số"* đã đổi: **task so được 6/6**
+(v2.59.0, #163 đóng) và **assertion sống ở chiều trần 23/23**.
+
+## Quan sát 1 — câu hỏi đắt nhất được trả lời bằng phép đo RẺ NHẤT, hai phiên liền
+
+Rào thứ sáu (#144) tôi đã gọi tên là *"trần lượt hiệu chỉnh sai chiều"*, và tôi ghi là **cần
+quota**. Vào việc, tôi đọc code trước khi tiêu quota. Lỗ nằm chỗ khác, và nó **miễn phí**:
+
+```js
+const absent = mine.size - common.length - skew.length - unknownDen.length;
+```
+
+`mine` chỉ chứa task ĐO ĐƯỢC ⇒ task chạm trần **ở chính lần chạy này** không nằm trong bất kỳ
+số hạng nào ⇒ biến mất khỏi kế toán, **không để lại một con số**.
+
+Đây là lần thứ **hai liên tiếp** một rào của #144 hoá ra không cần quota (lần trước: rào thứ
+năm, tìm bằng phép dò mẫu số). Nhãn *"cần quota"* tôi tự gán đang **hệ thống hoá việc trì hoãn**:
+nó mô tả bước CUỐI (chạy agent) chứ không mô tả bước tôi đang đứng.
+
+**Đề xuất (rẻ, không thêm cơ chế):** trước khi ghi *"chờ quota"* vào bất cứ đâu, viết ra câu
+*"phần nào của việc này KHÔNG cần agent chạy?"* và trả lời nó. Hai lần liên tiếp câu trả lời là
+*"phần lớn"*.
+
+## Quan sát 2 — mutant sống sót có BA nguyên nhân, và ③ nằm trong CA TEST
+
+Lượt mutation đầu của v2.60.0: mutant *"bỏ nhánh `infra`"* **sống**. Bản vá không sai. Ca `⑲k`
+sai — nó quét `/hạ tầng/` trên **cả output**, và dòng `KHÔNG ĐO ĐƯỢC` ở khối trên kết thúc bằng
+*"Chạy lại khi **hạ tầng** ổn"*. Ca xanh kể cả khi dòng nó khoá phân loại sai.
+
+**Đo, không suy** — dump `r.out` dưới cả bản gốc lẫn mutant:
+
+```
+GỐC:  ?  9042 — ra khỏi phép trừ: trần: hạ tầng (chạm trần phiên/quota)
+      WARN … KHÔNG ĐO ĐƯỢC — agent hỏng vì HẠ TẦNG (…). … Chạy lại khi hạ tầng ổn
+M2:   ?  9042 — ra khỏi phép trừ: trần: không assertion nào so được chạy
+      WARN … (y nguyên)                                    ← ca cũ vẫn thấy đủ chữ để xanh
+```
+
+Nhãn in **HOA**, lời khuyên in **thường** — nên một regex chữ thường bắt nhầm sang câu khuyên.
+Tôi suýt để nguyên phỏng đoán *"nhãn HẠ TẦNG viết hoa nên không thể khớp"*; nó đúng về nhãn và
+**sai về kết luận**, vì chữ thường nằm ở clause cuối cùng của cùng dòng.
+
+Ba nguyên nhân, đã gặp đủ cả ba trong repo này:
+
+| # | nguyên nhân | việc phải làm |
+|---|---|---|
+| ① | độ phủ hở thật | thêm ca |
+| ② | mutant **tương đương** (ràng buộc do ≥2 lớp giữ) | ghi tại chỗ, **đừng** thêm ca trang trí |
+| ③ | **ca test neo rộng hơn thứ nó khoá** | sửa **CA**, không sửa bản vá |
+
+③ tệ hơn ①: ① trông như một lỗ, ③ trông như đã được canh.
+
+## Quan sát 3 — ĐO trước khi thêm cơ chế, và lần này phép đo nói ĐỪNG
+
+Phản xạ sau quan sát 2 là thêm một cơ chế (helper mutation dùng chung, hoặc một lint bắt regex
+neo rộng). Trước khi thêm, tôi đếm: **47 assertion `.test(r.out)` trong `test-evals.mjs`**, xét
+từng cái xem chuỗi nó tìm có in ở nhiều chỗ không.
+
+**Kết quả: đúng MỘT cái có tật đó — chính `⑲k`.** Mọi cái còn lại neo vào cụm chỉ in ở một chỗ,
+hoặc neo vào id task (`\b9017\b`, `9040 — …`). Tật này **cá biệt, không hệ thống**.
+
+Và cơ chế tôi định thêm **đã có sẵn**: `mutate()` trong `test-hooks.mjs` (dòng 74–95) khai đủ hai
+bẫy đầu — *"neo sai chuỗi ⇒ lỗi của TEST"* và *"mutant chỉ crash ⇒ không chứng minh gì"* — cộng
+đúng câu cho ③: *"khi mutant sống sót, nhìn PHẠM VI của check TRƯỚC khi nhìn logic"*. Tôi
+tự viết lại script mutation trong scratchpad **bốn lần** mà không đọc nó.
+
+**Nên KHÔNG thêm gì.** Vấn đề không phải thiếu cơ chế mà là cơ chế nằm chỗ không ai đi qua —
+và một cơ chế thứ hai làm điều đó tệ hơn, không tốt hơn. `harness-size` vẫn kêu **PHÌNH**.
+
+**Đề xuất CẮT (bắt buộc, mục của bổ sung này):** `mutate()` đang là hàm nội bộ của
+`test-hooks.mjs` nhưng nội dung header của nó là kiến thức **chung**. Chuyển header đó thành
+**một mục trong `knowledge/lessons/`** (hoặc gộp vào L0008) và để lại con trỏ một dòng — **không
+nhân bản code**. Việc này gộp ba nơi đang giữ cùng một kiến thức (`mutate()` header, ratchet
+`hooks-without-mutant`, các chú thích mutation rải rác) về một chỗ, tức **giảm** chứ không tăng.
+
+## Ứng viên bài học — cập nhật
+
+`L0008` giữ nguyên (`occurrences: 6` → **7** với `⑲k`: một ca XANH từ lúc sinh ra là *"phép đo
+không xảy ra đọc y hệt phép đo đạt"* ở dạng thuần nhất — không có gì đỏ, không có gì sai, và
+không có gì được kiểm).
+
+Auto-memory mới, **cùng máy** (chưa đạt ngưỡng ≥2 máy): `mutant-song-sot-co-ba-nguyen-nhan`.
