@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, handledGroups, mergeRitualStates, stuckRituals } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -957,7 +957,7 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     ['xoá không hồi phục ở gốc hoặc thư mục hiện tại', 'Bash(rm -rf /:*)'],
     ['apply hạ tầng không review plan',              'Bash(terraform apply *-auto-approve:*)'],
     ['xoá file untracked, không đường cứu',          null],
-    ['bỏ thay đổi working tree',                     null],
+    ['bỏ TOÀN BỘ thay đổi working tree',             null],
     ['xoá nhánh chung',                              null],
     ['viết lại nhánh chung',                         null],
     ['phá dữ liệu',                                  null],
@@ -3149,6 +3149,10 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     { program: GIT, re: /^git\s+push\s+[^|;&]*(-f\b|--force(?!-with-lease))/, why: 'force push' },
     { program: /^rm$/, re: /^rm\s+-[rRf]{1,2}\w*\s+([/~]\S*|\.\s*$|\*\s*$)/, why: 'rm gốc' },
     { re: /\b(DROP\s+(TABLE|DATABASE|SCHEMA)|TRUNCATE\s+TABLE)\b/i, why: 'SQL' },
+    // KHÔNG chép regex — dùng ĐÚNG hằng mà `dcg.mjs` dùng. Ba rule trên là bản chép có chủ ý
+    // (chúng chỉ minh hoạ ngữ nghĩa KHỚP), còn rule này có một ranh giới hẹp (`.` vs `./src`)
+    // mà một bản chép sẽ trôi khỏi bản thật mà không ai thấy (#160).
+    { program: GIT, re: GIT_DISCARD_WHOLE_TREE, why: 'checkout bỏ cả cây' },
   ];
   const BLOCKED = true, ALLOWED = false;
   //                                                                        mong đợi
@@ -3171,6 +3175,26 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     [`git push --force`, BLOCKED, 'dạng thẳng vẫn chặn'],
     [`psql -c "DROP TABLE users"`, BLOCKED, 'SQL nằm trong đối số — rule không có `program` quét cả chuỗi'],
     [`echo hi && git push --force`, BLOCKED, 'lệnh thứ hai trong chuỗi && vẫn bị soi'],
+    // ── #160: `git checkout --` — BỎ CẢ CÂY vs KHÔI PHỤC ĐÚNG MẤY FILE ─────
+    //
+    // Chiều CHO QUA là chiều bản vá sinh ra để mở. Chiều CHẶN là chiều KHÔNG được yếu đi, và
+    // hai ca đầu của nó là hai lỗ mà rule CŨ để lọt (`--` trần · token đứng trước `--`).
+    [`git checkout --`, BLOCKED, '#160 không pathspec = bỏ cả cây — rule CŨ để lọt vì nó đòi một dấu cách sau `--`'],
+    [`git checkout HEAD -- .`, BLOCKED, '#160 có tree-ish đứng trước `--` — rule CŨ cũng để lọt'],
+    [`git checkout -- .`, BLOCKED, '#160 bỏ cả cây'],
+    [`git checkout -- ./`, BLOCKED, '#160 `./` cũng là cả cây'],
+    [`git checkout -- :/`, BLOCKED, '#160 pathspec gốc repo = cả cây'],
+    [`git checkout -- *`, BLOCKED, '#160 glob trần = mọi file trong thư mục hiện tại'],
+    [`git checkout -- ..`, BLOCKED, '#160 thư mục cha'],
+    [`git checkout -- . tooling/rituals.mjs`, BLOCKED, '#160 một token cả-cây nằm CẠNH file cụ thể vẫn là bỏ cả cây'],
+    [`git checkout -- tooling/rituals.mjs .`, BLOCKED, '#160 …kể cả khi nó đứng CUỐI'],
+    [`git checkout "--" "."`, BLOCKED, '#160 nguỵ trang bằng nháy — `simpleCommands` bỏ nháy trước khi khớp'],
+    [`git checkout -- tooling/rituals.mjs`, ALLOWED, '#160 khôi phục ĐÚNG 1 file — bước dọn của mutation test, 3 lần bị chặn nhầm'],
+    [`git checkout -- a.mjs b.mjs`, ALLOWED, '#160 nhiều file cụ thể vẫn là cụ thể'],
+    [`git checkout -- ./src/x.ts`, ALLOWED, '#160 `./` MỞ ĐẦU một đường dẫn cụ thể ≠ `./` đứng một mình'],
+    [`git checkout -- src/*`, ALLOWED, '#160 glob CÓ PHẠM VI thư mục — hẹp, không phải cả cây'],
+    [`git checkout main`, ALLOWED, '#160 chuyển nhánh, không phải bỏ thay đổi'],
+    [`git checkout -b feat/x`, ALLOWED, '#160 tạo nhánh'],
   ];
   const bad = [];
   for (const [cmd, want, label] of TABLE) {
@@ -3178,7 +3202,8 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     if (got !== want) bad.push(`${label}: ${got ? 'CHẶN' : 'qua'}, mong đợi ${want ? 'CHẶN' : 'qua'}`);
   }
   if (bad.length) fail.push(`dcg khớp lệnh${L} ${bad.length}/${TABLE.length} ca sai: ${bad.join(' | ')}`);
-  else ok.push(`dcg khớp lệnh${L} ${TABLE.length} ca — 5 lần chặn nhầm ĐÃ ĐO đều đi qua, 5 biến thể nguỵ trang đều bị chặn`);
+  else ok.push(`dcg khớp lệnh${L} ${TABLE.length} ca — 5 lần chặn nhầm ĐÃ ĐO đều đi qua, 5 biến thể nguỵ trang đều bị chặn, `
+    + `và \`git checkout --\` phân biệt được BỎ CẢ CÂY với KHÔI PHỤC MẤY FILE (#160)`);
 
   // GIỚI HẠN PHẢI ĐƯỢC NÓI RA, không được để người đọc tự suy là đã kín. Biến shell cần
   // THỰC THI mới biết giá trị — regex không bao giờ với tới. Ca này khẳng định đúng điều đó:

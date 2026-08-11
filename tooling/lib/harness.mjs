@@ -1462,6 +1462,51 @@ export function envelopeBudget(env) {
 }
 
 /**
+ * ═══ `git checkout --` NÀO LÀ "BỎ CẢ CÂY", VÀ CÁI NÀO LÀ MỘT BƯỚC DỌN (#160) ══
+ *
+ * Ca thứ BA của `L0002` (*"guard bắn nhầm còn tệ hơn không có guard"*). Rule cũ là
+ * `/^git\s+checkout\s+--\s/` — khớp **mọi** pathspec, nên nó không phân biệt được:
+ *
+ *   git checkout -- .                     bỏ CẢ CÂY                         ⇒ CHẶN
+ *   git checkout -- tooling/rituals.mjs   khôi phục ĐÚNG 1 file vừa cố ý sửa ⇒ CHO QUA
+ *
+ * Vế thứ hai là **bước dọn bắt buộc của mutation test** — thứ chính harness đòi hỏi. Đo
+ * 2026-08-10 (`fixlog` + `gate-fails.log` `02:49` · `02:59` · `07:38`): 3 lần bị chặn.
+ *
+ * VÀ ĐÂY LÀ PHẦN ĐẮT NHẤT: đường vòng thực tế đã dùng là `writeFileSync` từ Node — **không có
+ * telemetry**. Guard vẫn chạy, vẫn đếm `17 chặn`, trông khoẻ hơn trước; thứ chuyển đi là HÀNH
+ * VI THẬT. Một guard bắn nhầm tự che dấu vết của chính nó, nên số đo của nó KHÔNG phát hiện
+ * được chuyện này — chỉ `fixlog` (người tự ghi) mới thấy.
+ *
+ * ── HAI CHIỀU, và bản vá này đi CẢ HAI
+ *
+ * NỚI: có pathspec cụ thể ⇒ không khớp. Cùng khuôn `danger-zones.md §3` đã dùng cho migration
+ * (*"đã merge thì chặn, chưa merge thì sửa thoải mái"*) — nguyên tắc đã có trong repo.
+ *
+ * SIẾT: rule cũ đòi một khoảng trắng SAU `--`, nên `git checkout --` trần (cũng là bỏ cả cây)
+ * **đi lọt**; và `git checkout HEAD -- .` cũng đi lọt vì có token đứng trước `--`. Cả hai nay bị
+ * chặn. Một bản vá chỉ-nới sẽ để nguyên hai lỗ đó, và không ai đếm chúng.
+ *
+ * ── VÌ SAO Ở `lib` CHỨ KHÔNG NẰM TRONG `dcg.mjs`
+ *
+ * Cùng lý do với `SECRET_PATTERNS` phía dưới, và cùng cái giá đã đo: một danh sách tồn tại HAI
+ * BẢN thì bản ít người nhìn sẽ thiếu mục. Bảng ca của rule này phải phân biệt được `.` với
+ * `./src`, và một bảng như thế chỉ có nghĩa khi nó khẳng định vào **chính** regex mà hook dùng.
+ * `dcg.mjs` chạy ngay lúc import (nó đọc stdin), nên test KHÔNG import được nó — không đưa ra
+ * đây thì bảng ca buộc phải chép lại regex, và bản chép đó sẽ đúng đúng một ngày.
+ *
+ * `simpleCommands()` đã chuẩn hoá khoảng trắng về MỘT dấu cách và bỏ nháy trước khi khớp, nên
+ * regex này không phải lo `\s+` giữa các token hay `"."`.
+ *
+ * CHƯA LÀM, ghi ra để nó không biến mất: `git restore .` là ca CÙNG LỚP nhưng KHÁC rule, và
+ * `git checkout .` (không `--`) cũng vậy. Cả hai là điều cấm MỚI ⇒ ratchet `dcg ↔ permissions.deny`
+ * tăng ⇒ phải có tầng một đi kèm. Không gộp vào đây: nới và siết cùng lúc trên một rule đã đủ
+ * hai chiều để lần review sau còn đọc được.
+ */
+export const GIT_DISCARD_WHOLE_TREE =
+  /^git\s+checkout\s+(?:\S+\s+)*--(?:$|\s(?:\S+\s)*(?:\.\.\/|\.\.|\.\/|\.|:\/|\*)(?:\s|$))/;
+
+/**
  * PHÁN ĐOÁN của `dcg` — hàm THUẦN, test khẳng định thẳng vào đây.
  *
  * Rule có `program` chỉ nổ khi một LỆNH ĐƠN có đúng chương trình đó, và khớp trên dạng đã bỏ

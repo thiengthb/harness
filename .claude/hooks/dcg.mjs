@@ -8,7 +8,7 @@
  * `--force-with-lease` CỐ Ý không bị chặn: đó là biến thể an toàn và agent cần nó
  * để rebase nhánh của chính mình.
  */
-import { hookInput, toolCommand, block, pass, telemetry, hookRan, config, declareFailMode, dangerousCommand } from '../../tooling/lib/harness.mjs';
+import { hookInput, toolCommand, block, pass, telemetry, hookRan, config, declareFailMode, dangerousCommand, GIT_DISCARD_WHOLE_TREE } from '../../tooling/lib/harness.mjs';
 
 declareFailMode(2, 'Không phân tích được lệnh nên không biết nó có phá lịch sử chung hay production hay không (nhóm 1+3).');
 
@@ -29,7 +29,10 @@ const DENY = [
   { program: GIT, re: /^git\s+push\s+[^|;&]*(-f\b|--force(?!-with-lease))/, why: 'ghi lại lịch sử chung', fix: 'dùng `git push --force-with-lease` trên nhánh của chính bạn' },
   { program: GIT, re: /^git\s+reset\s+--hard/, why: 'phá thay đổi chưa commit', fix: 'commit hoặc `git stash` trước, rồi người thực hiện tay' },
   { program: GIT, re: /^git\s+clean\s+-\w*[fd]\w*[fd]?/, why: 'xoá file untracked, không đường cứu', fix: 'chạy `git clean -nd` để xem trước, rồi người thực hiện tay' },
-  { program: GIT, re: /^git\s+checkout\s+--\s/, why: 'bỏ thay đổi working tree', fix: 'nếu chủ ý, người thực hiện tay và ghi lý do vào PR' },
+  // Regex ở `lib` — bảng ca của nó phải phân biệt `.` với `./src`, nên nó phải khẳng định vào
+  // CHÍNH regex này chứ không vào một bản chép (#160). Có pathspec cụ thể ⇒ CHO QUA.
+  { program: GIT, re: GIT_DISCARD_WHOLE_TREE, why: 'bỏ TOÀN BỘ thay đổi working tree',
+    fix: 'muốn bỏ vài file thì NÊU TÊN chúng (`git checkout -- <file>` được phép); muốn bỏ cả cây thì người thực hiện tay và ghi lý do vào PR' },
   { program: GIT, re: /^git\s+branch\s+-D\s+(main|master|develop|release\b)/, why: 'xoá nhánh chung', fix: 'không xoá nhánh chung từ session agent' },
   { program: GIT, re: /^git\s+(rebase|push)\b[^|;&]*\borigin\/(main|master|develop)\b[^|;&]*--force/, why: 'viết lại nhánh chung', fix: 'không bao giờ' },
   { program: /^rm$/, re: /^rm\s+-[rRf]{1,2}\w*\s+([/~]\S*|\.\s*$|\*\s*$)/, why: 'xoá không hồi phục ở gốc hoặc thư mục hiện tại', fix: 'nêu đường dẫn cụ thể, tương đối, và hẹp' },

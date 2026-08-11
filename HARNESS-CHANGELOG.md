@@ -11,6 +11,48 @@
 
 ---
 
+## 2.66.0 — 2026-08-12
+
+**minor.** `dcg` phân biệt được `git checkout -- .` (**bỏ cả cây**) với
+`git checkout -- <file>` (**khôi phục đúng mấy file**). Ca thứ ba của
+`knowledge/lessons/0002`, và là ca đầu tiên có cơ chế.
+
+### Defect: guard bắn nhầm vào đúng nghi thức harness đòi hỏi
+
+Rule cũ `/^git\s+checkout\s+--\s/` khớp **mọi** pathspec, nên nó chặn cả bước **dọn dẹp của
+mutation test**. Đo 2026-08-10 (`fixlog` + `gate-fails.log` `02:49` · `02:59` · `07:38`):
+**3 lần**.
+
+**Phần đắt nhất không phải ba lần bị chặn.** Đường vòng thực tế đã dùng là `writeFileSync` từ
+Node — **không có telemetry**. Guard vẫn chạy, vẫn đếm `17 chặn`, **trông khoẻ hơn trước**; thứ
+chuyển đi là hành vi thật. Một guard bắn nhầm tự che dấu vết của chính nó, nên số đo của nó
+không bao giờ báo — chỉ `fixlog` (người tự ghi) mới thấy.
+
+### Bản vá đi CẢ HAI chiều
+
+| chiều | lệnh | trước | sau |
+|---|---|---|---|
+| **nới** | `git checkout -- tooling/x.mjs` | CHẶN (sai) | cho qua |
+| **nới** | `git checkout -- a.mjs b.mjs` | CHẶN (sai) | cho qua |
+| **siết** | `git checkout --` (trần) | **lọt** — rule cũ đòi một dấu cách sau `--` | CHẶN |
+| **siết** | `git checkout HEAD -- .` | **lọt** — có token đứng trước `--` | CHẶN |
+| giữ | `git checkout -- .` · `./` · `:/` · `*` · `..` | CHẶN | CHẶN |
+
+Một bản vá chỉ-nới sẽ để nguyên hai lỗ kia và không ai đếm chúng — đó là chiều im lặng của
+`knowledge/lessons/0007`.
+
+### Regex ở `lib`, không trong hook
+
+`GIT_DISCARD_WHOLE_TREE` ở `tooling/lib/harness.mjs`. Ranh giới của nó quá hẹp (`.` chặn,
+`./src/x.ts` cho qua) để tin một bản chép trong test — và `dcg.mjs` đọc stdin ngay lúc import
+nên test không import được nó. Cùng lý do, cùng cái giá đã đo, với `SECRET_PATTERNS`.
+
+**Không đổi ratchet `dcg ↔ permissions.deny`**: vẫn 12 điều cấm · 4 có tầng một · 8 chưa.
+`permissions.deny` không có mục nào về `git checkout` (đã kiểm), nên thu hẹp ở tầng HAI không
+làm yếu tầng MỘT.
+
+---
+
 ## 2.65.0 — 2026-08-12
 
 **minor.** Harness **tự đo** xem tín hiệu "tới hạn" của chính nó có tắt được không —

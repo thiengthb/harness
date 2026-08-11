@@ -1,4 +1,4 @@
-<!-- version: 2026-08-12-b -->
+<!-- version: 2026-08-12-c -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,21 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-12 — `git checkout -- <file>` không còn bị chặn (v2.66.0)
+
+Guard `dcg` đã phân biệt được **bỏ cả cây** với **khôi phục đúng mấy file**:
+
+```
+git checkout -- tooling/rituals.mjs     ✅ được phép (bước dọn của mutation test)
+git checkout -- a.mjs b.mjs             ✅ được phép
+git checkout -- .    ./    :/    *      ⛔ vẫn chặn — bỏ CẢ CÂY
+git checkout --                         ⛔ MỚI bị chặn (trước đây lọt)
+git checkout HEAD -- .                  ⛔ MỚI bị chặn (trước đây lọt)
+```
+
+Nếu bạn từng lách bằng `writeFileSync` từ Node để dọn sau mutation test: **thôi lách đi**.
+Đường vòng đó không có telemetry, nên nó làm guard mất tầm nhìn trước khi mất tác dụng.
 
 ## 2026-08-12 — harness tự đo: mục đỏ nào KHÔNG tắt được (v2.65.0)
 
