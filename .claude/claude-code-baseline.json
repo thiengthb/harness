@@ -1,8 +1,13 @@
 {
   "$comment": "Bản rà Claude Code gần nhất. Nghi thức `claude-code-drift` so `reviewedVersion` với version đang chạy. Đừng sửa tay — dùng `node tooling/rituals.mjs --reviewed-claude-code \"<thấy gì>\"`.",
-  "reviewedVersion": "2.1.226",
-  "reviewedAt": "2026-08-08T10:49:32.682Z",
+  "reviewedVersion": "2.1.227",
+  "reviewedAt": "2026-08-11T05:09:12.755Z",
   "history": [
+    {
+      "version": "2.1.227",
+      "at": "2026-08-11T05:09:12.755Z",
+      "found": "2.1.227 ra 2026-08-11. Trả lời câu hỏi của nghi thức: KHÔNG — không mục nào ra sẵn thứ harness đang tự làm tay. Bản này toàn bug fix + đánh bóng TUI, không có primitive mới.\n\nPHẦN ĐO ĐƯỢC BẰNG MÁY: tập sự kiện hook KHÔNG đổi — 31 sự kiện ở 2.1.227, y hệt lần ghi 2.1.226 (native-surface.mjs, binary đang chạy). 9 ô đang cắm, 8 ô trống có việc (#130 #131 #132 #135 #136 #137), 14 ô đã xét và bác.\n\nXÉT TỪNG MỤC, hai mục có khả năng chạm và cả hai KHÔNG chạm:\n\n(1) 'Fixed every Bash command failing under claude-code-action with allowed_non_write_users on GitHub-hosted runners' — lớp CI. ĐO chứ không đoán: rg trên .github/ cho 0 kết quả với claude-code-action / allowed_non_write_users / anthropics/claude. Repo này chạy CI bằng workflow tự viết (ci.yml, harness-parity.yml), không qua action của vendor. KHÔNG áp dụng.\n\n(2) 'Fixed feature flags being evaluated without the users subscription tier when a session started with an expired login token, which could wrongly prompt Max plan users to enable usage credits for Fable' — cạnh lớp kinh tế mà harness tự đo (budget-alarm.log v2.44.0 đếm rate_limit từ StopFailure, capo-report.mjs). Nhưng nó sửa một lời NHẮC SAI về billing, không cung cấp số nào cho lớp đo. Không thay được gì, và cũng không làm sổ đếm sai. GHI ĐỂ BIẾT, không hành động.\n\nBa mục còn lại (menu slash-command, /tui rewind, giảm event-loop stall) thuần UI/hiệu năng — không giao với harness.\n\nKẾT LUẬN: không cắt được cơ chế nào, không sinh việc mới. Khác các bản trước ở chỗ nó KHÔNG để lại mục 'theo dõi' nào mới — mục theo dõi từ 2.1.225 (gateway spend-limit: nếu vendor đưa cap+reset vào thông báo cho MỌI tài khoản thì gói phẳng đọc được số thật thay vì chỉ đếm lần chạm) vẫn ĐANG MỞ, 2.1.226-227 không động tới nó."
+    },
     {
       "version": "2.1.226",
       "at": "2026-08-08T10:49:32.682Z",
@@ -35,8 +40,8 @@
     }
   ],
   "nativeEvents": {
-    "version": "2.1.226",
-    "at": "2026-08-08T10:54:51.203Z",
+    "version": "2.1.227",
+    "at": "2026-08-11T05:09:21.682Z",
     "events": [
       "PreToolUse",
       "PostToolUse",
