@@ -1,4 +1,4 @@
-<!-- version: 2026-08-11-f -->
+<!-- version: 2026-08-11-g -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,28 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-11 — L0006 nay có HAI CHIỀU (promote, không thêm bài học mới)
+
+Bốn ca đầu của `L0006` đều lệch về phía **phủ định** (`?` → *"chưa merge"*), nên tiêu đề cũ chỉ
+mô tả một chiều của một trục hai chiều. Chiều còn lại **im lặng** và đắt hơn:
+
+```
+`?` → PHỦ ĐỊNH    người đọc đi kiểm thừa — ai cũng thấy, có người sửa
+`?` → KHẲNG ĐỊNH  "xanh" · "PASS" · "đã phủ" — KHÔNG ai đi kiểm, vì nghe như đã kiểm rồi
+```
+
+Bốn ca mới, đều tuần này: đọc suite bằng `| tail` (exit thật là 1) · một ca test **xanh từ lúc
+sinh ra** vì regex quét cả output · một ca không chạy tới nhánh mà báo PASS · phép trừ eval trên
+giao rỗng.
+
+**Hai việc phải nhớ khi viết test:** đọc suite bằng **exit code**, và một ca **không chạy tới**
+phải là `n/a` kèm lý do (`declareNa`), không được rơi vào `ok`.
+
+Kèm §*"Ba cách một MUTANT SỐNG SÓT"* — hai trong ba nguyên nhân **không nằm ở bản vá**.
+Số bài học giữ nguyên **7**.
+
+---
 
 ## 2026-08-11 — Gói PHẲNG: CAPO đếm LẦN CHẠM TRẦN, không đếm USD (v2.61.0)
 

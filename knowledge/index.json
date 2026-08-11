@@ -99,19 +99,22 @@
     {
       "id": "L0006",
       "file": "knowledge/lessons/0006-do-khong-duoc-khong-phai-la-khong.md",
-      "title": "Một phép đo KHÔNG TRẢ LỜI ĐƯỢC bị ghi thành câu trả lời phủ định, và câu phủ định đó nghe như một kết luận",
+      "title": "Một phép đo KHÔNG TRẢ LỜI ĐƯỢC bị ghi thành một KẾT LUẬN — phủ định hay khẳng định, tuỳ mặc định của code xung quanh",
       "scope": "universal",
       "class": "state",
       "representation": "test",
       "status": "active",
       "added": "2026-08-08",
-      "occurrences": 4,
+      "occurrences": 8,
       "artifacts": [
         "tooling/lib/harness.mjs",
         "tooling/wt-clean.mjs",
         "tooling/harness-doctor.mjs",
         "tooling/rituals.mjs",
-        "tooling/test-hooks.mjs"
+        "tooling/test-hooks.mjs",
+        "tooling/capo-report.mjs",
+        "evals/run.mjs",
+        "tooling/test-evals.mjs"
       ]
     },
     {
