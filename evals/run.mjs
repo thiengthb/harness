@@ -812,7 +812,14 @@ for (const t of tasks) {
         && (agent.turns / agent.maxTurns) * 100 >= pct) {
       warn.push(`${label}: TRẦN LƯỢT SẮP BÓ — dùng ${agent.turns}/${agent.maxTurns} lượt (≥ ${pct}%). `
         + `Lần này vẫn đo được, lần sau chưa chắc: chạm trần ⇒ task ra khỏi mẫu số và tỉ lệ đổi mà không ai biết vì sao. `
-        + `Nâng \`maxTurns\` trong ${t.file} theo SỐ ĐO này, đừng đoán.`);
+        + `Nâng \`maxTurns\` trong ${t.file} theo SỐ ĐO này, đừng đoán`
+        // VẾ RÀNG BUỘC LÀ CHIỀU TRẦN. Lớp harness tồn tại một phần để TIẾT KIỆM LƯỢT, nên cùng
+        // một task luôn tốn nhiều lượt hơn ở chiều trần. Hiệu chỉnh trần bằng số đo của chiều
+        // đầy đủ là tự bảo đảm chiều trần sẽ chạm trần — và task rơi khỏi mẫu số theo ĐÚNG
+        // hướng làm harness trông vô dụng (#144, rào thứ sáu).
+        + (BARE
+          ? ' — số này ĐO Ở CHIỀU TRẦN, tức vế ràng buộc: trần vừa cho nó thì vừa cho cả hai chiều.'
+          : `, và số của chiều ĐẦY ĐỦ mới chỉ là CẬN DƯỚI — nâng xong phải đo lại bằng \`--bare\` rồi lấy số LỚN HƠN.`));
     }
   }
 
@@ -975,9 +982,15 @@ if (has('--baseline')) {
 const otherPath = join(stateDir(), `eval-baseline${BARE ? '' : '-bare'}.json`);
 const other = readJson(otherPath);
 if (other) {
-  const mine = new Map(results.filter(r => r.measured).map(r => [String(r.id), r]));
-  const theirs = new Map((other.results || []).filter(r => r.measured).map(r => [String(r.id), r]));
-  const skew = [], unknownDen = [];
+  const armMine = BARE ? 'trần' : 'đầy đủ';
+  const armTheirs = BARE ? 'đầy đủ' : 'trần';
+  // HỢP của hai lần chạy, chưa lọc. `mine`/`theirs` bên dưới là phần ĐO ĐƯỢC; giữ cả bản chưa
+  // lọc vì phần bị lọc ra mới là thứ phải giải thích — xem khối "VÌ SAO ra khỏi phép trừ".
+  const allMine = new Map(results.map(r => [String(r.id), r]));
+  const allTheirs = new Map((other.results || []).map(r => [String(r.id), r]));
+  const mine = new Map([...allMine].filter(([, r]) => r.measured));
+  const theirs = new Map([...allTheirs].filter(([, r]) => r.measured));
+  const skew = [], skewIds = new Set(), unknownDen = [];
   const common = [...mine.keys()].filter(id => {
     if (!theirs.has(id)) return false;
     const a = mine.get(id).ranComparable, b = theirs.get(id).ranComparable;
@@ -992,13 +1005,61 @@ if (other) {
     // guard nói dối về việc nó đang canh gì — xoá còn hơn giữ cho đẹp.
     if (a !== b) {
       skew.push(`${id} (đầy đủ ${BARE ? b : a} · trần ${BARE ? a : b} assertion so được)`);
+      skewIds.add(id);
       return false;
     }
     return true;
   });
   const pct = (m) => Math.round(common.filter(id => m.get(id).passedComparable).length / common.length * 100);
 
+  // ── VÌ SAO từng task còn lại ra khỏi phép trừ ────────────────────────────────
+  // Bản trước đếm chúng bằng MỘT phép trừ số học (`mine.size − common − skew − unknownDen`) rồi
+  // in một con số không tên. Hai lỗ, và lỗ thứ hai mới là lỗ chết người:
+  //
+  //   ① con số đó GỘP "hạ tầng hỏng, chạy lại là có" với "trần lượt bó, chạy lại VẪN THẾ" —
+  //      hai nguyên nhân đòi hai hành động ngược nhau;
+  //   ② nó đếm trên `mine`, nên task KHÔNG ĐO ĐƯỢC Ở CHÍNH LẦN NÀY không nằm trong bất kỳ số
+  //      hạng nào của nó. Nó biến mất khỏi phần kế toán mà không để lại một con số — đúng chiều
+  //      im lặng của L0007: mẫu số co lại và không gì đỏ.
+  //
+  // Nên duyệt HỢP, và nói rõ từng task ra vì sao, ở VẾ NÀO.
+  const dropWhy = (rec, arm) => {
+    if (!rec) return { kind: 'missing', text: `${arm}: task không có trong lần chạy đó` };
+    if (rec.measured) return null;
+    // THỨ TỰ như dòng `KHÔNG ĐO ĐƯỢC` phía trên: `infra` trước `budget` (agent chạm quota giữa
+    // chừng in cả hai dấu hiệu, và hạ tầng là nguyên nhân gần hơn).
+    if (rec.agent?.infra) return { kind: 'infra', text: `${arm}: hạ tầng (${rec.agent.infra})` };
+    if (rec.agent?.budget) {
+      const t = typeof rec.agent.turns === 'number' ? `, dùng ${rec.agent.turns}/${rec.agent.maxTurns} lượt` : '';
+      return { kind: 'cap', text: `${arm}: cạn NGÂN SÁCH DO TASK KHAI (${rec.agent.budget}${t})` };
+    }
+    return { kind: 'noassert', text: `${arm}: không assertion nào so được chạy` };
+  };
+  const dropped = [];
+  for (const id of new Set([...allMine.keys(), ...allTheirs.keys()])) {
+    if (common.includes(id) || skewIds.has(id) || unknownDen.includes(id)) continue;
+    const w = [dropWhy(allMine.get(id), armMine), dropWhy(allTheirs.get(id), armTheirs)].filter(Boolean);
+    if (!w.length) continue;   // đo được cả hai vế mà vẫn rơi: không thể — im còn hơn khai bừa
+    dropped.push({ id, kinds: w.map(x => x.kind), text: w.map(x => x.text).join(' · ') });
+  }
+  const capBias = dropped.filter(d => d.kinds.includes('cap'));
+
   console.log('\n=== GIÁ TRỊ ĐO ĐƯỢC CỦA HARNESS ===');
+  for (const d of capBias) {
+    console.log(`  ⚠  ${d.id} — RA KHỎI PHÉP TRỪ VÌ TRẦN NGÂN SÁCH, không vì agent. ${d.text}`);
+  }
+  if (capBias.length) {
+    console.log('     Trần đó do TASK khai, và nó hiệu chỉnh trên chiều ĐẦY ĐỦ. Lớp harness tiết kiệm lượt, nên');
+    console.log('     chiều TRẦN cần nhiều lượt hơn cho cùng việc: nó chạm trần trước, thành `?`, rồi rơi khỏi mẫu số.');
+    console.log('     Sai số này có HƯỚNG CỐ ĐỊNH — task nào harness giúp nhiều nhất rơi ra trước, và hiệu số còn lại');
+    console.log('     chỉ nói về phần harness giúp ít. Hiệu chỉnh `maxTurns`/`maxMinutes` theo SỐ ĐO CỦA CHIỀU TRẦN.');
+    warn.push(`Phép trừ mất ${capBias.length} task vì TRẦN NGÂN SÁCH của chính task (${capBias.map(d => d.id).join(' ')}), `
+      + `không vì agent làm sai. Trần hiệu chỉnh trên chiều đầy đủ luôn bó chiều trần, và task rơi ra theo hướng `
+      + `làm harness trông vô dụng — đo lại trần trên chiều TRẦN rồi lấy số lớn hơn (#144).`);
+  }
+  for (const d of dropped.filter(x => !x.kinds.includes('cap'))) {
+    console.log(`  ?  ${d.id} — ra khỏi phép trừ: ${d.text}`);
+  }
   for (const s of skew) {
     console.log(`  ⚠  ${s} — MẪU SỐ LỆCH, task ra khỏi phép trừ.`);
   }
@@ -1017,10 +1078,12 @@ if (other) {
   } else {
     const full = BARE ? pct(theirs) : pct(mine);
     const nude = BARE ? pct(mine) : pct(theirs);
-    // HAI nguyên nhân loại, hai con số. Gộp chúng lại là gộp "chưa đo được bên kia" (chạy lại
-    // là có) với "đo được cả hai bên mà không so được" (chạy lại KHÔNG giúp — phải sửa task).
-    const absent = mine.size - common.length - skew.length - unknownDen.length;
-    const why = [absent && `${absent} không đo được ở lần kia`, skew.length && `${skew.length} mẫu số lệch`,
+    // MỖI nguyên nhân một con số, vì mỗi nguyên nhân một hành động: chạm trần ⇒ đo lại trần
+    // trên chiều trần; hạ tầng ⇒ chạy lại y nguyên; mẫu số lệch ⇒ sửa TASK (chạy lại vô ích).
+    // Gộp chúng thành một số là gộp ba việc khác nhau thành "có gì đó bị loại".
+    const other_ = dropped.length - capBias.length;
+    const why = [capBias.length && `${capBias.length} chạm trần ngân sách`,
+      other_ && `${other_} không đo được ở một vế`, skew.length && `${skew.length} mẫu số lệch`,
       unknownDen.length && `${unknownDen.length} chưa biết mẫu số`].filter(Boolean).join(' · ');
     console.log(`  đầy đủ ${full}%  −  trần ${nude}%  =  ${full - nude >= 0 ? '+' : ''}${full - nude}pp`
       + `   trên ${common.length} task so được${why ? ` (loại: ${why})` : ''}`);
