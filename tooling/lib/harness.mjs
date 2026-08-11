@@ -1808,6 +1808,26 @@ export function groupTracked(trackedTs, rowTimestamps = []) {
 }
 
 /**
+ * Nhóm ĐÃ XỬ = đã đóng (và còn đóng), hoặc đã có địa chỉ. **THUẦN**, trả `Set<khoá>`.
+ *
+ * Một phép trừ, BA bên đọc: `rituals.fixlogState()` (ngưỡng ≥10), `fixlog --list` (cảnh báo
+ * ≥10/tuần), và mọi bên đọc sau. Phép trừ này từng chỉ có ở bên thứ nhất — nên `--list` bật
+ * cảnh báo với **11 mục** trong khi 5 mục thuộc nhóm đã đóng từ 2026-08-07 và 4 mục thuộc hai
+ * nhóm đã có địa chỉ (#177, #160). Số thật sự chưa xử: **2**. Cùng file, cách nhau một lệnh.
+ *
+ * `groupTracked(ts, [])` — mảng RỖNG là cố ý: ở đây chỉ hỏi *"đã có địa chỉ chưa"*, và tái phát
+ * **không** gỡ địa chỉ đó (xem `groupTracked`). Truyền `tss` vào sẽ không đổi kết quả hôm nay,
+ * nhưng nó khai sai ý định và mời một bản vá tương lai đọc `recurred` ở đây.
+ */
+export function handledGroups(groupTimestamps, closed, tracked) {
+  const out = new Set();
+  for (const [k, tss] of (groupTimestamps ?? new Map())) {
+    if (groupStillClosed(closed?.get(k)?.ts, tss).closed || groupTracked(tracked?.get(k)?.ts, []).tracked) out.add(k);
+  }
+  return out;
+}
+
+/**
  * Đọc luật gom nhóm do người khai. TSV `ts \t key \t needle`, giữ NGUYÊN thứ tự file
  * (khi hai luật khớp mà needle DÀI BẰNG NHAU thì luật đầu thắng — xem `fixlogKey`).
  *
@@ -2319,6 +2339,178 @@ export function closeTelemetry(kind, selector, reason, { dir = null } = {}) {
     appendFileSync(join(dir ?? telemetryDir(), `${kind}.log`), line + '\n', 'utf8');
     return true;
   } catch { return false; }
+}
+
+/**
+ * ═══ SỔ TRẠNG THÁI NGHI THỨC — ĐO XEM MỘT TÍN HIỆU CÓ TẮT ĐƯỢC KHÔNG (L0008) ═
+ *
+ * Khối ngay TRÊN đây (`TELEMETRY_CLOSED`) chữa MỘT cái sổ. Bệnh thì tổng quát hơn thế, và nó
+ * tái phát **bốn lần trong hai tuần** sau khi cái sổ kia đã có nút đóng:
+ *
+ *   W32 §1 · `/harness-propose` đếm mọi dòng từng có        → nút đóng, ĐÃ XÂY
+ *   v2.61.0 (#174) · `flat-ok` treo vào `b.measured`         → cờ chỉ có nghĩa với gói metered
+ *   #180 (#181) · `flat-limited` khi `rateLimitHits > 0`     → 19 lần chạm / cửa sổ TRƯỢT 30 ngày
+ *   #182 (#183) · `fixlogTotal >= 10`                        → số ĐỜI, sổ chỉ biết ghi thêm
+ *
+ * Hợp đồng W32 đề xuất (*"bộ đếm lái tín hiệu phải khai `window:` hoặc `closable:`"*) bắt được
+ * đúng **một** trong ba ca tuần W33: `rateLimitHits` CÓ cửa sổ 30 ngày và vẫn đỏ vĩnh viễn, vì
+ * một cửa sổ trượt trên tín hiệu bạn còn tiếp tục sinh ra thì không bao giờ cạn. Nên `window`
+ * và `closable` là hai CÁCH ĐẠT TỚI tính chất cần có, không phải tính chất đó:
+ *
+ *   ► Tồn tại một trạng thái mà check trả `ok`, và trạng thái đó tới được bằng đúng hành động
+ *     ghi ở `cmd`.
+ *
+ * ── VÌ SAO ĐO, KHÔNG BẮT KHAI
+ *
+ * Bắt mỗi nghi thức khai `clearedBy:` là rule cứng trá hình (dạng 7, đắt nhất và mục nhanh
+ * nhất): người viết nghi thức mới sẽ điền một câu nghe hợp lý, và **không gì kiểm được câu đó**.
+ * Thứ kiểm được là LỊCH SỬ — và nguyên liệu miễn phí, vì `rituals` đã chạy ở mỗi SessionStart.
+ *
+ * ── VÌ SAO SNAPSHOT, KHÔNG PHẢI SỔ APPEND
+ *
+ * Rủi ro lớn nhất của cơ chế này là **chính nó thành bộ đếm không đóng được** — đúng bệnh nó đi
+ * chữa. Một snapshot O(1) không thể: nó giữ MỘT dòng cho mỗi nghi thức đang tồn tại, và mọi
+ * phán quyết đọc `since` (mốc TỰ ĐẶT LẠI khi trạng thái đổi) chứ không đọc một tổng tích luỹ.
+ * Nghi thức bị xoá khỏi `RITUALS` mang theo dòng của nó (`results` là danh sách CÓ THẨM QUYỀN),
+ * nên không có đường cho một mục kẹt vĩnh viễn về một nghi thức không còn tồn tại.
+ *
+ * ── GIỚI HẠN ĐÃ ĐO, KHÔNG PHẢI GIẢ ĐỊNH
+ *
+ * Sổ này gộp hai MÔI TRƯỜNG vào một dòng lịch sử. Đo 2026-08-12: `claude-code-drift` ra `ok`
+ * khi chạy từ terminal (`CLAUDE_CODE_EXECPATH` có mặt) và `?` khi chạy từ `session-start` hook
+ * (không có) — nên `since` của nó đảo mỗi lượt và nó KHÔNG BAO GIỜ tích đủ 14 ngày.
+ *
+ * Chấp nhận, vì nó không chạm lớp bệnh cần bắt: mục *"đỏ mà không tắt được"* ra `due` ở MỌI môi
+ * trường (`flat-limited`, `fixlogTotal >= 10` — cả hai đo trên file trong repo). Thứ đảo theo
+ * môi trường là các mục `?`, và `?` đã có đường báo riêng ở cả `rituals` lẫn `report()`. Hỏng
+ * theo chiều BỎ SÓT một cảnh báo, không theo chiều bịa ra một cảnh báo.
+ */
+export const RITUAL_STATES_FILE = () => join(stateDir(), 'ritual-states.json');
+
+/**
+ * Hợp nhất một lượt đo vào sổ — **THUẦN**, `nowIso` truyền vào để test lái được thời gian.
+ *
+ * HAI CHIỀU SAI, và chiều thứ hai im lặng (`L0007`):
+ *
+ *   ① `since` KHÔNG đổi khi trạng thái không đổi. Đặt lại mỗi lượt ⇒ `dueDays` luôn bằng 0 ⇒
+ *      cảnh báo KHÔNG BAO GIỜ nổ. Không triệu chứng nào, và nó chính là mutant M1 của lô này.
+ *   ② `since` PHẢI đổi khi trạng thái đổi. Giữ nguyên ⇒ một nghi thức xanh rồi đỏ lại được tính
+ *      là "đỏ liên tục từ hồi đó" ⇒ cảnh báo nổ nhầm, và `L0002` nói guard bắn nhầm còn tệ hơn
+ *      không có guard.
+ *
+ * `results` rỗng ⇒ **trả nguyên `prev`**, không ghi gì. Một lượt không đo được gì mà vẫn ghi
+ * `lastRunAt` là cách sổ tự khai "tôi vẫn đang nhìn" trong khi nó không nhìn thấy gì.
+ */
+export function mergeRitualStates(prev, results, nowIso) {
+  if (!Array.isArray(results) || !results.length) return prev ?? null;
+  const now = String(nowIso);
+  const before = (prev && typeof prev === 'object' && prev.rituals && typeof prev.rituals === 'object') ? prev.rituals : {};
+  const rituals = {};
+  for (const r of results) {
+    const id = String(r?.id ?? '').trim();
+    if (!id) continue;
+    const state = String(r?.state ?? '?');
+    const p = before[id];
+    const unchanged = p && p.state === state && p.since;
+    rituals[id] = {
+      state,
+      since: unchanged ? String(p.since) : now,
+      lastOkAt: state === 'ok' ? now : (p?.lastOkAt ?? null),
+      okRuns: (Number(p?.okRuns) || 0) + (state === 'ok' ? 1 : 0),
+      runs: (Number(p?.runs) || 0) + 1,
+    };
+  }
+  if (!Object.keys(rituals).length) return prev ?? null;
+  return {
+    firstRunAt: prev?.firstRunAt || now,
+    lastRunAt: now,
+    runs: (Number(prev?.runs) || 0) + 1,
+    rituals,
+  };
+}
+
+/**
+ * Nghi thức nào ĐỎ liên tục ≥`days` ngày mà CHƯA LẦN NÀO xanh — **THUẦN**, trả `{ mode, … }`.
+ *
+ * Cùng hình dạng với `budgetStatus`: **mode mang phán quyết**, và ba mode "chưa trả lời được"
+ * trả `stuck: null` chứ không phải `[]`. `[]` ở đó là câu *"đã nhìn, không có gì"* — với một
+ * repo vừa áp harness hôm qua thì đó là lời khai sai, và nó sai theo chiều dễ chịu (`L0005`).
+ *
+ *   unmeasured  chưa có sổ / sổ hỏng
+ *   warming     sổ có rồi nhưng quãng quan sát < `days` — in ĐẾM NGƯỢC, không in kết luận
+ *   stale       lượt ghi cuối đã quá `days` ngày ⇒ cửa sổ nằm hoàn toàn trong quá khứ
+ *   stuck       ≥1 nghi thức `due` liên tục ≥`days` ngày với **0** lần `ok`
+ *   pending     có mục đỏ lâu, nhưng mục nào cũng TỪNG xanh ⇒ việc tồn, không phải tín hiệu hỏng
+ *   ok          cửa sổ đã đủ, không mục nào đỏ liên tục ≥`days` ngày
+ *
+ * ── HAI CHỖ DỄ VIẾT SAI, cả hai đã có ca test
+ *
+ * **`dueDays` đo từ `lastRunAt`, KHÔNG từ `now`.** Ngừng chạy `rituals` hai tháng thì con số
+ * phải ĐỨNG YÊN, không được lớn lên: nó là số ngày ĐÃ QUAN SÁT thấy đỏ, không phải số ngày đã
+ * trôi qua. Đây đúng là lý do `tallyLines()` có `sinceMs` — một bằng chứng cũ đọc thành bằng
+ * chứng hôm nay là cách bảng điều khiển nói "ổn" trong khi nó chưa nhìn.
+ *
+ * **`okRuns === 0` là điều kiện, không phải trang trí.** Một nghi thức đỏ 30 ngày mà tháng
+ * trước còn xanh là **việc của bạn đang tồn** — nó tắt được, bạn chưa tắt. Một nghi thức chưa
+ * xanh lần nào trong cả quãng quan sát là **tín hiệu không có trạng thái tắt**. Gộp hai thứ đó
+ * thì dòng cảnh báo nổ với người vừa nghỉ phép hai tuần, và `L0002` nói chính xác chuyện gì xảy
+ * ra tiếp theo.
+ */
+export function stuckRituals(snap, { now = Date.now(), days = 14 } = {}) {
+  const D = 86400000;
+  const base = { mode: 'unmeasured', days, spanDays: null, staleDays: null, tracked: null, stuck: null, pending: null };
+  if (!snap || typeof snap !== 'object' || !snap.rituals || typeof snap.rituals !== 'object') return base;
+  const first = Date.parse(snap.firstRunAt ?? ''), last = Date.parse(snap.lastRunAt ?? '');
+  if (!Number.isFinite(first) || !Number.isFinite(last)) return base;
+
+  const spanDays = Math.round((last - first) / D);
+  const staleDays = Math.round((now - last) / D);
+  const tracked = Object.keys(snap.rituals).length;
+  // Mốc ghi ở TƯƠNG LAI (đồng hồ máy lùi, hoặc sổ chép từ máy khác) rơi vào `stale` — không
+  // phải vì nó cũ, mà vì `staleDays` âm nghĩa là phép so không còn nghĩa gì. Cùng cách
+  // `flatCapoReading()` từ chối một mốc tương lai thay vì tính ra một tuổi âm.
+  if (staleDays > days || staleDays < 0) return { ...base, mode: 'stale', spanDays, staleDays, tracked };
+  if (spanDays < days) return { ...base, mode: 'warming', spanDays, staleDays, tracked };
+
+  const rows = [];
+  for (const [id, r] of Object.entries(snap.rituals)) {
+    if (r?.state !== 'due') continue;
+    const since = Date.parse(r.since ?? '');
+    if (!Number.isFinite(since)) continue;
+    const dueDays = Math.round((last - since) / D);
+    if (dueDays < days) continue;
+    rows.push({ id, dueDays, okRuns: Number(r.okRuns) || 0, runs: Number(r.runs) || 0 });
+  }
+  rows.sort((a, b) => b.dueDays - a.dueDays);
+  const stuck = rows.filter(r => r.okRuns === 0);
+  const pending = rows.filter(r => r.okRuns > 0);
+  return { mode: stuck.length ? 'stuck' : pending.length ? 'pending' : 'ok', days, spanDays, staleDays, tracked, stuck, pending };
+}
+
+/** Đọc sổ. `null` = chưa có / không đọc được ⇒ `stuckRituals` trả `unmeasured`, KHÔNG trả `ok`. */
+export function readRitualStates() {
+  return readJson(RITUAL_STATES_FILE(), null);
+}
+
+/**
+ * Ghi một lượt đo vào sổ. Trả sổ mới, hoặc `null` nếu không ghi được.
+ *
+ * BẤT BIẾN như `telemetry()`: việc ghi chép KHÔNG BAO GIỜ được đổi kết quả của bên gọi. Chỗ gọi
+ * là `rituals.collect()`, mà `collect()` chạy trong `session-start` hook ở MỌI phiên — một
+ * ngoại lệ ở đây là một phiên không mở được.
+ *
+ * `stateDir()` không có mệnh đề chuyển hướng `fixture-` như `telemetryDir()`, nên một lần probe
+ * tay với `HARNESS_CONFIG` trỏ fixture mà quên `HARNESS_STATE_DIR` sẽ ghi vào sổ thật. Hỏng
+ * theo chiều AN TOÀN: một lượt lạ chỉ có thể ĐẶT LẠI `since` (mất một cảnh báo), không thể chế
+ * ra một quãng đỏ chưa từng có. Chiều ngược lại mới là chiều `L0002` cấm.
+ */
+export function recordRitualStates(results, nowIso = new Date().toISOString()) {
+  try {
+    const next = mergeRitualStates(readRitualStates(), results, nowIso);
+    if (!next) return null;
+    writeJson(RITUAL_STATES_FILE(), next);
+    return next;
+  } catch { return null; }
 }
 
 /**

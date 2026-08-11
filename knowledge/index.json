@@ -1,8 +1,8 @@
 {
   "generatedBy": "tooling/knowledge/lint.mjs",
-  "count": 7,
+  "count": 8,
   "byScope": {
-    "universal": 7
+    "universal": 8
   },
   "lessons": [
     {
@@ -131,6 +131,24 @@
         "tooling/test-evals.mjs — ⑮ *task có ≥1 assertion chạy được vẫn vào mẫu số* (chốt chống `measured=false`); ⑰ vế hai *vẫn PHẢI thấy `tooling` và `harness.config.json`* (chốt chống gỡ quá tay); ⑳ *giao rỗng ⇒ `?`* (chốt chống trừ trên hai mẫu số)",
         "tooling/test-hooks.mjs — `mergeBaseline` ca ② *bản rà MỚI thắng, không bị `...prev` ghi đè ngược*; `rateLimitHitsIn` ca *`0` ≠ `null`* và ca *trả về SỐ, không phải chuỗi nối object*",
         "tooling/lib/harness.mjs — `mergeBaseline()` và `rateLimitHitsIn()` tách thành hàm THUẦN, vì một phép hợp nhất/đếm nằm lẫn trong IO thì không có chỗ đặt ca cho chiều thứ hai"
+      ]
+    },
+    {
+      "id": "L0008",
+      "file": "knowledge/lessons/0008-tin-hieu-toi-han-phai-tat-duoc.md",
+      "title": "Một tín hiệu \"TỚI HẠN\" được lái bởi đại lượng mà hành động nó đề nghị KHÔNG đổi được — nên nó đỏ vĩnh viễn và thôi là tín hiệu",
+      "scope": "universal",
+      "class": "verification",
+      "representation": "computational-control",
+      "status": "active",
+      "added": "2026-08-12",
+      "occurrences": 4,
+      "artifacts": [
+        "tooling/lib/harness.mjs — `mergeRitualStates()` (hợp nhất một lượt đo, `since` chỉ nhảy khi trạng thái ĐỔI) · `stuckRituals()` (6 mode, ba mode chưa-trả-lời-được trả `null` chứ không `[]`) · `RITUAL_STATES_FILE`",
+        "tooling/rituals.mjs — `collect()` ghi sổ mỗi lượt. Đặt ở `collect()` chứ không ở `main()`: `session-start` IMPORT `collect()`/`evaluate()` thay vì spawn CLI, nên một lời gọi trong `main()` chỉ lấy mẫu những lượt chạy TAY",
+        "tooling/harness-doctor.mjs — §VÒNG HỌC in *\\\"N nghi thức `due` liên tục ≥14 ngày với 0 lần `ok`\\\"*. Ở doctor chứ KHÔNG ở `rituals`: một nghi thức canh các nghi thức khác rơi vào đúng cái bẫy nó canh",
+        "tooling/lib/harness.mjs — `handledGroups()`: phép trừ *\\\"nhóm nào đã xử\\\"* dùng chung cho `rituals.fixlogState()` và `fixlog --list`, thay hai bản chép lệch nhau",
+        "tooling/test-hooks.mjs — khối `stuckRituals`: bảng 10 ca mode, ca `dueDays` đo từ lượt ghi CUỐI (ca duy nhất phân biệt hai phép tính), hợp đồng mode ↔ bên đọc hai chiều, và e2e `rituals` có thật sự ghi sổ không"
       ]
     }
   ]

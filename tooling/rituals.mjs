@@ -41,7 +41,7 @@
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, groupStillClosed, groupTracked, groupMarks, FIXLOG_CLOSED_FILE, FIXLOG_TRACKED_FILE, readJson, writeJson, readPacks, packPending, budgetSnapshot, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue } from './lib/harness.mjs';
+import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, groupStillClosed, groupTracked, groupMarks, handledGroups, FIXLOG_CLOSED_FILE, FIXLOG_TRACKED_FILE, readJson, writeJson, readPacks, packPending, budgetSnapshot, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue, recordRitualStates } from './lib/harness.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHẦN THUẦN — không đọc đĩa, không gọi git. Test khẳng định trực tiếp vào đây.
@@ -700,7 +700,7 @@ export function collect() {
   const progress = issue ? repoPath('docs', 'progress', `${issue}.md`) : null;
   const progressExists = Boolean(progress && exists(progress));
 
-  return {
+  const state = {
     branch, integrationBranch, issue, issueFrom, progressExists,
     // Đọc ở ĐÂY, không trong `check` — `check` là phần THUẦN (xem mốc ở đầu file), và một
     // lần đọc đĩa lén trong đó làm test không lái được nhánh solo.
@@ -868,6 +868,24 @@ export function collect() {
       };
     })(),
   };
+
+  // ── GHI LẠI LƯỢT ĐO NÀY (L0008) ────────────────────────────────────────────
+  //
+  // VÌ SAO Ở ĐÂY, không ở `main()`: `.claude/hooks/session-start.mjs` **import** `collect()` +
+  // `evaluate()` thay vì spawn CLI (một process node nữa mỗi phiên là ~60ms không cần trả). Nên
+  // `main()` chỉ nhìn thấy những lượt chạy TAY — và một cơ chế đo "nghi thức này có bao giờ
+  // xanh không" mà chỉ lấy mẫu lúc người ta chủ động đi xem thì đo sai quần thể theo đúng chiều
+  // làm nó im: bạn gõ `rituals --all` chính vào lúc bạn vừa xử một mục.
+  //
+  // VÌ SAO KHÔNG ĐẶT TRONG `evaluate()`: đó là HÀM THUẦN (xem mốc ở đầu file), và cả bảng ca của
+  // `test-hooks` khẳng định thẳng vào nó bằng trạng thái dựng sẵn. Một lần ghi đĩa trong đó
+  // nghĩa là mỗi ca test ghi vào sổ thật — fixture phải AN TOÀN kể cả khi cơ chế hỏng.
+  //
+  // Cái giá là `evaluate()` chạy hai lượt mỗi lần đo thật (một cho sổ, một cho người đọc). Nó
+  // thuần và tất định, nên hai lượt cho cùng một kết quả; ~14 hàm nhỏ, không đọc đĩa.
+  try { recordRitualStates(evaluate(state)); } catch { /* ghi sổ KHÔNG BAO GIỜ làm hỏng phiên */ }
+
+  return state;
 }
 
 /** fixlog: tổng số mục, và số NHÓM đã đạt ngưỡng ≥2 (ngưỡng promote của /harness-propose). */
@@ -921,8 +939,10 @@ function fixlogState() {
     // `fixlogTotal` là số ĐỜI, và sổ chỉ biết ghi thêm — nên một ngưỡng đặt trên nó là một mục
     // đỏ VĨNH VIỄN sau lần thứ 10, y như `flat-limited` ở #180. Thứ đo được backlog thật là số
     // mục nằm trong nhóm CHƯA xử: chưa đóng, và chưa có địa chỉ.
-    const handled = new Set([...groups.keys()].filter(k =>
-      groupStillClosed(closed.get(k)?.ts, groups.get(k)).closed || groupTracked(tracked.get(k)?.ts, []).tracked));
+    // `handledGroups()` ở lib — CÙNG phép trừ mà `fixlog --list` dùng. Bản trước phép trừ này
+    // chỉ có ở ĐÂY, nên `--list` bật cảnh báo "≥10 lần/tuần" với 11 mục trong khi 9 mục thuộc
+    // nhóm đã đóng hoặc đã có địa chỉ. Hai công cụ, một câu hỏi, hai câu trả lời (#125).
+    const handled = handledGroups(groups, closed, tracked);
     const openCount = [...groups.entries()].filter(([k]) => !handled.has(k)).reduce((s, [, tss]) => s + tss.length, 0);
     return {
       fixlogTotal: lines.length,

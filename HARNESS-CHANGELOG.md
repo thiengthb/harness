@@ -11,6 +11,54 @@
 
 ---
 
+## 2.65.0 — 2026-08-12
+
+**minor.** Harness **tự đo** xem tín hiệu "tới hạn" của chính nó có tắt được không —
+`knowledge/lessons/0008`, bước PROMOTE của vòng học W33.
+
+### Defect: cùng một lớp lỗi, lần thứ NĂM trong hai tuần
+
+| lần | đại lượng lái tín hiệu | vì sao hành động ở `cmd` không tắt được nó |
+|---|---|---|
+| W32 §1 (#105) | mọi dòng từng có trong `gate-fails.log` | sổ chỉ biết ghi thêm |
+| v2.61.0 (#174) | `b.measured` — cờ của gói metered | người gói PHẲNG không bao giờ gõ `--usd` |
+| v2.63.0 (#180) | `rateLimitHits > 0`, cửa sổ 30 ngày | cửa sổ TRƯỢT trên tín hiệu bạn còn sinh ra |
+| v2.64.0 (#182) | `fixlogTotal >= 10` | số ĐỜI, chỉ tăng |
+| **v2.65.0 (#185)** | `rows.length >= 10` ở `fixlog --list` | đếm cả mục đã `--close` và đã `--track` |
+
+Hợp đồng W32 đề xuất (*"bộ đếm lái tín hiệu phải khai `window:` hoặc `closable:`"*) chỉ bắt được
+**1 trong 3** ca của tuần W33 — `rateLimitHits` CÓ cửa sổ 30 ngày và vẫn đỏ vĩnh viễn. Nên
+`window`/`closable` là hai **cách đạt tới** tính chất cần có, không phải tính chất đó:
+
+> Tồn tại một trạng thái mà phép kiểm trả `ok`, và trạng thái đó tới được bằng đúng hành động
+> ghi ở `cmd`.
+
+### Cơ chế: ĐO, không bắt KHAI
+
+Bắt mỗi nghi thức khai `clearedBy:` là rule cứng trá hình — người viết nghi thức mới sẽ điền
+một câu nghe hợp lý và không gì kiểm được câu đó. Thứ kiểm được là lịch sử:
+
+1. `rituals.collect()` ghi snapshot `{state, since, lastOkAt, okRuns}` cho mỗi nghi thức, mỗi
+   lượt chạy. Nguyên liệu miễn phí: nó đã chạy ở mọi SessionStart.
+2. `harness-doctor` §VÒNG HỌC in *"N nghi thức `due` liên tục ≥14 ngày với **0** lần `ok`"*.
+
+Ở **doctor** chứ không ở `rituals`: một nghi thức canh các nghi thức khác rơi vào chính cái bẫy
+nó canh — nó đỏ khi có mục đỏ lâu, mà mục đỏ lâu thường là mục *không tắt được*.
+
+### CẮT: mẫu số của `fixlog --list`
+
+Ngưỡng `≥10 lần/tuần` nay đặt trên số mục **CHƯA XỬ**. Đo trên sổ thật 2026-08-12: cảnh báo bật
+với **11 mục**, trong đó 5 thuộc nhóm đã đóng từ 08-07 và 4 thuộc hai nhóm đã có địa chỉ (#177,
+#160). Thật sự chưa xử: **2**. Phép trừ nay là MỘT hàm dùng chung (`handledGroups()`), không
+phải hai bản chép — `rituals` đã trừ từ #182, `--list` thì chưa.
+
+### Sổ mới
+
+`.claude/state/ritual-states.json` — gitignore, cục bộ máy này, **O(1)** (một dòng mỗi nghi
+thức đang tồn tại). Không cần migration: thiếu sổ ⇒ doctor in `?`, không in kết luận.
+
+---
+
 ## 2.64.0 — 2026-08-12
 
 **minor.** `fixlog` có **trạng thái thứ tư**: `⇢` *đã có địa chỉ, đang chờ*. Và ngưỡng của
