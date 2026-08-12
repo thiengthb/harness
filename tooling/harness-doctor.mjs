@@ -17,7 +17,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, devId, TEST_TELEMETRY_DIR, TEST_RUN_ID, sweepStaleTestRuns, coordinationLayer, verificationCoverage, readPacks, packPending, budgetSnapshot, configCoverage, stuckRituals, readRitualStates, releaseTagGap, emitVerdict } from './lib/harness.mjs';
+import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, devId, TEST_TELEMETRY_DIR, TEST_RUN_ID, sweepStaleTestRuns, coordinationLayer, verificationCoverage, readPacks, packPending, budgetSnapshot, configCoverage, stuckRituals, readRitualStates, releaseTagGap, emitVerdict, frictionReading } from './lib/harness.mjs';
 
 const QUICK = process.argv.includes('--quick');
 // PHẢI chụp TRƯỚC khi chạy các suite bên dưới: nó là mốc phân biệt "telemetry suite của lần
@@ -355,6 +355,35 @@ console.log(`  fixlog: ${fixCount} mục  ·  bài học: ${lessonCount}  ·  ev
   + `  ·  pack chờ quyết: ${pend === null ? '?' : pend.count}`);
 if (pend === null) advice.push('không đọc được knowledge/incoming/ — đây là `?`, không phải "không có pack nào"');
 else if (pend.count) advice.push(`${pend.count} pack chờ quyết (${pend.material} mục nguyên liệu) ở knowledge/incoming/ — quyết đi: node tooling/knowledge/accept.mjs --list`);
+
+// ── Ma sát ĐO ĐƯỢC: công cụ hỏng + chờ người (#132) ─────────────────────────
+//
+// Đứng cạnh `fixlog` vì nó là em họ TỰ ĐỘNG của fixlog: cùng câu hỏi ("hôm nay cái gì cản?"),
+// khác chỗ là không ai phải nhớ gõ. Bên đọc phải tồn tại NGAY khi cắm ô — cắm mà không đọc là
+// tự tạo mục tiếp theo cho danh sách cắt bỏ của `/harness-retro` bước 4.
+{
+  const readLog = (k) => { try { const f = join(repoPath('.claude', 'telemetry'), `${k}.log`); return exists(f) ? readFileSync(f, 'utf8') : ''; } catch { return null; } };
+  const wiredEvents = (() => { try { return Object.keys(readJson(repoPath('.claude', 'settings.json'))?.hooks ?? {}); } catch { return []; } })();
+  const fr = frictionReading({
+    failures: readLog('tool-failures'),
+    notifications: readLog('notifications'),
+    wired: wiredEvents.includes('PostToolUseFailure') && wiredEvents.includes('Notification'),
+  });
+  const LINE = {
+    'not-wired': '  n/a  ma sát chưa đo được: ô `PostToolUseFailure`/`Notification` chưa cắm (`node tooling/rituals.mjs --slots`)',
+    unmeasured: '  ?    không đọc được `tool-failures.log` / `notifications.log` — đây là `?`, không phải 0',
+    measured: `  ma sát ${fr.days} ngày: ${fr.errors} lần công cụ HỎNG · ${fr.interrupts} lần NGƯỜI dừng · `
+      + `${fr.idle}/${fr.notifs} thông báo là "chờ người vượt ngưỡng"`
+      + (fr.top?.length ? `\n       hay hỏng nhất: ${fr.top.map(t => `${t.tool} ${t.errors}`).join(' · ')}` : ''),
+  };
+  console.log(LINE[fr.mode]);
+  // Con số `idle` KHÔNG so được giữa hai máy — ngưỡng `messageIdleNotifThresholdMs` là của
+  // NGƯỜI DÙNG, và vendor không gửi thời lượng. Nói ra ở chỗ nó được in, không giấu trong lib.
+  if (fr.mode === 'measured' && fr.idle > 0) {
+    advice.push(`${fr.idle} lần agent chờ người vượt ngưỡng trong ${fr.days} ngày — đây là SỐ LẦN của MÁY NÀY `
+      + '(ngưỡng `messageIdleNotifThresholdMs` do bạn chỉnh, và sự kiện không mang thời lượng), nên nó đọc được XU HƯỚNG chứ không so được với máy khác.');
+  }
+}
 
 // ── Nghi thức nào ĐỎ mà không tắt được bằng hành động nó đề nghị (L0008) ─────
 //

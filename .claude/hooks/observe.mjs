@@ -14,6 +14,10 @@
  *                       vendor GỌI cho ta khi tiền hoặc quota chạm trần.
  *                       KHÔNG cố dừng session — hook không dừng được API error.
  *   SessionStart        kiểm dây auto-memory (xem AGENTS.md §Hai bộ nhớ).
+ *   PostToolUseFailure  em họ TỰ ĐỘNG của `fixlog` — tầng CAPTURE thôi dựa vào trí nhớ.
+ *                       `is_interrupt` tách riêng: người bấm dừng KHÔNG phải công cụ hỏng.
+ *   Notification        ma sát người↔agent. `idle_prompt` là SỐ LẦN VƯỢT NGƯỠNG của máy này,
+ *                       KHÔNG phải thời lượng chờ — vendor không gửi thời lượng.
  *
  * ── VÌ SAO StopFailure GHI FILE CHỨ KHÔNG IN
  * Vendor khai StopFailure là **fire-and-forget: hook output VÀ exit code bị BỎ QUA**
@@ -70,6 +74,48 @@ if (ev === 'InstructionsLoaded') {
       });
     } catch {}
   }
+} else if (ev === 'PostToolUseFailure') {
+  // ── CÔNG CỤ HỎNG — em họ TỰ ĐỘNG của `fixlog` (#132) ──────────────────────
+  //
+  // `fixlog` là *"3 giây người phải NHỚ gõ"*, tức tầng CAPTURE của vòng học đang dựa vào trí
+  // nhớ. Đây là phần máy ghi được mà không ai phải nhớ gì.
+  //
+  // `is_interrupt` LÀ MỘT CỘT RIÊNG, không gộp. Đo từ binary 2.1.228, schema vendor:
+  //   { tool_name, tool_input, tool_use_id, error, is_interrupt?: bool, duration_ms?: number }
+  // `is_interrupt` nghĩa là NGƯỜI bấm dừng — đó không phải một công cụ hỏng, đó là một quyết
+  // định. Gộp hai thứ vào một bộ đếm là đúng lớp lỗi `L0005`: một con số không phân biệt được
+  // hai trạng thái sẽ đổ về phía dễ chịu, và ở đây phía dễ chịu là *"công cụ này hay hỏng"*
+  // trong khi sự thật là *"tôi hay bấm dừng nó"*.
+  //
+  // KHÔNG ghi `tool_input`: đó là chỗ một secret sẽ nằm nếu nó nằm ở đâu đó. `error` cắt 120 ký
+  // tự — cùng ngưỡng `dcg` dùng cho `cmd`, cùng lý do.
+  const ms = Number(i?.duration_ms);
+  telemetry('tool-failures', [
+    i?.tool_name ?? '?',
+    i?.is_interrupt === true ? 'interrupt' : 'error',
+    String(i?.error ?? '?').slice(0, 120),
+    Number.isFinite(ms) ? String(Math.round(ms)) : '?',
+  ]);
+} else if (ev === 'Notification') {
+  // ── MA SÁT NGƯỜI ↔ AGENT (#132) ───────────────────────────────────────────
+  //
+  // Schema đo từ binary: { message, title?, notification_type }. Matcher của vendor là
+  // `notification_type`, nhưng ta để `*` trong settings.json và lọc/phân loại Ở ĐÂY — cùng lý
+  // do với `MONEY` phía trên: matcher hụt thì tín hiệu im, và im là chế độ hỏng tệ nhất.
+  //
+  // GIỚI HẠN PHẢI NÓI RA, và nó bác một nửa câu hỏi gốc của issue. `idle_prompt` KHÔNG mang
+  // thời lượng: binary bắn nó khi thời gian chờ vượt `messageIdleNotifThresholdMs` — một ngưỡng
+  // NGƯỜI DÙNG chỉnh được. Nên con số này là *"số lần vượt ngưỡng CỦA MÁY NÀY"*, không phải
+  // *"agent đợi bao lâu"*, và nó KHÔNG so được giữa hai máy khác ngưỡng.
+  //
+  // Ghi nó thay vì bỏ qua: một phép đếm có ngưỡng riêng vẫn đọc được XU HƯỚNG trên cùng một
+  // máy — đúng thứ CAPO-TRẦN đã làm với `rateLimitHits`. Thứ KHÔNG được làm là gọi nó là "thời
+  // gian chờ".
+  telemetry('notifications', [
+    i?.notification_type ?? '?',
+    unattended() ? 'unattended' : 'attended',
+    String(i?.title ?? i?.message ?? '').slice(0, 80),
+  ]);
 } else if (ev === 'SessionStart') {
   // Auto-memory là quan sát THÔ, máy-cục-bộ, được phép sai. Trỏ nó vào cây repo là
   // biến quan sát chưa kiểm của MỘT người thành chỉ thị cho CẢ ĐỘI — và nó nạp 200

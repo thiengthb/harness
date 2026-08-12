@@ -2487,6 +2487,60 @@ export function releaseTagGap({ versions = [], tags = [], current = '' } = {}) {
 }
 
 /**
+ * ═══ MA SÁT ĐO ĐƯỢC: CÔNG CỤ HỎNG + CHỜ NGƯỜI (#132) ═════════════════════════
+ *
+ * Hai ô native (`PostToolUseFailure`, `Notification`) là tầng CAPTURE mà `fixlog` đang phải
+ * làm bằng trí nhớ người. **THUẦN** — nhận TEXT, không đọc đĩa.
+ *
+ * VÌ SAO CÓ HÀM NÀY CHỨ KHÔNG CHỈ CÓ CÁI HOOK: một cơ chế ghi mà không ai đọc là thứ
+ * `/harness-retro` bước 4 phải cắt — và lô trước vừa đo được đúng một ca như thế (cảnh báo mềm
+ * `package.json` trong `dcg`, in ra nhưng không tới được ai). Cắm ô mà không có bên đọc là tự
+ * tạo ra mục tiếp theo của danh sách cắt bỏ.
+ *
+ * BA CON SỐ, KHÔNG PHẢI MỘT — và ranh giới giữa chúng là toàn bộ giá trị:
+ *
+ *   errors      công cụ THẬT SỰ hỏng
+ *   interrupts  NGƯỜI bấm dừng (`is_interrupt`) — một quyết định, không phải một lỗi
+ *   idle        số lần agent chờ người VƯỢT NGƯỠNG
+ *
+ * Gộp `interrupts` vào `errors` cho ra câu *"công cụ này hay hỏng"* trong khi sự thật là
+ * *"tôi hay bấm dừng nó"* — `L0005`, phía dễ chịu.
+ *
+ * `idle` KHÔNG PHẢI THỜI LƯỢNG, và chỗ này dễ đọc sai nhất. Vendor bắn `idle_prompt` khi thời
+ * gian chờ vượt `messageIdleNotifThresholdMs` — một ngưỡng NGƯỜI DÙNG chỉnh được — và sự kiện
+ * **không mang thời lượng** (đo từ binary 2.1.228: `{ message, title?, notification_type }`).
+ * Nên nó đọc được XU HƯỚNG trên cùng một máy, và **không so được giữa hai máy**. Cùng hình dạng
+ * với CAPO-TRẦN của gói phẳng: một tỉ lệ chỉ có nghĩa so với chính nó.
+ *
+ * `null` (không đọc được) ≠ `''` (đọc được, rỗng). Chưa cắm ô thì `wired=false` ⇒ `n/a`, vì
+ * "chưa hỏi" không được đọc thành "không có gì".
+ */
+export function frictionReading({ failures = null, notifications = null, wired = false, now = Date.now(), days = 7 } = {}) {
+  const base = { mode: 'not-wired', days, errors: null, interrupts: null, idle: null, notifs: null, top: null };
+  if (!wired) return base;
+  if (failures === null || notifications === null) return { ...base, mode: 'unmeasured' };
+
+  const sinceMs = now - days * 86400000;
+  const byTool = tallyLines(failures, { field: 2, sinceMs });
+  let errors = 0, interrupts = 0;
+  const top = [];
+  for (const [tool, subs] of byTool) {
+    const e = Number(subs.error) || 0, n = Number(subs.interrupt) || 0;
+    errors += e; interrupts += n;
+    top.push({ tool, errors: e, interrupts: n });
+  }
+  top.sort((a, b) => (b.errors - a.errors) || (b.interrupts - a.interrupts));
+
+  const byType = tallyLines(notifications, { field: 2, sinceMs });
+  let notifs = 0;
+  for (const subs of byType.values()) for (const n of Object.values(subs)) notifs += Number(n) || 0;
+  const idleSubs = byType.get('idle_prompt') ?? {};
+  const idle = Object.values(idleSubs).reduce((s, n) => s + (Number(n) || 0), 0);
+
+  return { mode: 'measured', days, errors, interrupts, idle, notifs, top: top.slice(0, 3) };
+}
+
+/**
  * Ghi một dòng vào log telemetry. `kind` = tên file không đuôi.
  *
  * BẤT BIẾN: việc ghi chép KHÔNG BAO GIỜ được đổi kết quả của hook. Log không ghi

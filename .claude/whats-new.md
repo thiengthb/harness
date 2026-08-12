@@ -1,4 +1,4 @@
-<!-- version: 2026-08-12-d -->
+<!-- version: 2026-08-12-e -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,25 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-12 — harness tự ghi "hôm nay cái gì cản" (v2.68.0)
+
+`fixlog` là 3 giây **bạn phải nhớ gõ**. Nay máy ghi phần nó ghi được — hai ô native mới, cùng
+`observe.mjs`, **không chặn gì**:
+
+```
+node tooling/harness-doctor.mjs      # §VÒNG HỌC
+  ma sát 7 ngày: 3 lần công cụ HỎNG · 1 lần NGƯỜI dừng · 2/9 thông báo "chờ người vượt ngưỡng"
+```
+
+Hai chỗ **đừng đọc sai** — cả hai đo từ binary, không đoán:
+
+1. **"NGƯỜI dừng" tách khỏi "công cụ HỎNG".** Bạn bấm Esc không phải là công cụ hỏng.
+2. **"chờ người" là SỐ LẦN, không phải THỜI LƯỢNG** — vendor không gửi thời lượng, và ngưỡng
+   (`messageIdleNotifThresholdMs`) là của **máy bạn**. Đọc xu hướng của chính mình; đừng so với
+   máy người khác.
+
+`fixlog` **không bị thay**: máy ghi được *cái gì hỏng*, chỉ bạn ghi được *tại sao nó cản*.
 
 ## 2026-08-12 — backtick trong `node -e "…"` bị chặn (v2.67.0)
 
