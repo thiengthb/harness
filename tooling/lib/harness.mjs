@@ -2519,7 +2519,12 @@ export function releaseTagGap({ versions = [], tags = [], current = '' } = {}) {
   const untagged = rel.filter(v => !tagged.has(v) && cmp(parse(v), cur) <= 0)
     .sort((a, b) => cmp(parse(a), parse(b)));
   const behind = latestTag ? untagged.filter(v => cmp(parse(v), parse(latestTag)) > 0).length : untagged.length;
-  return { latestTag, current: rel.includes(String(current).replace(/^v/, '')) ? String(current) : String(current), behind, untagged };
+  // `current` chỉ để HIỂN THỊ. Bản 2.67.0 viết chỗ này thành
+  //   `rel.includes(…) ? String(current) : String(current)`
+  // — hai nhánh giống hệt nhau, nên điều kiện chưa bao giờ quyết định gì. Kết quả vẫn đúng,
+  // nhưng nó ĐỌC như một phép phân biệt có thật, và người sửa sau sẽ đi tìm ca thứ hai không
+  // tồn tại. Cùng họ với mọi thứ trong lô `verdict`: một phép tính không xảy ra, im lặng.
+  return { latestTag, current: String(current), behind, untagged };
 }
 
 /**
