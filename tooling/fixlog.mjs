@@ -86,9 +86,26 @@ if (args[0] === '--top') {
   const closed = readClosed();
   const tracked = readTracked();
   const manual = new Set(RULES.map(r => r.key));
-  const sorted = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
+
+  // TRẦN 15 + SẮP THEO TẦN SUẤT là một phép cắt IM LẶNG, và nó cắt sai đầu.
+  //
+  // Đo 2026-08-13: sổ có 17 nhóm, 14 trong đó ĐÃ ĐÓNG. Mọi nhóm đều `1×`, nên thứ tự quyết
+  // định bởi thứ tự chèn — và hai nhóm bị rơi khỏi trần là hai nhóm MỚI NHẤT, tức đúng hai
+  // mục chưa ai xử. `rituals` nói *"2/17 chưa xử"* trong khi `--top` — cái lệnh bảng nghi
+  // thức chỉ bạn tới để XEM chúng — hiện đúng 1. Hai công cụ, hai con số, cho cùng câu hỏi:
+  // đúng lớp lỗi mà mục fixlog về `accept.mjs`/`rituals`/`doctor` đã ghi.
+  //
+  // Hai sửa, và cái thứ nhất mới là cái chữa gốc:
+  //   ① CHƯA XỬ đứng trước ĐÃ XỬ. Một nhóm đã đóng không còn là việc, nên nó không được
+  //      chiếm suất của một nhóm đang là việc. Sau đó mới tới tần suất.
+  //   ② Phần bị cắt phải TỰ KHAI. Một cái trần không nói gì đọc y hệt "đã in hết" — và với
+  //      công cụ mà nhiệm vụ là KHÔNG ĐÁNH RƠI phát hiện nào, đó là chế độ hỏng tệ nhất.
+  const handledTop = handledGroups(new Map([...groups].map(([k, rs]) => [k, rs.map(r => r.ts)])), closed, tracked);
+  const sorted = [...groups.entries()].sort((a, b) =>
+    (handledTop.has(a[0]) ? 1 : 0) - (handledTop.has(b[0]) ? 1 : 0) || b[1].length - a[1].length);
+  const CAP = 15;
   console.log('\n=== NHÓM THEO TẦN SUẤT ===');
-  for (const [k, rows] of sorted.slice(0, 15)) {
+  for (const [k, rows] of sorted.slice(0, CAP)) {
     const done = closed.get(k);
     const track = tracked.get(k);
     // TÁI PHÁT: đã đóng, mà vẫn có mục ghi SAU ngày đóng. Dấu ✔ khi đó là một lời khai sai —
@@ -119,6 +136,14 @@ if (args[0] === '--top') {
       console.log(`         ⇢ ĐANG CHỜ ${trk.recurred.length ? `— và đã TÁI PHÁT ${trk.recurred.length} lần kể từ khi ghi` : ''}`.trimEnd());
       console.log(`         ${String(track.note).slice(0, 150)} (ghi ${String(track.ts).slice(0, 10)})`);
     }
+  }
+  // Phần bị trần cắt TỰ KHAI. Với ① ở trên, `chưa xử` ở đây chỉ khác 0 khi có hơn 15 nhóm
+  // đang là việc thật — và nếu ngày đó tới thì đây đúng là con số cần đọc.
+  const hidden = sorted.slice(CAP);
+  if (hidden.length) {
+    const hiddenOpen = hidden.filter(([k]) => !handledTop.has(k)).length;
+    console.log(`\n  … ${hidden.length} nhóm nữa KHÔNG in (trần ${CAP} nhóm)`
+      + ` — ${hiddenOpen} trong số đó CHƯA XỬ. Nhóm đã đóng xếp sau, nên trần cắt phần đã xử trước.`);
   }
   console.log('\n  ★ = xuất hiện ≥2 lần → ĐỦ ĐIỀU KIỆN promote thành bài học (một lần là ngẫu nhiên).');
   console.log('  ✔ = đã xử lý xong, không tính là việc tới hạn nữa.');
@@ -238,15 +263,52 @@ if (args[0] === '--close') {
   process.exit(0);
 }
 
-const text = args.join(' ').trim();
-if (!text) {
-  console.error(`Cách dùng:
+/** MỘT nguồn cho bảng cách-dùng: `--help`, gọi rỗng và cờ gõ sai phải in cùng một thứ. */
+function usage(out) {
+  out(`Cách dùng:
   node tooling/fixlog.mjs "mô tả việc bạn vừa phải sửa tay"
   node tooling/fixlog.mjs --list     # 7 ngày qua
   node tooling/fixlog.mjs --top      # nhóm theo tần suất, đánh dấu cái đủ điều kiện promote
   node tooling/fixlog.mjs --group "<tên-nhóm>" "<vài chữ chung>"     # khai hai dòng là cùng gốc rễ
   node tooling/fixlog.mjs --track "<vài chữ>" "<issue + chờ gì>"     # đã thành việc CÓ ĐỊA CHỈ, đang chờ
-  node tooling/fixlog.mjs --close "<vài chữ>" "<đã xử lý thế nào>"   # đóng một nhóm đã xử XONG`);
+  node tooling/fixlog.mjs --close "<vài chữ>" "<đã xử lý thế nào>"   # đóng một nhóm đã xử XONG
+  node tooling/fixlog.mjs -- "<nội dung mở đầu bằng dấu gạch>"       # \`--\` = hết cờ, phần sau là NỘI DUNG`);
+}
+
+// ── PHẦN CÒN LẠI là NỘI DUNG — nhưng một CỜ thì không phải nội dung ──────────
+//
+// Bản trước nhận mọi thứ không khớp năm cờ ở trên làm nội dung. Nên `--help` — cờ quy ước
+// nhất của mọi CLI — ghi thẳng một dòng rác vào chính cái sổ mà công cụ này tồn tại để giữ
+// sạch, rồi in `✓ đã ghi (tổng 17)` như thể vừa làm đúng. Không có gì kêu.
+//
+// Ghi sổ 2026-08-05 (mục 12/16), tái hiện 2026-08-13 trên v2.71.0: cùng một lệnh, cùng một
+// kết quả, 59 minor version ở giữa. Lần thứ hai là lần chứng minh nó không phải tai nạn —
+// nó là MẶC ĐỊNH SAI CHIỀU. Với một công cụ mà đầu ra là dữ liệu được giữ lâu, "không nhận
+// ra đối số này" phải KÊU; nó không được lặng lẽ hoá thành một dòng dữ liệu.
+//
+// Vì sao không chỉ thêm mỗi `--help`: thứ làm bẩn sổ không phải chữ "help", mà là nhánh mặc
+// định. `--to` (gõ hụt `--top`), `--lst`, `--closs` đều hạ cánh vào đúng chỗ đó và đều im
+// lặng y hệt. Chặn theo HÌNH DẠNG (mở đầu bằng `-`) mới đóng được cả lớp, chứ không phải
+// đuổi theo từng cái tên — đúng lỗi mà `--close`-theo-danh-sách-tên đã mắc ở #149.
+//
+// Cửa thoát là quy ước POSIX `--`, và nó KHÔNG phải cho đủ lệ: sổ này đầy dòng nói về
+// `--force`, `--auto-approve`, và mục 12/16 mô tả chính bug này mở đầu bằng `--help`. Một
+// guard chặn cả nhóm mà không có đường thoả là guard bắn nhầm (L0002), và ở đây ca bắn nhầm
+// lại đúng là ca thường gặp nhất của chính repo này.
+if (args[0] === '--help' || args[0] === '-h') { usage(console.log); process.exit(0); }
+
+if (args[0] === '--') args.shift();
+else if (args[0]?.startsWith('-')) {
+  console.error(`✗ cờ không nhận ra: ${args[0]} — KHÔNG ghi gì vào sổ.`);
+  usage(console.error);
+  console.error(`\n  Nội dung THẬT SỰ mở đầu bằng dấu gạch? Đặt \`--\` trước nó:`);
+  console.error(`    node tooling/fixlog.mjs -- "${args[0]} bị chặn oan"`);
+  process.exit(1);
+}
+
+const text = args.join(' ').trim();
+if (!text) {
+  usage(console.error);
   process.exit(1);
 }
 

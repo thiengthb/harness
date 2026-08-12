@@ -11,6 +11,85 @@
 
 ---
 
+## 2.72.0 — 2026-08-13
+
+**minor.** `fixlog.mjs` thôi mất dữ liệu im lặng — **hai đường**, cả hai đều tìm được bằng
+cách dùng chính công cụ đó trong một phiên.
+
+Cùng một mục đích, vì cả hai đều là **cùng một chế độ hỏng ở cùng một file**: cái sổ mà toàn
+bộ vòng học đứng trên, tự đánh rơi hoặc tự làm bẩn dữ liệu của nó mà không kêu một tiếng.
+
+## ĐƯỜNG 1 — một CỜ không phải là NỘI DUNG
+
+Thêm `--help`/`-h`, và cửa thoát POSIX `--` cho nội dung thật sự mở đầu bằng dấu gạch.
+
+### Lỗi
+
+Nhánh mặc định nhận mọi đối số không khớp năm cờ đã biết làm nội dung. Nên `--help` — cờ quy
+ước nhất của mọi CLI — **ghi một dòng rác vào chính cái sổ mà công cụ này tồn tại để giữ
+sạch**, rồi in `✓ đã ghi (tổng 17)` như thể vừa làm đúng.
+
+Nó không phải giả thuyết: ghi sổ **2026-08-05** (mục 12/16 của `manual-fixes.log`), tái hiện
+**y nguyên 2026-08-13** trên v2.71.0 — 59 minor version ở giữa, và không lần nào có triệu
+chứng nào ngoài một dòng rác không ai đọc lại.
+
+### Vì sao chặn theo HÌNH DẠNG, không theo tên cờ
+
+Thứ làm bẩn sổ không phải chữ `help` mà là **nhánh mặc định**. `--to` (gõ hụt `--top`),
+`--lst`, `--closs` đều hạ cánh vào đúng chỗ đó và đều im lặng y hệt. Thêm mỗi một ca `--help`
+là vá cái triệu chứng đã nhìn thấy và để nguyên cả lớp — đúng lỗi mà #149 đã bỏ khi chuyển
+`mergeBaseline` từ danh-sách-tên sang bất biến tổng quát.
+
+Với một công cụ mà đầu ra là **dữ liệu được giữ lâu**, mặc định "không nhận ra ⇒ chắc là nội
+dung" sai chiều. Không nhận ra thì phải KÊU.
+
+### Cửa thoát `--` không phải cho đủ lệ
+
+Sổ này đầy dòng nói về `--force`, `--auto-approve`, và mục mô tả chính bug này mở đầu bằng
+`--help`. Một guard chặn cả nhóm mà không có đường thoả là guard bắn nhầm (`L0002`), và ở đây
+ca bắn nhầm lại đúng là ca thường gặp nhất của chính repo này.
+
+### Bằng chứng
+
+`test-hooks` ⑩ khoá bốn chiều: `--help` im · cờ gõ sai kêu ở **stderr** và không ghi · `--`
+cứu được nội dung mở đầu bằng gạch · đường thường không hỏng. Sàn **271 → 272**.
+
+Ca test đã bị **mutation-test**: tắt bản vá ⇒ 6/6 khẳng định đỏ, suite exit 1. Nó không phải
+một ca trang trí chưa từng đỏ.
+
+## ĐƯỜNG 2 — trần của `--top` giấu đúng phần đang là việc
+
+`--top` cắt ở 15 nhóm và **vứt phần dư không nói gì**. Trên sổ thật, phép cắt đó cắt **sai
+đầu**.
+
+### Số đo, 2026-08-13
+
+Sổ có **17 nhóm, 14 đã đóng**. Mọi nhóm đều `1×`, nên phép sắp theo tần suất rơi về thứ tự
+chèn — và hai nhóm bị trần đánh rơi là hai nhóm **mới nhất**, tức đúng hai mục **chưa ai xử**.
+
+Kết quả: `rituals` nói *"2/17 mục fixlog chưa xử"*, còn `--top` — chính cái lệnh mà bảng nghi
+thức chỉ bạn tới để XEM chúng — hiện đúng **1**. Hai công cụ, hai con số, cho cùng một câu
+hỏi. Đó là lớp lỗi mà mục fixlog về `accept.mjs`/`rituals`/`doctor` đã ghi từ 2026-08-05.
+
+### Hai sửa, và cái thứ nhất chữa gốc
+
+1. **CHƯA XỬ đứng trước ĐÃ XỬ**, rồi mới tới tần suất. Một nhóm đã đóng không còn là việc,
+   nên nó không được chiếm suất của một nhóm đang là việc.
+2. **Phần bị cắt tự khai**, kèm bao nhiêu trong đó chưa xử. Một cái trần không nói gì đọc y
+   hệt *"đã in hết"* — và với công cụ có nhiệm vụ KHÔNG ĐÁNH RƠI phát hiện nào, đó là chế độ
+   hỏng tệ nhất nó có thể có.
+
+### Bằng chứng
+
+`test-hooks` ⑪ dựng 20 nhóm (16 đã đóng, 4 mở) — nhiều hơn trần, và phần mở nằm ở đúng vị
+trí bản cũ đánh rơi. Ca này còn **khẳng định fixture dựng đúng** trước khi đo, vì khi viết nó
+16 lệnh `--close` từng bị từ chối do tên lồng tiền tố nhau và ca đỏ ở một khẳng định **khác**.
+
+Sàn **272 → 273**. Suite `273/273 exit 0`. Mutation-test: trả phép sắp về tần suất-đơn-thuần
+⇒ ca đỏ với đúng câu *"trần của --top GIẤU 4/4 nhóm CHƯA XỬ"*.
+
+---
+
 ## 2.71.0 — 2026-08-12
 
 **minor.** `TaskCompleted` được cắm — **chạy KHÔNG ĐẠN**. Nó ghi đúng con số mà quyết định
