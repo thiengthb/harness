@@ -17,7 +17,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, devId, TEST_TELEMETRY_DIR, TEST_RUN_ID, sweepStaleTestRuns, coordinationLayer, verificationCoverage, readPacks, packPending, budgetSnapshot, configCoverage, stuckRituals, readRitualStates } from './lib/harness.mjs';
+import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, devId, TEST_TELEMETRY_DIR, TEST_RUN_ID, sweepStaleTestRuns, coordinationLayer, verificationCoverage, readPacks, packPending, budgetSnapshot, configCoverage, stuckRituals, readRitualStates, releaseTagGap } from './lib/harness.mjs';
 
 const QUICK = process.argv.includes('--quick');
 // PHẢI chụp TRƯỚC khi chạy các suite bên dưới: nó là mốc phân biệt "telemetry suite của lần
@@ -439,6 +439,27 @@ if (IS_TEMPLATE && git(['rev-parse', '--git-dir']).status === 0) {
     blockers.push(`${orphan.length} tag KHÔNG nằm trên main: ${orphan.join(' · ')} — gần như chắc chắn là tag đặt vào commit TRƯỚC rebase-merge. `
       + `\`upgrade.mjs --ref <tag>\` sẽ kéo về một cây không ai review. Sửa: git tag -d <tag> && git push --delete origin <tag> rồi tag lại commit trên main.`);
   } else if (tags.length) console.log(`  ✓  ${tags.length} tag phát hành đều nằm trên main`);
+
+  // ── CHIỀU CÒN LẠI: version đã phát hành mà KHÔNG có tag nào ────────────────
+  //
+  // Check phía trên hỏi *"tag đang có có trỏ đúng chỗ không"*. Dòng xanh của nó đọc như một
+  // lời khai về PHÁT HÀNH, nhưng nó không biết gì về version KHÔNG CÓ TAG — và đó là chiều
+  // im lặng: `upgrade.mjs --ref <tag>` là đường DUY NHẤT để repo con pin theo tag, còn
+  // `knowledge/README.md` thì cấm pin theo `main`.
+  const gap = releaseTagGap({
+    versions: [...(() => { try { return readFileSync(repoPath('HARNESS-CHANGELOG.md'), 'utf8'); } catch { return ''; } })()
+      .matchAll(/^## (\d+\.\d+\.\d+)/gm)].map(m => m[1]),
+    tags: tags.map(t => t.trim()),
+    current: localVer || mf?.templateVersion || '',
+  });
+  if (!gap) console.log('  ?    không đọc được changelog hoặc harness.version — không nói được version nào thiếu tag');
+  else if (!gap.behind) console.log(`  ✓  tag mới nhất (v${gap.latestTag ?? '?'}) đã bắt kịp version trên main`);
+  else {
+    console.log(`  ⚠️   tag mới nhất là v${gap.latestTag ?? '(chưa có)'} nhưng main đang ở ${gap.current} — ${gap.behind} version KHÔNG PIN ĐƯỢC`);
+    advice.push(`${gap.behind} version đã merge mà không có tag (mới nhất có tag: v${gap.latestTag ?? '—'}). `
+      + '`upgrade.mjs --ref <tag>` là đường DUY NHẤT để repo con pin, và `knowledge/README.md` cấm pin theo `main` — '
+      + 'nên mọi cải tiến sau tag đó chưa repo nào với tới được. Tag lại: `git tag v<x.y.z> <sha>` rồi `git push --tags`.');
+  }
   const localVerTag = `v${localVer}`;
   if (localVer && !tags.includes(localVerTag) && currentBranch() === 'main') {
     advice.push(`harness.version = ${localVer} nhưng CHƯA có tag ${localVerTag} — consumer không pin được version này (\`upgrade --ref\` cần tag có thật)`);

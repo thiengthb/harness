@@ -2348,6 +2348,48 @@ export function tallyLines(text, { field = 2, sinceMs = 0 } = {}) {
 }
 
 /**
+ * ═══ VERSION ĐÃ PHÁT HÀNH MÀ KHÔNG AI PIN ĐƯỢC ═══════════════════════════════
+ *
+ * **THUẦN**. `harness-doctor` đã có một check về tag, và nó hỏi: *"tag đang có có trỏ vào thứ
+ * nằm trên main không?"* — hữu ích, nhưng nó **chỉ hỏi một chiều**. Dòng xanh nó in ra
+ * (*"72 tag phát hành đều nằm trên main"*) đọc như một lời khai về PHÁT HÀNH, trong khi nó
+ * không biết gì về version **không có tag nào**.
+ *
+ * Đo 2026-08-12: tag mới nhất là **v2.45.1**, `harness.version` trên main là **2.67.0**. Tức
+ * **22 version** đã merge mà không pin được — trong khi `knowledge/README.md` viết rõ *"repo
+ * khác pin theo tag/sha, **không bao giờ** theo `main`"*, và `upgrade.mjs --ref <tag>` là đường
+ * duy nhất làm điều đó. Cơ chế chuyển giao có đủ mọi thứ trừ cái mốc để trỏ vào.
+ *
+ * ĐO KHOẢNG CÁCH, ĐỪNG LIỆT KÊ HẾT. 37 version không tag, nhưng consumer chỉ pin được cái MỚI
+ * NHẤT — nên con số hành động được là *"main đi trước tag mới nhất bao nhiêu version"*. Một
+ * danh sách 37 mục là một mục đỏ không ai xử nổi; một con số kèm một cái tên thì xử được.
+ *
+ * So sánh bằng SỐ, không bằng chuỗi: `2.9.0` > `2.10.0` theo thứ tự từ vựng, và một phép so
+ * sai ở đây báo "không có gì trễ" đúng lúc có.
+ */
+export function releaseTagGap({ versions = [], tags = [], current = '' } = {}) {
+  const parse = (v) => String(v).replace(/^v/, '').split('.').map(Number);
+  const valid = (p) => p.length === 3 && p.every(Number.isFinite);
+  const cmp = (a, b) => (a[0] - b[0]) || (a[1] - b[1]) || (a[2] - b[2]);
+
+  const cur = parse(current);
+  if (!valid(cur)) return null;                       // không đọc được `harness.version` ⇒ `?`
+  const tagged = new Set(tags.map(t => String(t).replace(/^v/, '')));
+  const rel = versions.map(String).filter(v => valid(parse(v)));
+  if (!rel.length) return null;                       // không đọc được changelog ⇒ `?`
+
+  const tagList = [...tagged].filter(t => valid(parse(t))).sort((a, b) => cmp(parse(a), parse(b)));
+  const latestTag = tagList.at(-1) ?? null;
+  // "Đã phát hành" = có mục changelog và KHÔNG mới hơn version đang ở trên main. Dùng phép so
+  // này chứ không grep commit message: hai version từng ra trong CÙNG một commit (v2.54/v2.55),
+  // nên grep gán nhầm mốc — và một cái tag đặt nhầm chỗ tệ hơn hẳn một cái tag thiếu.
+  const untagged = rel.filter(v => !tagged.has(v) && cmp(parse(v), cur) <= 0)
+    .sort((a, b) => cmp(parse(a), parse(b)));
+  const behind = latestTag ? untagged.filter(v => cmp(parse(v), parse(latestTag)) > 0).length : untagged.length;
+  return { latestTag, current: rel.includes(String(current).replace(/^v/, '')) ? String(current) : String(current), behind, untagged };
+}
+
+/**
  * Ghi một dòng vào log telemetry. `kind` = tên file không đuôi.
  *
  * BẤT BIẾN: việc ghi chép KHÔNG BAO GIỜ được đổi kết quả của hook. Log không ghi

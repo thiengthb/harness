@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -3395,6 +3395,47 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   } else {
     ok.push(`agentEnvelope${' '.repeat(12)} ${ETABLE.length + EB.length} ca — nhiễu hai đầu và phong bì CUỐI đọc đúng, 8 ca KHÔNG-phải-phong-bì bị từ chối, và mỗi chữ ký trần lượt có ca đứng một mình`);
   }
+}
+
+// ─── Version đã phát hành mà KHÔNG AI PIN ĐƯỢC ───────────────────────────────
+//
+// `harness-doctor` đã có một check về tag, và nó hỏi *"tag đang có có trỏ vào main không"*.
+// Dòng xanh của nó (*"72 tag phát hành đều nằm trên main"*) đọc như một lời khai về PHÁT HÀNH,
+// nhưng nó KHÔNG biết gì về version không có tag nào.
+//
+// Đo 2026-08-12: tag mới nhất **v2.45.1**, main ở **2.67.0** ⇒ **24 version không pin được**,
+// trong khi `upgrade.mjs --ref <tag>` là đường DUY NHẤT để repo con pin, và
+// `knowledge/README.md` cấm pin theo `main`. Cơ chế chuyển giao có đủ mọi thứ trừ cái mốc.
+{
+  const L = ' '.repeat(15);
+  const bad = [];
+  const V = ['2.10.0', '2.9.0', '2.8.0'];
+
+  // SO BẰNG SỐ, KHÔNG BẰNG CHUỖI. `'2.9.0' > '2.10.0'` theo thứ tự từ vựng, và phép so sai ở
+  // đây báo "không có gì trễ" đúng lúc có — chiều im lặng.
+  const g1 = releaseTagGap({ versions: V, tags: ['v2.8.0'], current: '2.10.0' });
+  if (g1?.behind !== 2) bad.push(`so bằng CHUỖI: behind=${g1?.behind}, phải là 2 (2.9.0 và 2.10.0 đều sau v2.8.0)`);
+  if (g1?.latestTag !== '2.8.0') bad.push(`latestTag=${g1?.latestTag} — phép chọn tag mới nhất cũng so bằng chuỗi`);
+
+  // Version MỚI HƠN cái đang trên main = chưa phát hành ⇒ KHÔNG tính. Không có ca này thì mọi
+  // PR đang mở (đã có mục changelog, chưa merge) bị đếm là "trễ tag".
+  const g2 = releaseTagGap({ versions: ['2.71.0', '2.10.0'], tags: ['v2.10.0'], current: '2.10.0' });
+  if (g2?.behind !== 0) bad.push(`version CHƯA merge bị tính là trễ tag (behind=${g2?.behind})`);
+
+  // Chưa có tag nào ⇒ mọi version đã phát hành đều không pin được, và `latestTag` là `null`.
+  const g3 = releaseTagGap({ versions: V, tags: [], current: '2.10.0' });
+  if (g3?.behind !== 3 || g3.latestTag !== null) bad.push(`chưa có tag nào: behind=${g3?.behind} latestTag=${g3?.latestTag}, phải là 3/null`);
+
+  // Không đọc được `harness.version` hoặc changelog ⇒ `null` (KHÔNG đo được), không phải 0.
+  if (releaseTagGap({ versions: V, tags: [], current: '' }) !== null) bad.push('không đọc được version hiện tại mà vẫn kết luận');
+  if (releaseTagGap({ versions: [], tags: [], current: '2.10.0' }) !== null) bad.push('changelog rỗng mà vẫn kết luận — "chưa nhìn" thành 0');
+
+  // Doctor phải THẬT SỰ gọi nó. Một hàm thuần không bên đọc là mục tiếp theo của danh sách cắt.
+  if (!/releaseTagGap\s*\(/.test(codeOnly(readFileSync(repoPath('tooling', 'harness-doctor.mjs'), 'utf8')))) {
+    bad.push('harness-doctor KHÔNG gọi releaseTagGap() — phép đo có mà không ai đọc');
+  }
+  if (bad.length) fail.push(`releaseTagGap${L} ${bad.length} ca sai: ${bad.join(' | ')}`);
+  else ok.push(`releaseTagGap${L} so bằng SỐ (2.9.0 < 2.10.0) · version chưa merge không tính là trễ · chưa-đo-được ≠ 0`);
 }
 
 // ─── Mọi khoá trong `budget` phải có BÊN ĐỌC, hoặc tự khai là đã cắt ─────────
