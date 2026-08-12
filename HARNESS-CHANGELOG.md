@@ -11,6 +11,59 @@
 
 ---
 
+## 2.67.0 — 2026-08-12
+
+**minor.** `dcg` chặn **backtick nằm ngoài nháy đơn** trong đối số văn bản của `node -e` và
+`gh --title/--body`. Và bảng đối chiếu hai tầng có **giá trị thứ ba**.
+
+### Defect: kiến thức tôi CÓ mà vẫn vi phạm ≥9 lần
+
+Lớp `Context`, không phải `Constraint`. Nó nằm trong auto-memory nhiều phiên liền và vẫn tái
+phát. **Một lời nhắc đã thuộc lòng mà vẫn bị vi phạm thì không phải cơ chế — nó là ghi chép.**
+
+Thiệt hại đo được (2026-08-07): `cap > 0` trong `node -e` bị bash đọc thành **redirect** ⇒ một
+file rỗng tên `0` ở gốc repo; một lần **suýt ghi hỏng `MEMORY.md`**; backtick trong `--title`
+của `gh issue create` bị thay bằng output của lệnh.
+
+### Nháy ĐƠN được phép — đó là nửa quan trọng hơn
+
+```
+node -e "const s = `xin chào`"    ⛔ CHẶN — bash thay bằng output lệnh
+node -e 'const s = `xin chào`'    ✅ QUA  — bash không diễn giải gì trong '…'
+echo "hôm nay là `date`"          ✅ QUA  — substitution CỐ Ý, ngoài node/gh
+node scripts/x.mjs "… `date` …"   ✅ QUA  — phạm vi HẸP có chủ ý (false negative đã biết, có ca test)
+```
+
+`dcg` chính là hook đã bắn nhầm **5 lần** ở #43, nên bảng ca có **6 ca CHO QUA / 5 ca CHẶN** —
+nửa "không được bắn nhầm" dài hơn nửa "phải bắt được", cố ý.
+
+**Thông báo chặn nêu đường đi tiếp**: dùng nháy đơn, hoặc — với văn bản nhiều dòng — công cụ
+`Write` ghi một file `.mjs` rồi `node file.mjs`.
+
+### `test:` — rule mà regex không biểu diễn được
+
+`simpleCommands()` **bỏ nháy** trước khi khớp, nên tới lúc một rule `re:` nhìn thấy chuỗi thì
+thông tin *"backtick này nằm trong nháy nào"* đã mất. `dangerousCommand` nay nhận `test: (c) =>
+bool` với `c` là lệnh đơn (còn `raw`). Rule `re:` không đổi hành vi.
+
+### Bảng `dcg ↔ permissions.deny` có BA giá trị
+
+`permissions.deny` khớp theo **tiền tố lệnh**, nên nó không bao giờ biểu diễn được *"một ký tự
+nằm giữa đối số"*. Ép ca đó vào `null` thì ratchet đòi một thứ **không tới được**, và cách duy
+nhất đi tiếp là **nới ratchet** — tức phá đúng cái nó bảo vệ.
+
+| giá trị | nghĩa | vào ratchet? |
+|---|---|---|
+| `'<pattern>'` | đã có tầng một, và pattern phải THẬT SỰ nằm trong `settings.json` | không |
+| `null` | **chưa** có | **có** |
+| `{ why: '…' }` | **không thể** có, kèm lý do **bắt buộc** | không |
+
+Giữ nó trung thực: lý do là bắt buộc (thiếu ⇒ suite đỏ) và được **in ra ở dòng xanh mỗi lần
+chạy**, nên "không thể có" là một lời khai review được, không phải cửa thoát im lặng.
+Ratchet **không đổi**: 13 điều cấm · 4 có · 8 chưa · 1 không thể.
+
+---
+
 ## 2.66.0 — 2026-08-12
 
 **minor.** `dcg` phân biệt được `git checkout -- .` (**bỏ cả cây**) với
