@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution, verdictLine, emitVerdict, codeScanDesync } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution, verdictLine, emitVerdict, codeScanDesync, frictionReading } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -300,6 +300,8 @@ const cases = [
   ['observe.mjs', { hook_event_name: 'StopFailure', error: 'server_error' }, OK, 'StopFailure (kỹ thuật): không chặn, không in'],
   ['observe.mjs', { hook_event_name: 'SessionStart' }, OK, 'SessionStart: autoMemoryDirectory rỗng → im lặng'],
   ['observe.mjs', { hook_event_name: 'SessionStart' }, OK, 'autoMemoryDirectory trỏ vào CÂY REPO → HÉT LÊN', { HARNESS_CONFIG: () => repoPath('tooling', 'fixtures', 'config-automemory-in-repo.json') }, /trỏ vào CÂY REPO/],
+  ['observe.mjs', { hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', error: 'exit 1' }, OK, 'PostToolUseFailure: ghi và IM LẶNG'],
+  ['observe.mjs', { hook_event_name: 'Notification', notification_type: 'idle_prompt', message: 'waiting' }, OK, 'Notification: ghi và IM LẶNG'],
   ['observe.mjs', { hook_event_name: 'SuKienVendorMoiThem' }, OK, 'sự kiện KHÔNG nhận ra vẫn exit 0 — không bao giờ chặn'],
   ['observe.mjs', {}, OK, 'input rác không làm crash'],
 
@@ -716,6 +718,56 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   fire({ hook_event_name: 'StopFailure', error: 'server_error' });
   if (exists(crumb)) fail.push('lớp kinh tế: server_error (không phải lỗi tiền) cũng tạo cảnh báo — đây là cách cảnh báo bị phớt lờ');
   else ok.push(`observe.mjs${' '.repeat(17)} lỗi kỹ thuật KHÔNG làm giật mình phiên sau`);
+
+  // ── #132 ĐẦU-CUỐI: hai ô CAPTURE mới có THẬT SỰ ghi ra thứ bên đọc đọc được không ───────
+  //
+  // Ca này neo vào ĐỊNH DẠNG DÒNG, không chỉ vào "có file". `frictionReading` đọc cột 2 làm
+  // khoá và cột 3 làm phân loại (qua `tallyLines`); một bản vá đảo hai cột đó vẫn ghi đủ dữ
+  // liệu, vẫn tạo file, và bên đọc sẽ đếm ra 0 — im lặng hoàn toàn.
+  const telDir = testRunPath('harness-test-friction');
+  const fireT = (input) => spawnSync(process.execPath, [repoPath('.claude', 'hooks', 'observe.mjs')], {
+    input: JSON.stringify(input), encoding: 'utf8', cwd: repoPath(''),
+    env: { ...process.env, ...TEST_ENV, HARNESS_TELEMETRY_DIR: telDir },
+  });
+  const bad132 = [];
+  const r1 = fireT({ hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', error: 'exit 1', duration_ms: 1234 });
+  const r2 = fireT({ hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', error: 'da dung', is_interrupt: true });
+  const r3 = fireT({ hook_event_name: 'Notification', notification_type: 'idle_prompt', message: 'Claude is waiting for your input' });
+  if ([r1, r2, r3].some(r => r.status !== 0)) bad132.push('observe CHẶN ở ô mới — nó phải exit 0 với MỌI sự kiện');
+  const readT = (k) => { try { return readFileSync(join(telDir, `${k}.log`), 'utf8'); } catch { return null; } };
+  const fr = frictionReading({ failures: readT('tool-failures'), notifications: readT('notifications'), wired: true });
+  if (fr.mode !== 'measured') bad132.push(`hai ô ghi xong mà bên đọc vẫn \`${fr.mode}\` — cắm mà không đọc được`);
+  else {
+    // NGƯỜI BẤM DỪNG ≠ CÔNG CỤ HỎNG. Đây là ca chịu lực: gộp hai thứ cho ra `errors: 2`, và
+    // con số đó nói sai về công cụ theo đúng chiều dễ chịu (`L0005`).
+    if (fr.errors !== 1) bad132.push(`\`errors\` = ${fr.errors}, phải là 1 — lần NGƯỜI bấm dừng đang bị đếm là công cụ hỏng`);
+    if (fr.interrupts !== 1) bad132.push(`\`interrupts\` = ${fr.interrupts}, phải là 1 — \`is_interrupt\` không tới được bên đọc`);
+    if (fr.idle !== 1) bad132.push(`\`idle\` = ${fr.idle}, phải là 1 — \`notification_type\` không tới được bên đọc`);
+    if (fr.top?.[0]?.tool !== 'Bash') bad132.push(`cột KHOÁ không phải tên công cụ (được \`${fr.top?.[0]?.tool}\`) — bảng "hay hỏng nhất" sẽ vô nghĩa`);
+  }
+  // Chưa cắm ⇒ `n/a`, KHÔNG phải 0. "Chưa hỏi" không được đọc thành "không có gì".
+  if (frictionReading({ failures: '', notifications: '', wired: false }).mode !== 'not-wired') {
+    bad132.push('ô chưa cắm mà bên đọc vẫn kết luận — "chưa hỏi" đang bị đọc thành "không có gì"');
+  }
+  if (frictionReading({ failures: null, notifications: '', wired: true }).mode !== 'unmeasured') {
+    bad132.push('sổ KHÔNG ĐỌC ĐƯỢC bị đọc thành 0');
+  }
+  try { rmSync(telDir, { recursive: true, force: true }); } catch {}
+  if (bad132.length) fail.push(`observe #132${' '.repeat(16)} ${bad132.length} ca sai: ${bad132.join(' | ')}`);
+  else ok.push(`observe #132${' '.repeat(16)} PostToolUseFailure + Notification ghi ra đúng thứ bên đọc đọc được — `
+    + `NGƯỜI dừng tách khỏi công cụ HỎNG, và chưa-cắm ≠ 0`);
+
+  // HỢP ĐỒNG: ô đã CẮM phải có BÊN ĐỌC. Không có nó thì cơ chế chạy, tốn một process mỗi lần
+  // nổ, và không tới ai — đúng thứ vừa bị cắt ở #177 (cảnh báo mềm `package.json`).
+  {
+    const wired = (() => { try { return Object.keys(readJson(repoPath('.claude', 'settings.json'))?.hooks ?? {}); } catch { return []; } })();
+    const docSrc = readFileSync(repoPath('tooling', 'harness-doctor.mjs'), 'utf8');
+    const CAPTURE = [['PostToolUseFailure', 'tool-failures'], ['Notification', 'notifications']];
+    const orphan = CAPTURE.filter(([ev, log]) => wired.includes(ev) && !docSrc.includes(log));
+    if (orphan.length) fail.push(`ô CAPTURE mồ côi${' '.repeat(12)} ${orphan.map(([e]) => e).join(' · ')} đã cắm mà harness-doctor KHÔNG đọc sổ của nó — `
+      + 'một cơ chế ghi mà không ai đọc là mục tiếp theo của danh sách cắt bỏ');
+    else ok.push(`ô CAPTURE mồ côi${' '.repeat(12)} ${CAPTURE.length} ô đã cắm đều có bên đọc trong harness-doctor`);
+  }
 
   // ── MUTANT của lớp kinh tế ────────────────────────────────────────────────
   //
@@ -4964,7 +5016,7 @@ if (repoRole() === 'template') {
 // SÀN TỪNG TỤT LẠI SAU TỔNG THẬT, và đó là một chế độ hỏng riêng đáng ghi ra: 2026-08-08 đo
 // được `195/195 pass, sàn 185` — 10 ca thêm vào mà không ai nâng sàn, tức 10 ca có thể NGỪNG
 // CHẠY mà thứ duy nhất nhìn thấy điều đó vẫn xanh. Sàn không bám tổng thật là sàn đã nghỉ việc.
-const RATCHET = 258;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2)
+const RATCHET = 262;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195)
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa

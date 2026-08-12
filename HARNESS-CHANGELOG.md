@@ -11,6 +11,49 @@
 
 ---
 
+## 2.68.0 — 2026-08-12
+
+**minor.** Hai ô native được cắm vào `observe.mjs`: **`PostToolUseFailure`** (em họ tự động của
+`fixlog`) và **`Notification`** (ma sát người↔agent). Quan sát, **không chặn gì**.
+
+Số hook **không đổi** (11) — cả hai vào cùng cái chậu đã có.
+
+### Vì sao: tầng CAPTURE đang dựa vào trí nhớ
+
+`fixlog` là *"3 giây người phải NHỚ gõ"*. Đây là phần máy ghi được mà không ai phải nhớ.
+
+```
+node tooling/harness-doctor.mjs      # §VÒNG HỌC, ngay cạnh fixlog
+  ma sát 7 ngày: 3 lần công cụ HỎNG · 1 lần NGƯỜI dừng · 2/9 thông báo là "chờ người vượt ngưỡng"
+       hay hỏng nhất: Bash 2 · Edit 1
+```
+
+### Hai ranh giới ĐO TỪ BINARY, không đoán từ tài liệu
+
+Schema lấy thẳng từ `claude.exe` 2.1.228:
+
+```
+PostToolUseFailure  { tool_name, tool_input, tool_use_id, error, is_interrupt?, duration_ms? }
+Notification        { message, title?, notification_type }
+```
+
+1. **`is_interrupt` là cột RIÊNG.** Nó nghĩa là *người bấm dừng* — một quyết định, không phải
+   một lỗi. Gộp vào `errors` cho ra câu *"công cụ này hay hỏng"* trong khi sự thật là *"tôi hay
+   bấm dừng nó"* (`L0005`, phía dễ chịu).
+
+2. **`idle_prompt` KHÔNG mang thời lượng** — và điều này **bác một nửa câu hỏi gốc của issue**.
+   Vendor bắn nó khi thời gian chờ vượt `messageIdleNotifThresholdMs`, một ngưỡng **người dùng
+   chỉnh được**. Nên con số là *"số lần vượt ngưỡng CỦA MÁY NÀY"*, đọc được **xu hướng** và
+   **không so được giữa hai máy**. Cùng hình dạng với CAPO-TRẦN của gói phẳng.
+
+### Hợp đồng mới: ô CAPTURE không được MỒ CÔI
+
+Một ô đã cắm mà `harness-doctor` không đọc sổ của nó ⇒ **suite đỏ**. Cắm mà không đọc là tự tạo
+mục tiếp theo cho danh sách cắt bỏ của `/harness-retro` bước 4 — v2.67.0 vừa đo được đúng một ca
+như thế (cảnh báo mềm `package.json`, in ra nhưng không tới được ai).
+
+---
+
 ## 2.67.0 — 2026-08-12
 
 **minor.** `dcg` chặn **backtick nằm ngoài nháy đơn** trong đối số văn bản của `node -e` và
