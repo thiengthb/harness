@@ -1171,12 +1171,16 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     process.exit(0);
   }
 
+  // `verdict: false` — rổ `fail` ở đây nghĩa là **"việc đang tới hạn"**, không phải "lần chạy
+  // này hỏng", và dòng dưới `process.exit(0)` có chủ ý. Không tắt thì mỗi phiên có nghi thức
+  // tới hạn in một dòng ✗ ra stderr trên một lần chạy ĐẠT — và một dấu ✗ thường trực bị học
+  // cách bỏ qua, kéo theo cả những dòng ✗ thật.
   report('NGHI THỨC', {
     fail: due.map(r => `${r.cmd.padEnd(20)} ${r.why}`),
     unknown: unknown.map(r => `${r.cmd.padEnd(20)} ${r.why}`),
     na: na.map(r => `${r.cmd.padEnd(20)} ${r.why}`),
     ok: results.filter(r => r.state === 'ok').map(r => `${r.cmd.padEnd(20)} ${r.why}`),
-  });
+  }, { verdict: false });
   console.log('  Mọi năng lực của harness đều nằm ở bảng trên — không có cái nào chỉ tồn tại');
   console.log('  trong tài liệu. Mục ĐỎ là việc đang tới hạn, kèm số đo để bạn tự kiểm.\n');
   process.exit(0);

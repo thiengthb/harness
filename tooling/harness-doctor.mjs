@@ -17,7 +17,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, devId, TEST_TELEMETRY_DIR, TEST_RUN_ID, sweepStaleTestRuns, coordinationLayer, verificationCoverage, readPacks, packPending, budgetSnapshot, configCoverage, stuckRituals, readRitualStates, releaseTagGap } from './lib/harness.mjs';
+import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, devId, TEST_TELEMETRY_DIR, TEST_RUN_ID, sweepStaleTestRuns, coordinationLayer, verificationCoverage, readPacks, packPending, budgetSnapshot, configCoverage, stuckRituals, readRitualStates, releaseTagGap, emitVerdict } from './lib/harness.mjs';
 
 const QUICK = process.argv.includes('--quick');
 // PHẢI chụp TRƯỚC khi chạy các suite bên dưới: nó là mốc phân biệt "telemetry suite của lần
@@ -1013,4 +1013,10 @@ if (!blockers.length && !failed.length && !advice.length) {
 }
 console.log('');
 
-process.exit(blockers.length || failed.some(f => f.critical) ? 1 : 0);
+// Cả cái bảng trên là stdout. Đo 2026-08-11: đọc doctor qua `| grep` nuốt mất exit 1
+// và hai check ĐỎ, rồi "xanh" đó được viết vào PR. Dòng stderr dưới không lọc được.
+// `code` — không phải `failed.length` — là sự thật ở đây: mục ĐỎ không chí tử CỐ Ý
+// exit 0, và kêu ✗ ở đó là guard bắn nhầm.
+const doctorCode = blockers.length || failed.some(f => f.critical) ? 1 : 0;
+emitVerdict('HARNESS DOCTOR', { fail: blockers.length + failed.length, code: doctorCode });
+process.exit(doctorCode);
