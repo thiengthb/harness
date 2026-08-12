@@ -402,6 +402,18 @@ else if (pend.count) advice.push(`${pend.count} pack chờ quyết (${pend.mater
     console.log(`  bị TỪ CHỐI ${sc.days} ngày: ${sc.denied.vendor} lần do vendor · ${sc.denied.ours} lần do hook của ta`
       + (sc.denied.top.length ? ` · nhiều nhất: ${sc.denied.top.map(d => `${d.tool} ${d.vendor}`).join(' · ')}` : ''));
   }
+  // #131: SỐ LIỆU ĐỂ QUYẾT ĐỊNH LÊN ĐẠN, không phải một cái gate. Gate ở `TaskCompleted` chặn
+  // được thật (vendor: "prevent task completion"), nhưng payload không trỏ tới sản phẩm nào nên
+  // nó phải TỰ đi tìm — và một guard đoán thì bắn nhầm được. Đây là canary ở dạng đo được.
+  const tc = tallyLines(readLog('task-completed') ?? '', { field: 2, sinceMs: RUN_STARTED - 7 * 86400000 });
+  const tcTotal = [...tc.values()].reduce((s, subs) => s + Object.values(subs).reduce((a, n) => a + (Number(n) || 0), 0), 0);
+  if (tcTotal) {
+    const wb = [...(tc.get('would-block') ? Object.values(tc.get('would-block')) : [])].reduce((a, n) => a + (Number(n) || 0), 0);
+    console.log(`  task ĐÁNH DẤU XONG 7 ngày: ${tcTotal} lần · ${wb} lần gate SẼ chặn nếu được lên đạn (${Math.round(wb / tcTotal * 100)}%)`);
+    advice.push(`gate \`TaskCompleted\` (#131) đang CHẠY KHÔNG ĐẠN: ${wb}/${tcTotal} lần nó sẽ chặn. `
+      + 'Tỉ lệ đó CHÍNH LÀ tỉ lệ bắn nhầm nếu mọi lần chặn là oan, và là 0% oan nếu mọi lần đều đúng — '
+      + 'đọc vài mục trong `.claude/telemetry/task-completed.log` rồi mới quyết. Lên đạn = một dòng trong observe.mjs.');
+  }
   if (fr.mode === 'measured' && fr.idle > 0) {
     advice.push(`${fr.idle} lần agent chờ người vượt ngưỡng trong ${fr.days} ngày — đây là SỐ LẦN của MÁY NÀY `
       + '(ngưỡng `messageIdleNotifThresholdMs` do bạn chỉnh, và sự kiện không mang thời lượng), nên nó đọc được XU HƯỚNG chứ không so được với máy khác.');

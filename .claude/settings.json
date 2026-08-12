@@ -159,6 +159,17 @@
         ]
       }
     ],
+    "TaskCompleted": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/observe.mjs"
+          }
+        ]
+      }
+    ],
     "PreCompact": [
       {
         "matcher": "*",

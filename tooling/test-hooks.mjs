@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution, verdictLine, emitVerdict, codeScanDesync, frictionReading, slotCounters, backtickEvalHazardIn, contextLossPending } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution, verdictLine, emitVerdict, codeScanDesync, frictionReading, slotCounters, backtickEvalHazardIn, contextLossPending, selfPraiseClaims } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -307,6 +307,7 @@ const cases = [
   ['observe.mjs', { hook_event_name: 'PermissionDenied', tool_name: 'Bash', reason: 'classifier' }, OK, 'PermissionDenied: ghi và IM LẶNG'],
   ['observe.mjs', { hook_event_name: 'PreCompact', trigger: 'auto' }, OK, 'PreCompact: ghi mốc và KHÔNG in gì (stdout ở đây thành CHỈ THỊ compaction)'],
   ['observe.mjs', { hook_event_name: 'SessionEnd', reason: 'clear' }, OK, 'SessionEnd: ghi mốc và IM LẶNG'],
+  ['observe.mjs', { hook_event_name: 'TaskCompleted', task_id: 't1', task_subject: 'xong roi' }, OK, 'TaskCompleted: GHI SỐ, chưa lên đạn — vendor cho exit 2 chặn, ta cố ý không dùng'],
   ['observe.mjs', { hook_event_name: 'SuKienVendorMoiThem' }, OK, 'sự kiện KHÔNG nhận ra vẫn exit 0 — không bao giờ chặn'],
   ['observe.mjs', {}, OK, 'input rác không làm crash'],
 
@@ -836,13 +837,39 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     else ok.push(`contextLoss${' '.repeat(17)} mốc nén SAU nhật ký ⇒ /handoff tới hạn · nhật ký mới hơn ⇒ im · chưa nén ≠ đã xử · PreCompact KHÔNG in gì`);
   }
 
+  // ── #131: "tự khen" — MỘT định nghĩa, hai bên đọc, và gate CHƯA lên đạn ────
+  {
+    const bad131 = [];
+    const P = (o) => selfPraiseClaims(o);
+    if (P({ platforms: { web: { passes: true, evidence: '' } } }).join() !== 'web') bad131.push('passes=true + evidence rỗng KHÔNG bị bắt');
+    if (P({ platforms: { web: { passes: true, evidence: 'docs/x.png' } } }).length) bad131.push('có evidence mà vẫn bị bắt — bắn nhầm');
+    if (P({ platforms: { web: { passes: false, evidence: '' } } }).length) bad131.push('passes=false bị bắt — chưa khai ĐẠT thì không phải tự khen');
+    if (P({ platforms: { web: { passes: 'n/a', evidence: '' } } }).length) bad131.push('`n/a` bị bắt — ngoài scope không phải tự khen');
+    // `a11y`/`perf` là ANH EM của `platforms`, không nằm trong nó — lỗ đã có thật trước 2.3.0.
+    if (P({ a11y: { passes: true, evidence: '' } }).join() !== 'a11y') bad131.push('`a11y` ngoài `platforms` bị bỏ sót — đúng lỗ của 2.3.0');
+    if (P({ platforms: { web: { passes: true, evidence: '   ' } } }).join() !== 'web') bad131.push('evidence toàn khoảng trắng đi qua');
+    if (P(null).length || P('rác').length) bad131.push('đầu vào rác làm hàm kết luận thay vì im');
+
+    // MỘT ĐỊNH NGHĨA: `check-feature-integrity` phải GỌI hàm này, không chép lại luật.
+    const cfi = codeOnly(readFileSync(repoPath('tooling', 'check-feature-integrity.mjs'), 'utf8'));
+    if (!/selfPraiseClaims\s*\(/.test(cfi)) bad131.push('check-feature-integrity tự kiểm evidence rỗng thay vì GỌI selfPraiseClaims() — hai bản chép sẽ bất đồng về "đã xong chưa"');
+
+    // GATE CHƯA LÊN ĐẠN, và đó là một khẳng định chứ không phải một sự vắng mặt: `observe.mjs`
+    // không được có đường exit khác 0 ở nhánh này. Vendor cho `exit 2 - prevent task completion`.
+    const obs = codeOnly(readFileSync(repoPath('.claude', 'hooks', 'observe.mjs'), 'utf8'));
+    if (/\bblock\s*\(/.test(obs)) bad131.push('observe.mjs GỌI block() — file này khai "không bao giờ chặn", và gate #131 chưa có số liệu để lên đạn');
+
+    if (bad131.length) fail.push(`selfPraise${' '.repeat(18)} ${bad131.length} ca sai: ${bad131.join(' | ')}`);
+    else ok.push(`selfPraise${' '.repeat(18)} 7 ca — evidence rỗng bị bắt, có evidence thì không · \`a11y\`/\`perf\` không bị bỏ sót · MỘT định nghĩa, hai bên đọc · gate chưa lên đạn`);
+  }
+
   // HỢP ĐỒNG: ô đã CẮM phải có BÊN ĐỌC. Không có nó thì cơ chế chạy, tốn một process mỗi lần
   // nổ, và không tới ai — đúng thứ vừa bị cắt ở #177 (cảnh báo mềm `package.json`).
   {
     const wired = (() => { try { return Object.keys(readJson(repoPath('.claude', 'settings.json'))?.hooks ?? {}); } catch { return []; } })();
     const docSrc = readFileSync(repoPath('tooling', 'harness-doctor.mjs'), 'utf8');
     const CAPTURE = [['PostToolUseFailure', 'tool-failures'], ['Notification', 'notifications'],
-      ['UserPromptExpansion', 'skill-calls'], ['SubagentStart', 'subagent-runs'], ['PermissionDenied', 'permission-denied']];
+      ['UserPromptExpansion', 'skill-calls'], ['SubagentStart', 'subagent-runs'], ['PermissionDenied', 'permission-denied'], ['TaskCompleted', 'task-completed']];
     // #130 đọc bởi rituals (/handoff), KHÔNG bởi doctor — nên nó có hợp đồng RIÊNG ngay dưới.
     const orphan = CAPTURE.filter(([ev, log]) => wired.includes(ev) && !docSrc.includes(log));
     if (orphan.length) fail.push(`ô CAPTURE mồ côi${' '.repeat(12)} ${orphan.map(([e]) => e).join(' · ')} đã cắm mà harness-doctor KHÔNG đọc sổ của nó — `
@@ -5110,7 +5137,7 @@ if (repoRole() === 'template') {
 // SÀN TỪNG TỤT LẠI SAU TỔNG THẬT, và đó là một chế độ hỏng riêng đáng ghi ra: 2026-08-08 đo
 // được `195/195 pass, sàn 185` — 10 ca thêm vào mà không ai nâng sàn, tức 10 ca có thể NGỪNG
 // CHẠY mà thứ duy nhất nhìn thấy điều đó vẫn xanh. Sàn không bám tổng thật là sàn đã nghỉ việc.
-const RATCHET = 269;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195)
+const RATCHET = 271;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa

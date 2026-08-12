@@ -1,4 +1,4 @@
-<!-- version: 2026-08-12-g -->
+<!-- version: 2026-08-12-h -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -9,6 +9,22 @@
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
 
+## 2026-08-12 — gate "tự khen" đã cắm, CHƯA lên đạn (v2.71.0)
+
+Ô `TaskCompleted` là ô DUY NHẤT vendor cho **chặn** ("prevent task completion"), và nó bắn
+đúng lúc agent tuyên bố xong — sớm hơn `Stop`/CI.
+
+**Nó chưa chặn ai.** Nó đang ghi con số để bạn quyết:
+
+```
+node tooling/harness-doctor.mjs
+  task ĐÁNH DẤU XONG 7 ngày: 24 lần · 3 lần gate SẼ chặn nếu được lên đạn (13%)
+```
+
+Đọc vài mục trong `.claude/telemetry/task-completed.log`: nếu 3 lần đó đều ĐÚNG thì lên đạn;
+nếu có lần oan thì đó là `L0002` và đừng lên đạn. Lên đạn = một dòng trong `observe.mjs`.
+
+Nhóm #129 đóng: **6/6 ô đã cắm**, và số file hook vẫn **11** — y như 2026-08-05.
 ## 2026-08-12 — context bị nén thì /handoff TỰ tới hạn (v2.70.0)
 
  là thủ công, và  đo được nó **chưa chạy lần nào** kể từ khi harness ra đời.
