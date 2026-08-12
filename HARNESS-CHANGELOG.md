@@ -11,6 +11,53 @@
 
 ---
 
+## 2.70.0 — 2026-08-12
+
+**minor.** `PreCompact` + `SessionEnd` ghi mốc mất context, và **`/handoff` tự tới hạn** khi
+quãng làm việc đó chưa ai ghi lại (#130).
+Kèm **một bản vá cho v2.67.0**: rule backtick để lọt đúng nhóm nó sinh ra để bắt.
+
+### `/handoff` chưa chạy lần nào, và đó không phải lỗi của người dùng
+
+`rituals` đo được `/handoff` **chưa chạy lần nào** kể từ khi harness ra đời. Khi context bị nén
+hoặc phiên kết thúc, **0 byte** được ghi tự động.
+
+Hai tín hiệu cũ của `/handoff` đều đo qua **commit**. Nhưng quãng nguy hiểm nhất **không có
+commit nào**: bạn làm việc, context bị nén, và thứ mất là những gì **chưa thành commit**.
+
+```
+▸ /handoff   context bị nén/kết phiên 3 giờ trước, SAU lần sửa docs/progress/144.md gần nhất
+             — quãng làm việc giữa hai mốc đó chưa ai ghi lại, và nó không có commit nào để suy ngược
+```
+
+**Ghi một MỐC, không ghi một BẢN SAO.** Cám dỗ là chụp trạng thái git vào file mốc. Không làm:
+`rituals.collect()` đã đọc hết những thứ đó ở phiên sau, và chép lại là dựng bản sao thứ hai của
+một sự thật (#125). Thứ **chỉ ở đây mới biết** là *thời điểm* context biến mất.
+
+**Đo được, cố ý KHÔNG dùng:** vendor khai `PreCompact` → *"exit 0 - stdout appended as custom
+compact instructions"*, tức mọi thứ in ra đó thành **chỉ thị cho phép nén**. Mạnh hơn hẳn thứ
+issue hình dung — và vì thế nó không thuộc `observe.mjs`, file khai ở dòng đầu là *"quan sát,
+không quyết định gì"*. Có ca test khẳng định hook **không in gì** ở nhánh này.
+
+### Vá v2.67.0: rule backtick để lọt LỆNH NHIỀU DÒNG
+
+`simpleCommands()` cắt theo `\n`, nên một đối số nhiều dòng bị xé và mảnh mang backtick **không
+còn `program` là `node`**:
+
+```
+node -e "        → program=node,   không backtick
+const s = `a`    → program=const,  CÓ backtick     ← gate chương trình trượt ở đây
+```
+
+Bảy lần đã đo đều là **văn bản nhiều dòng** — tức rule trượt đúng nhóm nó sinh ra để bắt. Bộ ca
+test ban đầu toàn lệnh **một dòng** nên nó xanh suốt; lỗ chỉ lộ ra khi guard **để lọt một lệnh
+thật**, một giờ sau khi merge.
+
+`simpleCommands(cmd, { splitNewlines: false })` là cờ mới; **mặc định không đổi** — phép cắt
+theo `\n` là nền của #43, và đổi nó là đổi hành vi của cả 12 rule để chữa một rule.
+
+---
+
 ## 2.69.0 — 2026-08-12
 
 **minor.** Ba ô native nữa vào cùng chậu `observe.mjs`: **`UserPromptExpansion`** (#135),

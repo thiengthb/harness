@@ -164,6 +164,31 @@ if (ev === 'InstructionsLoaded') {
   // KHÔNG ghi `tool_input`: đó là chỗ một secret sẽ nằm. Vendor cũng không cho exit 2 ở ô này
   // (`Other exit codes - show stderr to user only`), nên đây thuần tuý là quan sát.
   telemetry('permission-denied', [i?.tool_name ?? '?', String(i?.reason ?? '?').slice(0, 60)]);
+} else if (ev === 'PreCompact' || ev === 'SessionEnd') {
+  // ── MỐC MẤT CONTEXT (#130) ────────────────────────────────────────────────
+  //
+  // `/handoff` là thủ công, và `rituals` đo được nó **chưa chạy lần nào** kể từ khi harness ra
+  // đời. Khi context bị nén hoặc phiên kết thúc, **0 byte** được ghi tự động — thứ duy nhất
+  // sống sót là những gì người dùng nhớ gõ.
+  //
+  // GHI MỘT MỐC, KHÔNG GHI MỘT BẢN SAO. Cám dỗ là chụp lại trạng thái git (nhánh, HEAD, số file
+  // bẩn) vào đây. Không làm: mỗi lời gọi `git` là một process nữa ở đúng lúc phiên đang nặng,
+  // và `rituals.collect()` ĐÃ đọc hết những thứ đó ở phiên sau — chép lại là dựng bản sao thứ
+  // hai của một sự thật, đúng thứ #125 đã trả giá.
+  //
+  // Thứ CHỈ ở đây mới biết là **THỜI ĐIỂM** context biến mất. Đó là toàn bộ nội dung file này.
+  try {
+    writeJson(join(stateDir(), 'last-context-loss.json'), {
+      at: new Date().toISOString(),
+      event: ev,
+      why: String(i?.trigger ?? i?.reason ?? '?').slice(0, 40),
+    });
+  } catch {}
+  // ĐÃ ĐO, CỐ Ý KHÔNG DÙNG: vendor khai `PreCompact` → *"Exit code 0 - stdout appended as custom
+  // compact instructions"*, tức mọi thứ in ra đây trở thành CHỈ THỊ cho phép nén. Mạnh hơn hẳn
+  // thứ issue hình dung — và vì thế nó không thuộc file này: `observe.mjs` khai ở dòng đầu là
+  // *"quan sát, không quyết định gì"*, còn lái phép nén là một quyết định, và là một quyết định
+  // KHÔNG có cách kiểm tất định nào. Ghi lại để nó không bị phát hiện lại lần thứ hai.
 } else if (ev === 'SessionStart') {
   // Auto-memory là quan sát THÔ, máy-cục-bộ, được phép sai. Trỏ nó vào cây repo là
   // biến quan sát chưa kiểm của MỘT người thành chỉ thị cho CẢ ĐỘI — và nó nạp 200

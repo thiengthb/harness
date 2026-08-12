@@ -1,4 +1,4 @@
-<!-- version: 2026-08-12-f -->
+<!-- version: 2026-08-12-g -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,18 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-12 — context bị nén thì /handoff TỰ tới hạn (v2.70.0)
+
+ là thủ công, và  đo được nó **chưa chạy lần nào** kể từ khi harness ra đời.
+Khi context bị nén hoặc phiên kết thúc, **0 byte** được ghi tự động.
+
+Nay hai ô  +  ghi một MỐC, và  so mốc đó với lần bạn sửa
+ gần nhất:
+
+\
+Đó là quãng nguy hiểm nhất: hai tín hiệu cũ của  đều đo qua **commit**, còn thứ mất
+khi context bị nén là những gì **chưa thành commit**.
 
 ## 2026-08-12 — ba câu hỏi cũ nay có SỐ (v2.69.0)
 
