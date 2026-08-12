@@ -602,38 +602,135 @@ export function budgetStatus({ cap, alertAtPercent = 80, latest = null, now = Da
  * ở trong chuỗi `'` `"` hay template `` ` `` hay không. **Nội dung chuỗi được GIỮ** — có chủ ý:
  * lệnh mà một thông báo in ra sống trong chuỗi, và đó chính là thứ hợp đồng hai đầu cần soi.
  *
- * CÒN HỞ, ghi ra để không ai tưởng nó kín: **regex literal** chứa `//` hoặc `/*`
- * (ví dụ một pattern khớp chính cú pháp comment) vẫn đánh lừa được nó. Chưa gặp trong repo
- * này; gặp thì thêm ca test trước, đừng thêm nhánh trước.
+ * CÒN HỞ, và bản trước ghi SAI biến thể: nó đoán hở là *"regex literal chứa `//` hoặc `/*`"*
+ * rồi kết luận **"chưa gặp trong repo này"**. Biến thể thật sự cắn là **regex chứa một dấu
+ * NHÁY**, và nó đã nằm trong repo suốt: `harness-doctor.mjs:703` có
+ * `/['"]\.claude\/hooks(['"\/])/`. Máy quét đọc dấu `'` đó là MỞ CHUỖI, và chuỗi ấy không bao
+ * giờ đóng — nên với `blankStrings: true`, **70% `harness-doctor.mjs` bị xoá sạch**, kể cả
+ * `process.exit` ở dòng cuối. `native-surface.mjs:92` (`.replace(/'/g, '"')`) mất 86%.
+ * Không ai thấy, vì bên gọi chỉ hỏi *"có khớp không"* và câu trả lời KHÔNG-KHỚP đọc như sạch.
+ *
+ * Nên: nhánh regex ở dưới, và `codeScanDesync()` để không bao giờ phải TIN rằng máy quét còn
+ * đồng bộ — một file JS hợp lệ không bao giờ kết thúc khi đang ở trong chuỗi, nên "kết thúc
+ * trong chuỗi" là bằng chứng lệch, không phải suy đoán.
+ *
+ * ĐIỀU KIỆN THOÁT: khi cần đúng hơn thế này thì đừng vá tiếp — dùng một parser thật.
  */
-export function codeOnly(src, { blankStrings = false } = {}) {
-  const s = String(src);
+
+/** Regex hay phép CHIA? Quyết định bằng token ý nghĩa ngay trước dấu `/`. */
+const REGEX_AFTER_WORD = new Set(['return', 'typeof', 'case', 'in', 'of', 'do', 'else', 'delete', 'void', 'yield', 'await', 'new']);
+
+/**
+ * Quét từ `s[i] === '/'`. Trả chỉ số ngay sau dấu `/` đóng, hoặc `-1` nếu đây không phải
+ * regex. Xuống dòng ⇒ `-1`: regex literal không chứa newline, nên đó là phép chia.
+ */
+function scanRegexLiteral(s, i) {
+  let j = i + 1, inClass = false;
+  while (j < s.length) {
+    const ch = s[j];
+    if (ch === '\\') { j += 2; continue; }
+    if (ch === '\n') return -1;
+    if (inClass) { if (ch === ']') inClass = false; }
+    else if (ch === '[') inClass = true;
+    else if (ch === '/') return j + 1;
+    j++;
+  }
+  return -1;
+}
+
+/**
+ * Một vòng quét, hai câu trả lời: `out` (mã đã lọc) và `openAt` (chỗ chuỗi mở mà không đóng).
+ * Tách ra để `codeOnly` và `codeScanDesync` KHÔNG BAO GIỜ là hai máy quét trôi khỏi nhau.
+ */
+function scanSource(s, blankStrings) {
   let out = '', i = 0;
+  let lastSig = '', word = '', lastWord = '';
   const n = s.length;
+  const push = (ch) => {
+    out += ch;
+    if (ch.trim()) lastSig = ch;
+    if (/[\w$]/.test(ch)) word += ch;
+    else { if (word) lastWord = word; word = ''; }
+  };
+  // Ngăn xếp template đang mở dở vì đang ở trong `${…}` của nó. Rỗng = `{`/`}` là code
+  // bình thường và KHÔNG được đếm — đếm chúng ở mọi nơi thì mỗi khối hàm là một lần lệch.
+  const frames = [];
+  let mode = 'code', quote = '', strStart = -1, depth = 0;
+  // KHÔNG bỏ dòng `#!/usr/bin/env node`. Nhánh regex đọc `/usr/` là một regex và nhả ra
+  // NGUYÊN VĂN, nên nó vô hại; còn bỏ dòng đó thì đổi output của 40+ file mà không sửa
+  // gì cả. Trong một hàm dùng chung, thay đổi không cần thiết là rủi ro không cần thiết.
   while (i < n) {
     const c = s[i], d = s[i + 1];
-    if (c === '/' && d === '*') { const e = s.indexOf('*/', i + 2); i = e < 0 ? n : e + 2; out += ' '; continue; }
-    if (c === '/' && d === '/') { const e = s.indexOf('\n', i); i = e < 0 ? n : e; continue; }
-    if (c === '"' || c === "'" || c === '`') {
-      out += c; i++;
-      while (i < n) {
-        if (s[i] === '\\') { out += (blankStrings ? '' : s[i] + (s[i + 1] ?? '')); i += 2; continue; }
-        // `blankStrings` XOÁ RUỘT chuỗi, chỉ giữ cặp nháy. Mặc định `false` vì bên gọi đầu tiên
-        // (hợp đồng hai đầu) CẦN nội dung chuỗi — lệnh mà một thông báo in ra sống trong đó.
-        // Bên gọi thứ hai thì ngược lại: một phép kiểm hỏi *"file này có GỌI hàm X không"* mà
-        // đọc cả chuỗi sẽ bắn oan vào mọi câu văn nhắc tên hàm. Đo 2026-08-08 (#125): bản đầu
-        // của `lib-import` tự viết một `strip()` bằng regex, và nó nuốt **89% `rituals.mjs`** —
-        // check báo XANH trên một file nó gần như không đọc được. Chiều B của `L0007`, trong
-        // chính cái lưới vừa dựng để bắt chiều A.
-        if (!blankStrings) out += s[i];
-        if (s[i] === c) { if (blankStrings) out += c; i++; break; }
-        i++;
+    if (mode === 'code') {
+      if (c === '/' && d === '*') { const e = s.indexOf('*/', i + 2); i = e < 0 ? n : e + 2; push(' '); continue; }
+      if (c === '/' && d === '/') { const e = s.indexOf('\n', i); i = e < 0 ? n : e; continue; }
+      if (c === '/') {
+        const afterWord = /[\w$]/.test(lastSig);
+        const looksRegex = lastSig === ''
+          ? true
+          : (afterWord ? REGEX_AFTER_WORD.has(word || lastWord) : !')]}'.includes(lastSig));
+        if (looksRegex) {
+          const end = scanRegexLiteral(s, i);
+          // Thân regex đi ra NGUYÊN VĂN — đúng như nhánh mặc định vẫn làm. Nên với
+          // `blankStrings: false` output KHÔNG đổi một ký tự; thứ duy nhất đổi là máy quét
+          // không còn bị dấu nháy trong regex kéo vào trạng thái "đang ở trong chuỗi".
+          if (end > i) { for (let k = i; k < end; k++) push(s[k]); i = end; continue; }
+        }
       }
-      continue;
+      if (frames.length && c === '{') { depth++; push(c); i++; continue; }
+      if (frames.length && c === '}') {
+        if (depth === 0) { const f = frames.pop(); push(c); i++; mode = 'str'; quote = f.quote; strStart = f.start; depth = f.depth; continue; }
+        depth--; push(c); i++; continue;
+      }
+      if (c === '"' || c === "'" || c === '`') { mode = 'str'; quote = c; strStart = i; push(c); i++; continue; }
+      push(c); i++; continue;
     }
-    out += c; i++;
+    // ── đang Ở TRONG chuỗi ────────────────────────────────────────────────────
+    if (c === '\\') { if (!blankStrings) { push(c); push(s[i + 1] ?? ''); } i += 2; continue; }
+    if (quote === '`' && c === '$' && d === '{') {
+      // Ruột `${…}` là CODE, không phải văn bản — và đó là chỗ hở thật sự đã cắn:
+      // `export.mjs:126` có một template LỒNG trong `${…}`, nên phép quét phẳng đọc dấu
+      // backtick MỞ của template trong làm dấu ĐÓNG của template ngoài. Từ đó mọi cặp
+      // nháy về sau lệch một nhịp. Giữ ruột `${…}` cũng là ĐÚNG với câu hỏi bên gọi
+      // đang hỏi: `${repoPath('')}` là một lời gọi thật, không phải một câu văn.
+      push(c); push(d);
+      frames.push({ quote, start: strStart, depth });
+      depth = 0; mode = 'code'; i += 2; continue;
+    }
+    // `blankStrings` XOÁ RUỘT chuỗi, chỉ giữ cặp nháy. Mặc định `false` vì bên gọi đầu tiên
+    // (hợp đồng hai đầu) CẦN nội dung chuỗi — lệnh mà một thông báo in ra sống trong đó.
+    // Bên gọi thứ hai thì ngược lại: một phép kiểm hỏi *"file này có GỌI hàm X không"* mà
+    // đọc cả chuỗi sẽ bắn oan vào mọi câu văn nhắc tên hàm. Đo 2026-08-08 (#125): bản đầu
+    // của `lib-import` tự viết một `strip()` bằng regex, và nó nuốt **89% `rituals.mjs`** —
+    // check báo XANH trên một file nó gần như không đọc được. Chiều B của `L0007`, trong
+    // chính cái lưới vừa dựng để bắt chiều A.
+    if (c === quote) { push(c); i++; mode = 'code'; quote = ''; strStart = -1; continue; }
+    if (!blankStrings) push(c);
+    i++;
   }
-  return out;
+  // Hết file mà vẫn đang trong chuỗi (hoặc còn `${` chưa đóng) = máy quét ĐÃ LỆCH.
+  const openAt = mode === 'str' ? strStart : (frames.length ? frames[0].start : -1);
+  return { out, openAt };
+}
+
+/** Mã nguồn đã bỏ chú thích. Xem docstring dài của máy quét ngay trên `REGEX_AFTER_WORD`. */
+export function codeOnly(src, { blankStrings = false } = {}) {
+  return scanSource(String(src), blankStrings === true).out;
+}
+
+/**
+ * Máy quét có còn đồng bộ không? `null` = có. Ngược lại trả chỗ chuỗi mở mà không đóng.
+ *
+ * Đây là phép kiểm rẻ nhất mà không cần đoán: file JS hợp lệ không kết thúc giữa một chuỗi.
+ * Mọi bên gọi `codeOnly(..., { blankStrings: true })` PHẢI hỏi câu này, vì ở chế độ đó một
+ * lần lệch không làm sai kết quả — nó **xoá phần còn lại của file**, và câu trả lời
+ * "không tìm thấy" đọc y hệt "không có".
+ */
+export function codeScanDesync(src) {
+  const s = String(src);
+  const { openAt } = scanSource(s, false);
+  if (openAt < 0) return null;
+  return { index: openAt, line: s.slice(0, openAt).split('\n').length, quote: s[openAt] };
 }
 
 /**
@@ -2744,7 +2841,62 @@ export function harnessStripped() {
  * Và luật đi kèm: một tổng kết có `unknown` thì KHÔNG được gọi là "xanh" —
  * "harness không chạy" là TRẠNG THÁI THỨ BA, không phải pass, không phải fail.
  */
-export function report(title, { ok = [], warn = [], fail = [], na = [], unknown = [] }) {
+/**
+ * Câu phán CUỐI của một lần kiểm — in ra **stderr**, không stdout.
+ *
+ * Đo 2026-08-12 trong chính repo này:
+ *
+ *     node -e '…; process.exit(3)' | tail -1   →   pipeline_exit=0
+ *
+ * Ống dẫn trả mã của tiến trình **CUỐI**, nên nó nuốt exit code; và nó nuốt luôn mọi
+ * dòng stdout không lọt bộ lọc. Một suite ĐỎ đọc qua `| tail` / `| grep` đọc ra XANH.
+ * Đã xảy ra thật 2026-08-11 (sổ `fixlog`): hai check ĐỎ của `harness-doctor`
+ * (`entropy-scan`, `apply-to --audit`) đi qua một `| grep` và được viết "xanh" vào PR.
+ *
+ * stderr KHÔNG đi qua ống dẫn đó — nó ra thẳng terminal, sống sót qua `| tail`,
+ * `| head`, `| grep`, `> file`. Đó là toàn bộ lý do chọn stderr; đây không phải
+ * chuyện thẩm mỹ về "lỗi thì in ở đâu".
+ *
+ * CHỈ in khi hỏng. Một dòng "xanh" mỗi lần chạy sẽ được học cách bỏ qua trong một
+ * tuần, và lúc đó dòng ĐỎ chìm theo — đúng lớp lỗi của mọi cảnh báo thường trực.
+ *
+ * `unknown` nêu RIÊNG, KHÔNG cộng vào `fail`: "chưa đo được" không phải "hỏng", và
+ * cũng không phải "đạt" — AGENTS.md cấm gộp hai cái đó.
+ *
+ * ĐIỀU KIỆN THOÁT: khi công cụ chạy lệnh báo được exit code của TỪNG chặng trong ống
+ * dẫn (hoặc bật sẵn `pipefail`), dòng này thành thừa.
+ */
+export function verdictLine(title, { fail = 0, unknown = 0, code = null } = {}) {
+  const f = Math.max(0, Number(fail) || 0);
+  const u = Math.max(0, Number(unknown) || 0);
+  const hasCode = code !== null && code !== undefined;
+  const c = hasCode ? (Number(code) || 0) : 0;
+  // Có `code` thì `code` là sự thật, KHÔNG phải `fail`: `harness-doctor` cố ý exit 0
+  // khi chỉ có mục không-chí-tử, và một dòng ✗ ở đó là guard bắn nhầm (`L0002`).
+  if (hasCode ? c === 0 : f === 0) return null;
+  const parts = [];
+  if (f) parts.push(`${f} FAIL`);
+  if (u) parts.push(`${u} CHƯA ĐO ĐƯỢC`);
+  if (hasCode) parts.push(`exit=${c}`);
+  return `✗ ${String(title ?? '').trim() || 'kiểm tra'} — ${parts.join(' · ') || 'hỏng'}`;
+}
+
+/** Viết `verdictLine` ra stderr. Trả dòng đã viết, hoặc `null` khi không có gì để nói. */
+export function emitVerdict(title, opts = {}, write = null) {
+  const line = verdictLine(title, opts);
+  if (line === null) return null;
+  const w = write ?? ((s) => { try { process.stderr.write(s + '\n'); } catch {} });
+  w(line);
+  return line;
+}
+
+/**
+ * `verdict: false` cho báo cáo dùng rổ `fail` với nghĩa **"việc đang tới hạn"**, không phải
+ * "lần chạy này hỏng" — `rituals.mjs --all` là ca duy nhất, và nó `process.exit(0)` có chủ ý.
+ * Không có cửa này thì mọi phiên có nghi thức tới hạn in một dòng ✗ trên một lần chạy ĐẠT, và
+ * dấu ✗ bị học cách bỏ qua trong một tuần — hỏng đúng thứ nó sinh ra để làm.
+ */
+export function report(title, { ok = [], warn = [], fail = [], na = [], unknown = [] }, { verdict = true } = {}) {
   console.log(`\n=== ${title} ===`);
   // Mọi báo cáo nói ra nó đo ở CÂY NÀO — một chỗ, mọi công cụ thừa hưởng.
   const scope = reportScope();
@@ -2758,6 +2910,9 @@ export function report(title, { ok = [], warn = [], fail = [], na = [], unknown 
   if (unknown.length) console.log(`  → ${unknown.length} mục CHƯA ĐO ĐƯỢC: đây KHÔNG phải 0. Báo cáo này chưa được gọi là xanh.`);
   if (!ok.length && !warn.length && !fail.length && !na.length && !unknown.length) console.log('  (không có gì để báo cáo)');
   console.log('');
+  // Mọi dòng ở trên là stdout, nên `| tail` / `| grep` xoá sạch được chúng CÙNG với
+  // exit code. Một dòng ra stderr là thứ duy nhất người gọi không lọc mất.
+  if (verdict) emitVerdict(title, { fail: fail.length, unknown: unknown.length });
   return fail.length === 0;
 }
 

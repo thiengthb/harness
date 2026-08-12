@@ -24,7 +24,7 @@ import { mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync } from 'nod
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { repoPath, report, exists } from './lib/harness.mjs';
+import { repoPath, report, exists, emitVerdict } from './lib/harness.mjs';
 
 const ok = [], fail = [], warn = [];
 const WORK = join(tmpdir(), `harness-eval-test-${process.pid}`);
@@ -1092,4 +1092,5 @@ const NEUTRAL_155 = 'node -e "process.exit(0)"';
 
 rmSync(WORK, { recursive: true, force: true });
 report('EVAL RUNNER TESTS', { ok, warn, fail });
+emitVerdict('EVAL HARNESS TESTS', { fail: fail.length, code: fail.length ? 1 : 0 });
 process.exit(fail.length ? 1 : 0);

@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution, verdictLine, emitVerdict, codeScanDesync } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -4767,6 +4767,192 @@ if (repoRole() === 'template') {
 // tổng thật đều đọc như nhau. `+3` là mấy khối assert rời thêm sau mà không ai cộng lại.
 //
 // Hai con số, hai việc khác nhau: TỔNG THẬT là `ok+fail` (mô tả), RATCHET là sàn (cưỡng chế).
+// ── MÁY QUÉT MÃ NGUỒN PHẢI BIẾT KHI NÀO NÓ ĐÃ LỆCH ──────────────────────────
+//
+// `codeOnly` là cửa duy nhất cho mọi phép kiểm dạng *"file X có GỌI Y không"*. Docstring
+// của nó tự khai một chỗ hở — *"regex literal chứa `//` hoặc `/*`"* — rồi kết luận
+// **"chưa gặp trong repo này"**. Đo 2026-08-12: gặp cả BA biến thể, và cả ba đều im.
+//
+//   ① regex chứa NHÁY   `harness-doctor.mjs:703`  /['"]\.claude\/hooks(['"\/])/
+//        dấu `'` mở một chuỗi không bao giờ đóng ⇒ với `blankStrings: true`, **70% file bị
+//        xoá**, kể cả `process.exit` dòng cuối. `native-surface.mjs:92` mất 86%.
+//   ② regex kết thúc `\//`  `apply-to.mjs`, `init.mjs`, `check-feature-integrity.mjs`
+//        hai dấu `/` liền nhau đọc thành `//` ⇒ máy quét **xoá nốt phần còn lại của DÒNG**.
+//   ③ template LỒNG trong `${…}`  `knowledge/export.mjs:126`
+//        backtick MỞ của template trong bị đọc là backtick ĐÓNG của template ngoài ⇒ mọi
+//        cặp nháy sau đó lệch một nhịp.
+//
+// Ba biến thể, một hậu quả: bên gọi hỏi *"có khớp không"* và nhận KHÔNG-KHỚP, mà
+// không-khớp đọc y hệt không-có. Nên ngoài việc sửa, máy quét phải TỰ KHAI khi nó lệch —
+// file JS hợp lệ không bao giờ kết thúc giữa một chuỗi, nên đó là bằng chứng, không phải
+// suy đoán.
+{
+  const tail = (src, opt) => codeOnly(src, opt);
+  const Q = String.fromCharCode(96);           // backtick, viết vòng để test data đọc được
+  const CASES = [
+    ['① regex chứa nháy không được nuốt phần đuôi',
+      'const r = /[' + "'" + '"]x/; const y = 1;', { blankStrings: true }, /const y = 1/],
+    ['② regex kết thúc `\\//` không được đọc thành comment',
+      'const p = /^\\.claude\\//; const q = 2;', { blankStrings: true }, /const q = 2/],
+    ['③ template LỒNG trong `${…}` không đóng nhầm template ngoài',
+      'const a = ' + Q + 'x ${[1].map(v => ' + Q + '-${v}' + Q + ').join("")} z' + Q + '; const b = 3;', { blankStrings: true }, /const b = 3/],
+    ['phép CHIA không bị đọc thành regex',
+      'const a = b / c; const d = 4;', { blankStrings: true }, /const d = 4/],
+    ['regex sau `return` vẫn là regex',
+      'function f(s) { return /^x$/.test(s); } const e = 5;', { blankStrings: true }, /const e = 5/],
+    ['ruột `${…}` là CODE nên GIỮ — nó là lời gọi thật, không phải câu văn',
+      'const u = ' + Q + '${repoPath("x")}' + Q + ';', { blankStrings: true }, /repoPath/],
+    ['ruột chuỗi thường vẫn bị xoá khi blankStrings',
+      "const v = 'repoPathTrongCauVan';", { blankStrings: true }, null],
+  ];
+  for (const [why, src, opt, want] of CASES) {
+    const got = tail(src, opt);
+    const good = want === null ? !/repoPathTrongCauVan/.test(got) : want.test(got);
+    if (good) ok.push(`codeOnly${' '.repeat(22)} ${why}`);
+    else fail.push(`codeOnly${' '.repeat(22)} ${why} — được ${JSON.stringify(got.slice(0, 90))}`);
+  }
+
+  const D = [
+    ["const a = 'chua dong bao gio", 1, 'chuỗi mở mà không đóng ⇒ khai LỆCH'],
+    ['const a = 1;\nconst b = 2;\n', null, 'mã sạch ⇒ null'],
+    ['const r = /[' + "'" + '"]x/; const y = 1;', null, 'regex chứa nháy KHÔNG còn là lệch'],
+  ];
+  for (const [src, wantLine, why] of D) {
+    const got = codeScanDesync(src);
+    const good = wantLine === null ? got === null : (got && got.line === wantLine);
+    if (good) ok.push(`codeScanDesync${' '.repeat(16)} ${why}`);
+    else fail.push(`codeScanDesync${' '.repeat(16)} ${why} — được ${JSON.stringify(got)}`);
+  }
+
+  // Và trên repo THẬT. Đây là khẳng định giữ cho ba biến thể trên không quay lại: một file
+  // mới làm máy quét lệch sẽ ĐỎ ở đây, thay vì làm mọi check dựng trên `codeOnly` mù âm thầm.
+  const roots = [repoPath('tooling'), repoPath('.claude', 'hooks')];
+  const off = [], walked = [];
+  let seen = 0;
+  const walkAll = (dir, rel) => {
+    if (!exists(dir)) return;
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const r2 = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) { walkAll(join(dir, e.name), r2); continue; }
+      if (!e.name.endsWith('.mjs')) continue;
+      seen++; walked.push(r2);
+      const d = codeScanDesync(readFileSync(join(dir, e.name), 'utf8'));
+      if (d) off.push(`${r2}:${d.line}`);
+    }
+  };
+  for (const r of roots) walkAll(r, r.split(/[\\/]/).pop());
+  // Sàn neo vào FILE PHẢI CÓ, không vào một CON SỐ. Số file `tooling/` khác nhau giữa template
+  // và repo con (`apply-to` cố tình không ship `cli.mjs`), nên một sàn kiểu `seen >= 40` là ca
+  // `L0003` kinh điển: self-test của template khẳng định một thứ chỉ đúng ở template. Ba mỏ
+  // neo dưới đây có mặt ở MỌI nơi suite này chạy, và chúng chứng minh cả hai gốc đã được đi tới.
+  const must = ['tooling/test-hooks.mjs', 'tooling/lib/harness.mjs'];
+  const missing = must.filter(m => !walked.includes(m));
+  const anyHook = walked.some(w => w.startsWith('hooks/'));
+  if (missing.length || !anyHook) fail.push(`codeScanDesync${' '.repeat(16)} phép quét KHÔNG đi tới ${[...missing, anyHook ? null : '.claude/hooks/*'].filter(Boolean).join(' · ')} (đi được ${seen} file) — quét hỏng, không phải repo sạch`);
+  else if (off.length) fail.push(`codeScanDesync${' '.repeat(16)} ${off.length}/${seen} file làm máy quét LỆCH: ${off.join(', ')} — mọi check dựng trên \`codeOnly\` đang đọc thiếu ở đó`);
+  else ok.push(`codeScanDesync${' '.repeat(16)} ${seen} file, 0 lệch — mọi check dựng trên \`codeOnly\` đang đọc ĐỦ file`);
+}
+
+// ── KHÔNG CÒN CÁCH NÀO HỎNG IM LẶNG QUA MỘT ỐNG DẪN ─────────────────────────
+//
+// `node x.mjs | tail -5` trả exit code của `tail`, không của `x.mjs`. Đo 2026-08-12:
+// một tiến trình exit 3 đi qua `| tail -1` cho `pipeline_exit=0`. Nên MỌI dòng FAIL in
+// ra stdout đều xoá được — CÙNG LÚC với exit code — bởi một bộ lọc mà người gọi đặt
+// lên. Đã xảy ra thật 2026-08-11 (sổ `fixlog`): hai check ĐỎ của `harness-doctor`
+// (`entropy-scan`, `apply-to --audit`) đi qua `| grep`, và "xanh" đó được viết vào PR.
+//
+// stderr không đi qua ống dẫn đó. Hợp đồng: **entrypoint nào exit KHÁC 0 được thì phải
+// có đường ra stderr.** Quét ở đây chứ không viết thành quy ước, nên một script mới hỏng
+// im lặng làm suite ĐỎ thay vì chờ ai đó nhớ.
+{
+  // ① Câu phán THUẦN — quyết định in gì, không quyết định in ở đâu.
+  const V = [
+    [['X', { fail: 0 }], null, 'chạy sạch ⇒ KHÔNG in gì: một dòng "xanh" mỗi lần chạy sẽ được học cách bỏ qua'],
+    [['X', { fail: 2 }], /2 FAIL/, '2 FAIL nêu số'],
+    [['X', { fail: 0, code: 1 }], /exit=1/, 'exit≠0 mà không đếm được FAIL vẫn phải kêu'],
+    [['X', { fail: 3, code: 0 }], null, '`code` là SỰ THẬT chứ không phải `fail`: doctor cố ý exit 0 với mục không chí tử — kêu ✗ ở đó là guard bắn nhầm'],
+    [['X', { fail: 1, unknown: 2 }], /1 FAIL · 2 CHƯA ĐO ĐƯỢC/, '"chưa đo được" nêu RIÊNG, không cộng vào FAIL (3 sẽ là phép gộp AGENTS.md cấm)'],
+    [['', { fail: 1 }], /^✗ kiểm tra —/, 'thiếu tiêu đề vẫn ra một dòng đọc được'],
+  ];
+  for (const [args, want, why] of V) {
+    const got = verdictLine(...args);
+    const good = want === null ? got === null : (typeof got === 'string' && want.test(got));
+    if (good) ok.push(`verdictLine${' '.repeat(19)} ${why}`);
+    else fail.push(`verdictLine${' '.repeat(19)} ${why} — được ${JSON.stringify(got)}`);
+  }
+  const written = [];
+  const line = emitVerdict('T', { fail: 1 }, (s) => written.push(s));
+  if (written.length === 1 && written[0] === line) ok.push(`emitVerdict${' '.repeat(19)} viết ĐÚNG một dòng, và trả về đúng dòng đã viết`);
+  else fail.push(`emitVerdict${' '.repeat(19)} viết ${written.length} dòng, trả ${JSON.stringify(line)}`);
+  if (emitVerdict('T', { fail: 0 }, (s) => written.push(s)) === null && written.length === 1) ok.push(`emitVerdict${' '.repeat(19)} chạy sạch thì không chạm stderr`);
+  else fail.push(`emitVerdict${' '.repeat(19)} chạy sạch mà vẫn viết ra stderr`);
+
+  // ② Và nó phải THẬT SỰ sống sót khi stdout bị lấy mất. Đây mới là khẳng định về cơ
+  //    chế; ① chỉ nói về chuỗi. `report()` được gọi trong tiến trình con để chứng minh
+  //    luôn rằng 4 script đi qua `report()` thừa hưởng đường ra này mà không sửa gì.
+  const probe = join(tmpdir(), `harness-verdict-${process.pid}-${TEST_RUN_ID}.mjs`);
+  const libUrl2 = JSON.stringify(pathToFileURL(repoPath('tooling', 'lib', 'harness.mjs')).href);
+  writeFileSync(probe, `import { report } from ${libUrl2};\nprocess.exit(report('PROBE', { ok: [], warn: [], fail: ['hong that'] }) ? 0 : 1);\n`, 'utf8');
+  const r = spawnSync(process.execPath, [probe], { encoding: 'utf8' });
+  rmSync(probe, { force: true });
+  if (r.status !== 1) fail.push(`report()${' '.repeat(22)} probe không exit 1 (được ${r.status})`);
+  else if (!/✗ PROBE — 1 FAIL/.test(r.stderr ?? '')) fail.push(`report()${' '.repeat(22)} có FAIL nhưng stderr TRỐNG (${JSON.stringify((r.stderr ?? '').slice(0, 60))}) — lọc stdout là mất sạch dấu vết hỏng`);
+  else if (/FAIL hong that/.test(r.stderr ?? '')) fail.push(`report()${' '.repeat(22)} đổ CẢ báo cáo sang stderr — stderr thành ống thứ hai, không còn là câu phán`);
+  else ok.push(`report()${' '.repeat(22)} một dòng ✗ ra stderr khi FAIL — sống sót qua \`| tail\` / \`| grep\` / \`> file\``);
+
+  // Và CHIỀU NGƯỢC LẠI. `rituals.mjs --all` dùng rổ `fail` với nghĩa "việc đang tới hạn" rồi
+  // `process.exit(0)` có chủ ý; nếu `report()` vẫn kêu ✗ ở đó thì mỗi phiên có nghi thức tới
+  // hạn in một dấu ✗ trên một lần chạy ĐẠT — và dấu ✗ thường trực bị học cách bỏ qua trong
+  // một tuần, kéo theo cả những dòng ✗ thật. Đây là chiều B của `L0007` cho chính lô này.
+  writeFileSync(probe, `import { report } from ${libUrl2};\nreport('IM LANG', { fail: ['viec toi han'] }, { verdict: false });\nprocess.exit(0);\n`, 'utf8');
+  const q = spawnSync(process.execPath, [probe], { encoding: 'utf8' });
+  rmSync(probe, { force: true });
+  if (q.status !== 0) fail.push(`report()${' '.repeat(22)} probe \`verdict:false\` không exit 0 (được ${q.status})`);
+  else if ((q.stderr ?? '').trim()) fail.push(`report()${' '.repeat(22)} \`verdict:false\` VẪN ghi stderr (${JSON.stringify(q.stderr.slice(0, 60))}) — mọi phiên có nghi thức tới hạn sẽ mang một dấu ✗ giả`);
+  else ok.push(`report()${' '.repeat(22)} \`verdict:false\` im hẳn — rổ \`fail\` nghĩa "tới hạn" không tạo dấu ✗ giả trên lần chạy ĐẠT`);
+
+  // Và ca thật phải THẬT SỰ dùng cửa đó — nếu không, khẳng định trên chỉ chứng minh một tính
+  // năng không ai gọi.
+  const ritSrc2 = codeOnly(readFileSync(repoPath('tooling', 'rituals.mjs'), 'utf8'));
+  const nghiThuc = ritSrc2.slice(ritSrc2.indexOf("report('NGHI THỨC'"));
+  if (!nghiThuc) fail.push(`rituals.mjs${' '.repeat(19)} không định vị được lời gọi \`report('NGHI THỨC'\` — neo đã trôi, sửa neo đừng xoá check`);
+  else if (!/verdict:\s*false/.test(nghiThuc.slice(0, 400))) fail.push(`rituals.mjs${' '.repeat(19)} \`report('NGHI THỨC'\` KHÔNG truyền \`verdict: false\` — mỗi phiên có việc tới hạn sẽ in một dấu ✗ giả ra stderr`);
+  else ok.push(`rituals.mjs${' '.repeat(19)} \`report('NGHI THỨC'\` truyền \`verdict: false\` — bảng nghi thức không giả vờ là một lần chạy hỏng`);
+
+  // ③ Quét: còn entrypoint nào hỏng im lặng không?
+  //    Trên `codeOnly(src, { blankStrings: true })` — `test-evals.mjs` nhét hàng chục
+  //    `process.exit(1)` vào CHUỖI (lệnh của task giả), và một phép quét đọc cả ruột
+  //    chuỗi sẽ đòi stderr từ file chỉ NHẮC tới exit. Đó là `L0002`, không phải chặt chẽ.
+  const files = [];
+  const walk = (dir, rel) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const r2 = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) { walk(join(dir, e.name), r2); continue; }
+      if (e.name.endsWith('.mjs')) files.push([r2, join(dir, e.name)]);
+    }
+  };
+  walk(repoPath('tooling'), '');
+  // `report()` đã gọi `emitVerdict`, nên script đi qua `report()` là đã có đường ra.
+  const HAS_STDERR = /console\.error|process\.stderr\.write|emitVerdict\s*\(|report\s*\(/;
+  const silent = [], hit = [];
+  for (const [rel, abs] of files) {
+    const src = codeOnly(readFileSync(abs, 'utf8'), { blankStrings: true });
+    const nonZero = [...src.matchAll(/process\.exit\(([^)]*)\)/g)].map(m => m[1].trim()).filter(a => a && a !== '0');
+    if (!nonZero.length) continue;
+    hit.push(rel);
+    if (!HAS_STDERR.test(src)) silent.push(`${rel} (${nonZero.length}×)`);
+  }
+  // Sàn neo vào HAI FILE, không vào một con số — số file `tooling/` khác nhau giữa template và
+  // repo con. `harness-doctor.mjs` là mỏ neo đắt nhất: nó CHÍNH LÀ file mà máy quét cũ giấu đi
+  // (một regex chứa nháy ở dòng 703 xoá 70% file, kể cả `process.exit` cuối). Nếu `codeOnly`
+  // lệch lại, file này rơi khỏi danh sách và dòng dưới ĐỎ đúng tên nó.
+  const ANCHORS = ['harness-doctor.mjs', 'test-hooks.mjs'];   // `walk` bắt đầu từ `tooling/`, rel không mang tiền tố
+  const lost = ANCHORS.filter(a => !hit.includes(a));
+  if (lost.length) fail.push(`hợp đồng verdict${' '.repeat(14)} KHÔNG thấy \`process.exit\` khác 0 trong ${lost.join(' · ')} (soi được ${hit.length} file) — \`codeOnly\` đang đọc thiếu, không phải file đã sạch`);
+  else if (silent.length) fail.push(`hợp đồng verdict${' '.repeat(14)} ${silent.length}/${hit.length} entrypoint exit KHÁC 0 mà KHÔNG có đường ra stderr: ${silent.join(', ')} — đọc qua \`| tail\`/\`| grep\` là hỏng im lặng`);
+  else ok.push(`hợp đồng verdict${' '.repeat(14)} ${hit.length} entrypoint exit≠0, tất cả có đường ra stderr — không còn cách nào hỏng im lặng qua ống dẫn`);
+}
+
 // Sàn là thứ DUY NHẤT ở đây thấy được một case biến mất — nâng nó khi thêm case.
 //
 // Sàn tính CẢ `skipped`. Bản 2.8.0 không tính, và nó đỏ ở CẢ BA repo tiêu thụ ngay trong lần
@@ -4778,7 +4964,7 @@ if (repoRole() === 'template') {
 // SÀN TỪNG TỤT LẠI SAU TỔNG THẬT, và đó là một chế độ hỏng riêng đáng ghi ra: 2026-08-08 đo
 // được `195/195 pass, sàn 185` — 10 ca thêm vào mà không ai nâng sàn, tức 10 ca có thể NGỪNG
 // CHẠY mà thứ duy nhất nhìn thấy điều đó vẫn xanh. Sàn không bám tổng thật là sàn đã nghỉ việc.
-const RATCHET = 206;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa
+const RATCHET = 258;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2)
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa
@@ -4797,4 +4983,8 @@ for (const e of naEntries) console.log('  n/a   ' + e.msg);
 for (const m of fail) console.log('  FAIL  ' + m);
 console.log('');
 
+// Mọi dòng FAIL ở trên đi ra STDOUT, nên `node tooling/test-hooks.mjs | tail -5` xoá
+// được chúng CÙNG với exit code (ống dẫn trả mã của tiến trình cuối). Dòng dưới ra
+// stderr — nó là thứ duy nhất sống sót qua mọi bộ lọc người gọi đặt lên stdout.
+emitVerdict('HOOK TESTS', { fail: fail.length, code: fail.length ? 1 : 0 });
 process.exit(fail.length ? 1 : 0);
