@@ -1,8 +1,13 @@
 {
   "$comment": "Bản rà Claude Code gần nhất. Nghi thức `claude-code-drift` so `reviewedVersion` với version đang chạy. Đừng sửa tay — dùng `node tooling/rituals.mjs --reviewed-claude-code \"<thấy gì>\"`.",
-  "reviewedVersion": "2.1.227",
-  "reviewedAt": "2026-08-11T05:09:12.755Z",
+  "reviewedVersion": "2.1.228",
+  "reviewedAt": "2026-08-12T00:13:33.551Z",
   "history": [
+    {
+      "version": "2.1.228",
+      "at": "2026-08-12T00:13:33.551Z",
+      "found": "2.1.228 la ban SUA LOI, khong co nang luc nao thay duoc thu harness dang tu lam. Tap su kien hook KHONG doi (31, do tu binary). HAI muc dang biet: (1) 'Session cleanup protected from deleting project memory folder contents' — chinh la ~/.claude/projects/*/memory/, tang CAPTURE mien phi ma /harness-retro buoc 1 doc; truoc ban nay no co the bi don mat IM LANG va harness khong co lop bao ve nao cho no. (2) 'Write tool allows newer models to overwrite unread files' — vendor NOI LONG mot cai gac, nen ky luat 'doc truoc khi ghi de' cua harness thanh CHIU LUC HON, khong phai thua di. Ngoai ra: Git Bash discovery tren Windows tot len (lien quan truc tiep repo nay), skills dong bo tu claude.ai thoi che lenh local."
+    },
     {
       "version": "2.1.227",
       "at": "2026-08-11T05:09:12.755Z",
@@ -40,8 +45,8 @@
     }
   ],
   "nativeEvents": {
-    "version": "2.1.227",
-    "at": "2026-08-11T05:09:21.682Z",
+    "version": "2.1.228",
+    "at": "2026-08-12T00:13:41.213Z",
     "events": [
       "PreToolUse",
       "PostToolUse",
