@@ -1327,9 +1327,27 @@ export function unquote(s) {
  * là `sudo` và mọi rule về `rm` đều trượt.
  */
 const CMD_WRAPPERS = new Set(['sudo', 'env', 'time', 'nohup', 'command', 'exec', 'xargs', 'nice', 'doas']);
-export function simpleCommands(cmd) {
+
+/**
+ * `splitNewlines: false` — GIỮ đối số NHIỀU DÒNG nguyên vẹn. Mặc định là `true` vì mọi rule
+ * hiện có đều muốn "mỗi dòng một lệnh".
+ *
+ * VÌ SAO CÓ CỜ NÀY (#177, đo 2026-08-12 — bằng cách chính guard đó để lọt một lệnh của tôi):
+ * `\n` trong danh sách cắt xé một đối số nhiều dòng thành nhiều mảnh, và mảnh mang backtick
+ * KHÔNG còn `program` là `node`:
+ *
+ *     node -e "        → program=node,   không backtick
+ *     const s = `a`    → program=const,  CÓ backtick        ← gate chương trình trượt ở đây
+ *
+ * Nên rule backtick trượt đúng ca nó sinh ra để bắt — *văn bản NHIỀU DÒNG qua `node -e`*. Bảy
+ * lần đã đo đều là văn bản nhiều dòng; bộ ca test thì toàn một dòng, nên nó xanh suốt.
+ *
+ * KHÔNG sửa mặc định: phép cắt theo `\n` là nền của #43 (khớp LỆNH thay vì khớp CHUỖI), và
+ * đổi nó là đổi hành vi của cả 12 rule để chữa một rule.
+ */
+export function simpleCommands(cmd, { splitNewlines = true } = {}) {
   return stripHeredocs(cmd)
-    .split(/\n|;|&&|\|\||\||&(?!&)/)
+    .split(splitNewlines ? /\n|;|&&|\|\||\||&(?!&)/ : /;|&&|\|\||\||&(?!&)/)
     .map(part => {
       const bare = unquote(part).trim();
       if (!bare) return null;
@@ -1653,6 +1671,20 @@ export function backtickEvalHazard(c) {
 }
 
 /**
+ * Cùng phán đoán, nhưng cắt lệnh **KHÔNG theo `\n`** — đây mới là thứ `dcg` cắm.
+ *
+ * `backtickEvalHazard` một mình đủ cho lệnh MỘT DÒNG và trượt lệnh nhiều dòng, tức trượt đúng
+ * nhóm đã đo (7 lần, đều là văn bản tiếng Việt nhiều dòng). Bộ ca test ban đầu toàn một dòng
+ * nên nó xanh — lỗ chỉ lộ ra khi guard để lọt một lệnh THẬT của tôi, một giờ sau khi merge.
+ *
+ * Vẫn giữ nguyên vế hẹp: chương trình phải là `node|gh`, và phải có cờ văn-bản-dài. Nên
+ * `cd /x && grep -e "…"` không khớp, còn `node -e "<nhiều dòng có backtick>"` thì có.
+ */
+export function backtickEvalHazardIn(cmd) {
+  return simpleCommands(cmd, { splitNewlines: false }).some(backtickEvalHazard);
+}
+
+/**
  * PHÁN ĐOÁN của `dcg` — hàm THUẦN, test khẳng định thẳng vào đây.
  *
  * Rule có `program` chỉ nổ khi một LỆNH ĐƠN có đúng chương trình đó, và khớp trên dạng đã bỏ
@@ -1666,7 +1698,11 @@ export function dangerousCommand(cmd, rules) {
     // `test:` — dành cho phán đoán mà REGEX KHÔNG BIỂU DIỄN ĐƯỢC. Ca duy nhất tới giờ (#177):
     // "backtick nằm ngoài nháy đơn" cần TRẠNG THÁI nháy, mà `r.re` thì khớp trên `c.text` —
     // bản ĐÃ BỎ NHÁY. Nhận cả object lệnh đơn nên nó đọc được `raw` (còn nguyên nháy).
-    if (r.test) {
+    if (r.testWhole) {
+      // Rule tự cắt lấy — dành cho phán đoán mà phép cắt mặc định (theo `\n`) phá mất ngữ
+      // cảnh. Nhận CHUỖI GỐC, không nhận `whole`: hàm tự gọi `stripHeredocs`.
+      if (r.testWhole(cmd)) return { ...r, matched: whole.slice(0, 200) };
+    } else if (r.test) {
       const hit = cmds.find(c => r.test(c));
       if (hit) return { ...r, matched: hit.text.slice(0, 200) };
     } else if (r.program) {
@@ -2614,6 +2650,32 @@ export function slotCounters({ skills = null, agents = null, denied = null, now 
     out.denied = { vendor, ours, top: rows.slice(0, 3) };
   }
   return out;
+}
+
+/**
+ * ═══ CONTEXT ĐÃ BIẾN MẤT SAU LẦN GHI NHẬT KÝ GẦN NHẤT CHƯA (#130) ════════════
+ *
+ * **THUẦN**. `lossAt` = mốc `PreCompact`/`SessionEnd` gần nhất (do `observe.mjs` ghi);
+ * `progressAt` = lần cuối `docs/progress/<issue>.md` được sửa.
+ *
+ * VÌ SAO PHÉP SO NÀY LÀ CƠ CHẾ, KHÔNG PHẢI MỘT DÒNG THÔNG TIN: `/handoff` là thủ công và
+ * `rituals` đo được nó **chưa chạy lần nào** kể từ khi harness ra đời. Một mốc mất context nằm
+ * SAU lần ghi nhật ký cuối nghĩa là **đã có một quãng làm việc không ai ghi lại** — và đó là
+ * đúng câu hỏi `/handoff` sinh ra để hỏi, chỉ khác là trước giờ không có dữ kiện để hỏi nó.
+ *
+ * `null` ở BẤT KỲ vế nào ⇒ `null` (không đo được), KHÔNG phải `false`. Chưa có mốc mất context
+ * và "có mốc nhưng nhật ký mới hơn" là hai chuyện khác nhau: cái đầu nghĩa là chưa nhìn thấy
+ * lần nén nào, cái sau là một câu trả lời thật.
+ */
+export function contextLossPending(lossAt, progressAt, now = Date.now()) {
+  const loss = Date.parse(lossAt ?? '');
+  if (!Number.isFinite(loss)) return null;
+  const ageHours = Math.max(0, Math.round((now - loss) / 3600000));
+  const prog = Date.parse(progressAt ?? '');
+  // Không có nhật ký ⇒ mốc mất context KHÔNG thể "cũ hơn" nó ⇒ đang treo. Đây là ca thường gặp
+  // nhất ở một nhánh chưa ai chạy `/claim`, và trả `false` ở đó là bỏ sót đúng nhóm cần nhắc.
+  if (!Number.isFinite(prog)) return { pending: true, ageHours, hasProgress: false };
+  return { pending: loss > prog, ageHours, hasProgress: true };
 }
 
 /**

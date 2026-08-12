@@ -8,7 +8,7 @@
  * `--force-with-lease` CỐ Ý không bị chặn: đó là biến thể an toàn và agent cần nó
  * để rebase nhánh của chính mình.
  */
-import { hookInput, toolCommand, block, pass, telemetry, hookRan, config, declareFailMode, dangerousCommand, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard } from '../../tooling/lib/harness.mjs';
+import { hookInput, toolCommand, block, pass, telemetry, hookRan, config, declareFailMode, dangerousCommand, GIT_DISCARD_WHOLE_TREE, backtickEvalHazardIn } from '../../tooling/lib/harness.mjs';
 
 declareFailMode(2, 'Không phân tích được lệnh nên không biết nó có phá lịch sử chung hay production hay không (nhóm 1+3).');
 
@@ -41,7 +41,10 @@ const DENY = [
   { program: /^(shutdown|reboot|mkfs(\..+)?|dd)$/, re: /^(shutdown|reboot|mkfs|dd\s+if=)/, why: 'lệnh cấp hệ thống', fix: 'ngoài phạm vi của agent' },
   // `test:` thay vì `re:` — phán đoán này cần TRẠNG THÁI NHÁY, mà `re` khớp trên bản đã bỏ
   // nháy (#177). Backtick trong nháy ĐƠN được phép: bash không diễn giải gì trong `'…'`.
-  { test: backtickEvalHazard, why: 'backtick trong đối số văn bản: bash THAY nó bằng output của lệnh',
+  // `testWhole` chứ không `test`: phép cắt mặc định tách theo `\n`, và đối số NHIỀU DÒNG —
+  // đúng nhóm đã đo 7 lần — bị xé thành mảnh không còn `program` là `node` (#177, vá 2026-08-12
+  // sau khi guard để lọt một lệnh thật một giờ sau khi merge).
+  { testWhole: backtickEvalHazardIn, why: 'backtick trong đối số văn bản: bash THAY nó bằng output của lệnh',
     fix: 'dùng nháy ĐƠN cho đối số có backtick, hoặc — với văn bản nhiều dòng — dùng công cụ `Write` ghi một file `.mjs` rồi `node file.mjs`' },
   // KHÔNG có `program`: SQL nằm bên trong đối số của psql/mysql/bất kỳ client nào, và fork
   // bomb không có token chương trình nào để bám vào.

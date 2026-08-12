@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution, verdictLine, emitVerdict, codeScanDesync, frictionReading, slotCounters } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution, verdictLine, emitVerdict, codeScanDesync, frictionReading, slotCounters, backtickEvalHazardIn, contextLossPending } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -305,6 +305,8 @@ const cases = [
   ['observe.mjs', { hook_event_name: 'UserPromptExpansion', command_name: 'claim' }, OK, 'UserPromptExpansion: ghi và KHÔNG chặn expansion (vendor cho exit 2 chặn — ta không dùng)'],
   ['observe.mjs', { hook_event_name: 'SubagentStart', agent_type: 'evaluator', agent_id: 'a1' }, OK, 'SubagentStart: ghi và IM LẶNG'],
   ['observe.mjs', { hook_event_name: 'PermissionDenied', tool_name: 'Bash', reason: 'classifier' }, OK, 'PermissionDenied: ghi và IM LẶNG'],
+  ['observe.mjs', { hook_event_name: 'PreCompact', trigger: 'auto' }, OK, 'PreCompact: ghi mốc và KHÔNG in gì (stdout ở đây thành CHỈ THỊ compaction)'],
+  ['observe.mjs', { hook_event_name: 'SessionEnd', reason: 'clear' }, OK, 'SessionEnd: ghi mốc và IM LẶNG'],
   ['observe.mjs', { hook_event_name: 'SuKienVendorMoiThem' }, OK, 'sự kiện KHÔNG nhận ra vẫn exit 0 — không bao giờ chặn'],
   ['observe.mjs', {}, OK, 'input rác không làm crash'],
 
@@ -801,6 +803,39 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     else ok.push(`slotCounters${' '.repeat(16)} "đồng thời" tính theo ĐƯỜNG CONG chứ không theo tổng · \`reason: hook\` tách khỏi vendor · chưa-cắm ≠ 0`);
   }
 
+  // ── #130: mốc mất context, và nó phải TỚI ĐƯỢC `/handoff` ─────────────────
+  {
+    const bad130 = [];
+    const T = (h) => new Date(Date.parse('2026-08-12T12:00:00.000Z') - h * 3600000).toISOString();
+    const now = Date.parse(T(0));
+    // Mốc mất context SAU nhật ký ⇒ có một quãng làm việc không ai ghi lại.
+    const p1 = contextLossPending(T(2), T(5), now);
+    if (!p1?.pending || p1.ageHours !== 2) bad130.push(`nén SAU nhật ký: pending=${p1?.pending} age=${p1?.ageHours}, phải là true/2`);
+    // Chiều ngược — không có nó thì `pending: true` cứng cũng xanh.
+    if (contextLossPending(T(5), T(2), now)?.pending !== false) bad130.push('nhật ký MỚI HƠN lần nén mà vẫn đòi /handoff — mục sẽ đỏ vĩnh viễn sau lần nén đầu tiên');
+    // Chưa thấy lần nén nào ⇒ `null` (không đo được), KHÔNG phải `false`.
+    if (contextLossPending(null, T(2), now) !== null) bad130.push('chưa có mốc nén mà vẫn kết luận — "chưa nhìn" bị đọc thành "không có gì"');
+    // Chưa có nhật ký ⇒ mốc nén không thể cũ hơn nó ⇒ ĐANG TREO. Đây là ca thường gặp nhất.
+    if (contextLossPending(T(2), null, now)?.pending !== true) bad130.push('chưa có nhật ký mà mốc nén bị coi là đã xử — bỏ sót đúng nhóm cần nhắc');
+
+    // ĐẦU-CUỐI: hook có ghi ra thứ `rituals` đọc được không, và ở ĐÚNG đường dẫn không.
+    const st130 = testRunPath('harness-test-ctxloss');
+    const r130 = spawnSync(process.execPath, [repoPath('.claude', 'hooks', 'observe.mjs')], {
+      input: JSON.stringify({ hook_event_name: 'PreCompact', trigger: 'auto' }), encoding: 'utf8',
+      cwd: repoPath(''), env: { ...process.env, ...TEST_ENV, HARNESS_STATE_DIR: st130 },
+    });
+    if (r130.status !== 0) bad130.push(`PreCompact làm observe exit ${r130.status} — ô này CHẶN được compaction bằng exit 2`);
+    // stdout ở `PreCompact` được vendor NỐI VÀO chỉ thị compaction. Một dòng debug lọt ra đây
+    // là một chỉ thị gửi thẳng cho phép nén, và không ca nào khác trong suite nhìn thấy nó.
+    if ((r130.stdout || '').trim()) bad130.push(`PreCompact IN ra stdout ("${(r130.stdout || '').trim().slice(0, 40)}") — vendor nối nó vào chỉ thị compaction`);
+    const crumb130 = readJson(join(st130, 'last-context-loss.json'), null);
+    if (!crumb130?.at || crumb130.event !== 'PreCompact') bad130.push(`mốc không được ghi đúng chỗ/đúng hình (${JSON.stringify(crumb130)?.slice(0, 60)})`);
+    try { rmSync(st130, { recursive: true, force: true }); } catch {}
+
+    if (bad130.length) fail.push(`contextLoss${' '.repeat(17)} ${bad130.length} ca sai: ${bad130.join(' | ')}`);
+    else ok.push(`contextLoss${' '.repeat(17)} mốc nén SAU nhật ký ⇒ /handoff tới hạn · nhật ký mới hơn ⇒ im · chưa nén ≠ đã xử · PreCompact KHÔNG in gì`);
+  }
+
   // HỢP ĐỒNG: ô đã CẮM phải có BÊN ĐỌC. Không có nó thì cơ chế chạy, tốn một process mỗi lần
   // nổ, và không tới ai — đúng thứ vừa bị cắt ở #177 (cảnh báo mềm `package.json`).
   {
@@ -808,6 +843,7 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     const docSrc = readFileSync(repoPath('tooling', 'harness-doctor.mjs'), 'utf8');
     const CAPTURE = [['PostToolUseFailure', 'tool-failures'], ['Notification', 'notifications'],
       ['UserPromptExpansion', 'skill-calls'], ['SubagentStart', 'subagent-runs'], ['PermissionDenied', 'permission-denied']];
+    // #130 đọc bởi rituals (/handoff), KHÔNG bởi doctor — nên nó có hợp đồng RIÊNG ngay dưới.
     const orphan = CAPTURE.filter(([ev, log]) => wired.includes(ev) && !docSrc.includes(log));
     if (orphan.length) fail.push(`ô CAPTURE mồ côi${' '.repeat(12)} ${orphan.map(([e]) => e).join(' · ')} đã cắm mà harness-doctor KHÔNG đọc sổ của nó — `
       + 'một cơ chế ghi mà không ai đọc là mục tiếp theo của danh sách cắt bỏ');
@@ -3277,7 +3313,10 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     // mà một bản chép sẽ trôi khỏi bản thật mà không ai thấy (#160).
     { program: GIT, re: GIT_DISCARD_WHOLE_TREE, why: 'checkout bỏ cả cây' },
     // `test:` — cần TRẠNG THÁI nháy, thứ `re` không thấy được vì nó khớp trên bản đã bỏ nháy.
-    { test: backtickEvalHazard, why: 'backtick' },
+    // `testWhole`, KHÔNG `test` — bảng dưới có ca NHIỀU DÒNG, và phép cắt mặc định (theo `\n`)
+    // xé chúng thành mảnh không còn `program` là `node`. Bản đầu dùng `test` và xanh cả bảng
+    // vì mọi ca đều một dòng; lỗ chỉ lộ khi guard để lọt một lệnh THẬT (#177, vá 2026-08-12).
+    { testWhole: backtickEvalHazardIn, why: 'backtick' },
   ];
   const BLOCKED = true, ALLOWED = false;
   //                                                                        mong đợi
@@ -3343,6 +3382,16 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     // node/gh · một cờ TRÙNG TÊN (`grep -e`) · một backtick. Thiếu vế giữa thì mutant "bỏ gate
     // chương trình" SỐNG SÓT — gate cờ che mất nó. Đo 2026-08-12: đúng thế, mutant N3 sống lượt đầu.
     [`grep -e "tìm \`x\`" file.txt`, ALLOWED, '#177 `grep -e` cũng có cờ `-e` — gate CHƯƠNG TRÌNH mới là thứ loại nó'],
+    // ── #177 VÁ: ĐỐI SỐ NHIỀU DÒNG — đúng nhóm đã đo 7 lần, và là nhóm bản đầu để LỌT ──
+    //
+    // Phép cắt mặc định tách theo `\n`, nên `node -e "` và dòng mang backtick thành hai mảnh
+    // khác nhau; mảnh thứ hai có `program` là `const`, và gate chương trình loại nó. Cả bảng
+    // ca ban đầu là lệnh MỘT DÒNG nên nó xanh suốt — lỗ chỉ lộ khi guard để lọt một lệnh THẬT
+    // của tôi, một giờ sau khi merge.
+    [`node -e "\nconst s = \`a\`;\nconsole.log(s);\n"`, BLOCKED, '#177 nhiều dòng — CA CHÍNH của rule, bản đầu để lọt'],
+    [`cd /x && node -e "\nlet y = \`date\`;\n"`, BLOCKED, '#177 nhiều dòng SAU một `&&`'],
+    [`node -e '\nconst s = \`a\`;\n'`, ALLOWED, '#177 nhiều dòng nhưng nháy ĐƠN — vẫn phải cho qua'],
+    [`cd /x && grep -e "tìm \`y\`" f\nnode -e 'an toan'`, ALLOWED, '#177 hai lệnh rời: backtick ở lệnh KHÔNG phải node/gh ⇒ không bắc cầu'],
   ];
   const bad = [];
   for (const [cmd, want, label] of TABLE) {
@@ -5061,7 +5110,7 @@ if (repoRole() === 'template') {
 // SÀN TỪNG TỤT LẠI SAU TỔNG THẬT, và đó là một chế độ hỏng riêng đáng ghi ra: 2026-08-08 đo
 // được `195/195 pass, sàn 185` — 10 ca thêm vào mà không ai nâng sàn, tức 10 ca có thể NGỪNG
 // CHẠY mà thứ duy nhất nhìn thấy điều đó vẫn xanh. Sàn không bám tổng thật là sàn đã nghỉ việc.
-const RATCHET = 266;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195)
+const RATCHET = 269;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195)
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa

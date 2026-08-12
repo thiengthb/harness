@@ -41,7 +41,7 @@
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, groupStillClosed, groupTracked, groupMarks, handledGroups, FIXLOG_CLOSED_FILE, FIXLOG_TRACKED_FILE, readJson, writeJson, readPacks, packPending, budgetSnapshot, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue, recordRitualStates } from './lib/harness.mjs';
+import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, groupStillClosed, groupTracked, groupMarks, handledGroups, FIXLOG_CLOSED_FILE, FIXLOG_TRACKED_FILE, readJson, writeJson, readPacks, packPending, budgetSnapshot, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue, recordRitualStates, contextLossPending, stateDir } from './lib/harness.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHẦN THUẦN — không đọc đĩa, không gọi git. Test khẳng định trực tiếp vào đây.
@@ -172,7 +172,17 @@ export const RITUALS = [
       if (s.commitsSinceProgress > 0) {
         return { state: 'due', why: `${s.commitsSinceProgress} commit mới hơn lần sửa docs/progress/${s.issue}.md gần nhất — công việc đã đi trước nhật ký${inferred(s)}` };
       }
-      return { state: 'ok', why: 'nhật ký ngang bằng với commit gần nhất' };
+      // ── #130: CONTEXT ĐÃ BIẾN MẤT SAU LẦN GHI NHẬT KÝ GẦN NHẤT ──────────────────────
+      //
+      // Hai tín hiệu phía trên đều đo qua COMMIT. Nhưng quãng nguy hiểm nhất không có commit
+      // nào: bạn làm việc, context bị nén, và thứ mất là những gì CHƯA thành commit. Trước
+      // #130 harness không có dữ kiện nào về khoảnh khắc đó — nay `observe.mjs` ghi mốc, và
+      // đây là chỗ duy nhất mốc ấy có nghĩa.
+      if (s.contextLoss?.pending) {
+        return { state: 'due', why: `context bị nén/kết phiên ${s.contextLoss.ageHours} giờ trước, SAU lần sửa docs/progress/${s.issue}.md gần nhất`
+          + ' — quãng làm việc giữa hai mốc đó chưa ai ghi lại, và nó không có commit nào để suy ngược' };
+      }
+      return { state: 'ok', why: 'nhật ký ngang bằng với commit gần nhất' + (s.contextLoss ? ', và mới hơn lần mất context gần nhất' : '') };
     },
   },
   {
@@ -737,6 +747,14 @@ export function collect() {
 
     // Số commit mới hơn lần sửa nhật ký gần nhất. Dùng mtime của file so với ngày commit —
     // thô nhưng đúng hướng, và nó KHÔNG đòi nhật ký phải được commit (thường nó chưa).
+    // Mốc mất context gần nhất so với lần sửa nhật ký. `null` = chưa thấy lần nén nào (sổ chưa
+    // tồn tại) ⇒ nhánh `pending` ở `check` không nổ, và mục vẫn xanh vì hai phép đo kia đã đủ.
+    contextLoss: (() => {
+      const at = readJson(join(stateDir(), 'last-context-loss.json'), null)?.at;
+      const progAt = progressExists ? (() => { try { return new Date(statSync(progress).mtimeMs).toISOString(); } catch { return null; } })() : null;
+      return contextLossPending(at, progAt);
+    })(),
+
     commitsSinceProgress: !progressExists ? 0 : num(() => {
       const since = new Date(statSync(progress).mtimeMs).toISOString();
       const out = git(['log', '--oneline', `--since=${since}`]).stdout.trim();
