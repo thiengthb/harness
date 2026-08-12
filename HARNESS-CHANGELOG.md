@@ -11,6 +11,50 @@
 
 ---
 
+## 2.69.0 — 2026-08-12
+
+**minor.** Ba ô native nữa vào cùng chậu `observe.mjs`: **`UserPromptExpansion`** (#135),
+**`SubagentStart`/`SubagentStop`** (#136), **`PermissionDenied`** (#137).
+
+**Số file hook vẫn 11.** 14 sự kiện được cắm, 11 file — đó là toàn bộ điểm của "cùng một chậu".
+
+### Ba câu hỏi harness trước giờ chỉ SUY được
+
+| | trước | nay |
+|---|---|---|
+| skill nào thật sự được gọi | suy từ artefact (*"`reservations/` chỉ có README"*) — sai được | đếm trực tiếp |
+| bao nhiêu subagent chạy ĐỒNG THỜI | con số **16** trong `AGENTS.md`, chưa ai đo | đỉnh đường cong start/stop |
+| vendor chặn việc thật bao nhiêu lần | **không có số nào** | đếm theo `tool_name` × `reason` |
+
+### Hai chỗ một con số sẽ nói dối, cả hai có ca test riêng
+
+**① "ĐỒNG THỜI" không phải TỔNG.** Ba lần khởi động rải rác một tuần không phải ba agent cùng
+lúc. `slotCounters` duyệt hai loại mốc theo **thứ tự thời gian** (`+1` mỗi `start`, `−1` mỗi
+`stop`) và lấy đỉnh. Vì thế `SubagentStop` cũng phải gọi `observe` — một mình `Start` không nói
+được "đồng thời". Thiếu mốc kết thúc thì đỉnh **chỉ có thể cao hơn sự thật**, nên `unpaired`
+được in ra cạnh nó.
+
+**② `reason: "hook"` là lần chặn của CHÍNH TA.** Tập giá trị `reason` của vendor bao gồm cả
+`hook`. Gộp nó vào *"vendor chặn việc thật"* là **tự đếm mình hai lần**, và thổi phồng đúng con
+số đang định dùng để tranh luận (`L0005`).
+
+### Chi phí đã biết
+
+`SubagentStop` nay chạy **hai** hook (`gates.mjs --stage subagent` + `observe.mjs`). Trần của ô
+đó là **< 5 giây** (`AGENTS.md`), sàn runner đo được là 91ms; thêm một spawn ~60–90ms là ~2%
+trần. Đo lại bằng `node tooling/gates.mjs --list --timing`.
+
+Và nếu gate ở `SubagentStop` **chặn**, lời gọi `observe` sau nó có thể không chạy ⇒ thiếu mốc
+`stop` ⇒ `unpaired` tăng. Con số đó được in, không bị nuốt.
+
+### Không tự động cắt skill theo dữ liệu mới
+
+`/entropy-sweep` **vẫn** đếm `12/12`. Một tuần dữ liệu chưa nói được skill nào chết, và dựng một
+ngưỡng trên tập dữ liệu vừa mới bắt đầu chảy là đúng lỗi `L0008`. Doctor in số; ngưỡng đợi đủ
+cửa sổ.
+
+---
+
 ## 2.68.0 — 2026-08-12
 
 **minor.** Hai ô native được cắm vào `observe.mjs`: **`PostToolUseFailure`** (em họ tự động của

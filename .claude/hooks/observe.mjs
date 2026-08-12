@@ -18,6 +18,12 @@
  *                       `is_interrupt` tách riêng: người bấm dừng KHÔNG phải công cụ hỏng.
  *   Notification        ma sát người↔agent. `idle_prompt` là SỐ LẦN VƯỢT NGƯỠNG của máy này,
  *                       KHÔNG phải thời lượng chờ — vendor không gửi thời lượng.
+ *   UserPromptExpansion skill nào THẬT SỰ được gọi. `/entropy-sweep` đang cắt bằng phép ĐẾM
+ *                       vì nó chưa từng có dữ liệu này.
+ *   SubagentStart/Stop  mẫu số của hệ số nhân ×N mà AGENTS.md đặt trần <5s dựa vào.
+ *                       Cần CẢ HAI mốc — một mình `Start` không nói được "đồng thời".
+ *   PermissionDenied    vendor chặn việc thật. `reason` là cột PHÂN LOẠI: trong tập giá trị
+ *                       của vendor có cả `hook` — tức lần chặn của CHÍNH TA, không được gộp.
  *
  * ── VÌ SAO StopFailure GHI FILE CHỨ KHÔNG IN
  * Vendor khai StopFailure là **fire-and-forget: hook output VÀ exit code bị BỎ QUA**
@@ -116,6 +122,48 @@ if (ev === 'InstructionsLoaded') {
     unattended() ? 'unattended' : 'attended',
     String(i?.title ?? i?.message ?? '').slice(0, 80),
   ]);
+} else if (ev === 'UserPromptExpansion') {
+  // ── SKILL NÀO THẬT SỰ ĐƯỢC GỌI (#135) ────────────────────────────────────
+  //
+  // `/entropy-sweep` cắt skill bằng phép ĐẾM (`12/12`) vì nó KHÔNG có dữ liệu skill nào từng
+  // chạy. Phép đo duy nhất từng có là GIÁN TIẾP — suy từ artefact (*"reservations/ chỉ có
+  // README ⇒ /claim chưa chạy"*) — và suy gián tiếp sai được: một skill chạy rồi bỏ giữa chừng
+  // không để lại artefact nào.
+  //
+  // Vendor: `Exit code 2 - block expansion`. Ta KHÔNG bao giờ exit 2 ở đây (`declareFailMode(1)`),
+  // nên một hook hỏng chỉ mất một dòng đo, không nuốt lệnh gõ tay của người dùng.
+  telemetry('skill-calls', [
+    i?.command_name ?? '?',
+    i?.expansion_type ?? '?',
+    String(i?.command_source ?? '?').slice(0, 40),
+  ]);
+} else if (ev === 'SubagentStart') {
+  // ── MẪU SỐ CỦA HỆ SỐ NHÂN ×N (#136) ──────────────────────────────────────
+  //
+  // `AGENTS.md` đặt trần <5 giây ở `SubagentStop` với lý do *"nhân với tối đa 16 agent song
+  // song"* — và con số 16 CHƯA AI ĐO. Bản rà 2.1.224 còn ghi vendor đã bỏ trần 200
+  // subagent/phiên, tức hệ số nhân không còn trần vendor che chở.
+  //
+  // MỘT MÌNH `SubagentStart` KHÔNG ĐỦ, và nói ra chỗ đó quan trọng hơn con số: đếm được số LẦN
+  // khởi động và LOẠI agent, nhưng "bao nhiêu cái chạy ĐỒNG THỜI" cần cả mốc kết thúc. Nên ô
+  // này đi kèm một lời gọi `observe` thứ hai ở `SubagentStop` — xem `settings.json`.
+  telemetry('subagent-runs', [i?.agent_type || '?', 'start', String(i?.agent_id ?? '').slice(0, 40)]);
+} else if (ev === 'SubagentStop') {
+  telemetry('subagent-runs', [i?.agent_type || '?', 'stop', String(i?.agent_id ?? '').slice(0, 40)]);
+} else if (ev === 'PermissionDenied') {
+  // ── VENDOR CHẶN VIỆC THẬT, VÀ HARNESS KHÔNG CÓ SỐ NÀO (#137) ──────────────
+  //
+  // Harness đếm được guard của CHÍNH NÓ (`gate-fails.log`); nó không có con số nào cho lần bị
+  // **bộ phân loại của vendor** từ chối. Ca thật 2026-08-08: auto mode từ chối `Bash` nhiều lần
+  // liên tiếp, phải đi vòng bằng Read/Grep/Glob — 0 dòng telemetry.
+  //
+  // `reason` LÀ CỘT PHÂN LOẠI, không phải văn xuôi trang trí. Trong tập giá trị của vendor có
+  // cả `hook` — tức LẦN CHẶN CỦA CHÍNH TA. Gộp nó vào "vendor chặn việc thật" là tự đếm mình
+  // hai lần và thổi phồng đúng con số đang định dùng để tranh luận (`L0005`).
+  //
+  // KHÔNG ghi `tool_input`: đó là chỗ một secret sẽ nằm. Vendor cũng không cho exit 2 ở ô này
+  // (`Other exit codes - show stderr to user only`), nên đây thuần tuý là quan sát.
+  telemetry('permission-denied', [i?.tool_name ?? '?', String(i?.reason ?? '?').slice(0, 60)]);
 } else if (ev === 'SessionStart') {
   // Auto-memory là quan sát THÔ, máy-cục-bộ, được phép sai. Trỏ nó vào cây repo là
   // biến quan sát chưa kiểm của MỘT người thành chỉ thị cho CẢ ĐỘI — và nó nạp 200

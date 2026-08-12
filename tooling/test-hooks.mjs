@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution, verdictLine, emitVerdict, codeScanDesync, frictionReading } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution, verdictLine, emitVerdict, codeScanDesync, frictionReading, slotCounters } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -302,6 +302,9 @@ const cases = [
   ['observe.mjs', { hook_event_name: 'SessionStart' }, OK, 'autoMemoryDirectory trỏ vào CÂY REPO → HÉT LÊN', { HARNESS_CONFIG: () => repoPath('tooling', 'fixtures', 'config-automemory-in-repo.json') }, /trỏ vào CÂY REPO/],
   ['observe.mjs', { hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', error: 'exit 1' }, OK, 'PostToolUseFailure: ghi và IM LẶNG'],
   ['observe.mjs', { hook_event_name: 'Notification', notification_type: 'idle_prompt', message: 'waiting' }, OK, 'Notification: ghi và IM LẶNG'],
+  ['observe.mjs', { hook_event_name: 'UserPromptExpansion', command_name: 'claim' }, OK, 'UserPromptExpansion: ghi và KHÔNG chặn expansion (vendor cho exit 2 chặn — ta không dùng)'],
+  ['observe.mjs', { hook_event_name: 'SubagentStart', agent_type: 'evaluator', agent_id: 'a1' }, OK, 'SubagentStart: ghi và IM LẶNG'],
+  ['observe.mjs', { hook_event_name: 'PermissionDenied', tool_name: 'Bash', reason: 'classifier' }, OK, 'PermissionDenied: ghi và IM LẶNG'],
   ['observe.mjs', { hook_event_name: 'SuKienVendorMoiThem' }, OK, 'sự kiện KHÔNG nhận ra vẫn exit 0 — không bao giờ chặn'],
   ['observe.mjs', {}, OK, 'input rác không làm crash'],
 
@@ -757,12 +760,54 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   else ok.push(`observe #132${' '.repeat(16)} PostToolUseFailure + Notification ghi ra đúng thứ bên đọc đọc được — `
     + `NGƯỜI dừng tách khỏi công cụ HỎNG, và chưa-cắm ≠ 0`);
 
+  // ── #135 · #136 · #137: BA BỘ ĐẾM, và hai chỗ một con số sẽ nói dối ────────
+  {
+    const T0 = Date.parse('2026-08-12T00:00:00.000Z');
+    const at = (min) => new Date(T0 - min * 60000).toISOString();
+    const badSC = [];
+
+    // ① "ĐỒNG THỜI" ≠ TỔNG. Ba lần khởi động rải rác, mỗi lần kết thúc trước lần sau ⇒ đỉnh 1.
+    //    Một bản vá đếm `starts` rồi gọi nó là "đồng thời" cho ra 3 — và con số đó dùng để cãi
+    //    về trần <5 giây ở SubagentStop, tức nó sai ở chỗ đắt nhất.
+    const seq = [[60, 'a', 'start'], [55, 'a', 'stop'], [50, 'b', 'start'], [45, 'b', 'stop'], [40, 'c', 'start'], [35, 'c', 'stop']]
+      .map(([m, t, k]) => `${at(m)}|p|${t}|${k}|id`).join('\n');
+    const s1 = slotCounters({ agents: seq, now: T0 }).agents;
+    if (s1.starts !== 3 || s1.peak !== 1) badSC.push(`rải rác: starts=${s1.starts} peak=${s1.peak}, phải là 3/1 — "đồng thời" đang bị tính bằng TỔNG`);
+
+    // Và chiều ngược: ba cái CHỒNG nhau ⇒ đỉnh 3. Không có ca này thì `peak = 1` cứng cũng xanh.
+    const overlap = [[60, 'a', 'start'], [59, 'b', 'start'], [58, 'c', 'start'], [50, 'a', 'stop'], [49, 'b', 'stop'], [48, 'c', 'stop']]
+      .map(([m, t, k]) => `${at(m)}|p|${t}|${k}|id`).join('\n');
+    const s2 = slotCounters({ agents: overlap, now: T0 }).agents;
+    if (s2.peak !== 3) badSC.push(`chồng nhau: peak=${s2.peak}, phải là 3`);
+    // Thiếu mốc kết thúc ⇒ đỉnh chỉ có thể CAO HƠN sự thật, và phải NÓI RA.
+    const s3 = slotCounters({ agents: `${at(60)}|p|a|start|id\n${at(59)}|p|b|start|id`, now: T0 }).agents;
+    if (s3.unpaired !== 2) badSC.push(`thiếu mốc stop mà \`unpaired\` = ${s3.unpaired} — chỗ in sẽ khẳng định một đỉnh nó không biết`);
+
+    // ② `reason: hook` là LẦN CHẶN CỦA CHÍNH TA, không phải vendor chặn. Gộp = tự đếm hai lần.
+    const den = [`${at(30)}|p|Bash|classifier`, `${at(29)}|p|Bash|hook`, `${at(28)}|p|Edit|safetyCheck`].join('\n');
+    const d = slotCounters({ denied: den, now: T0 }).denied;
+    if (d.vendor !== 2 || d.ours !== 1) badSC.push(`từ chối: vendor=${d.vendor} ours=${d.ours}, phải là 2/1 — guard của TA đang bị tính là vendor chặn`);
+
+    // ③ `null` (chưa cắm / không đọc được) ≠ 0. Không có ô nào thì KHÔNG có kết luận nào.
+    const none = slotCounters({ now: T0 });
+    if (none.skills !== null || none.agents !== null || none.denied !== null) badSC.push('không có sổ nào mà vẫn kết luận — "chưa nhìn" bị đọc thành 0');
+    const sk = slotCounters({ skills: `${at(10)}|p|claim|slash_command|proj`, now: T0 }).skills;
+    if (sk.total !== 1 || sk.top[0]?.name !== 'claim') badSC.push('cột KHOÁ của skill-calls không phải tên lệnh');
+    // Ngoài cửa sổ ⇒ không đếm. Không có ca này thì `sinceMs` rơi ra lúc nào cũng được.
+    if (slotCounters({ skills: `${at(60 * 24 * 30)}|p|claim|slash_command|proj`, now: T0 }).skills.total !== 0) {
+      badSC.push('mục 30 ngày trước vẫn lọt vào cửa sổ 7 ngày');
+    }
+    if (badSC.length) fail.push(`slotCounters${' '.repeat(16)} ${badSC.length} ca sai: ${badSC.join(' | ')}`);
+    else ok.push(`slotCounters${' '.repeat(16)} "đồng thời" tính theo ĐƯỜNG CONG chứ không theo tổng · \`reason: hook\` tách khỏi vendor · chưa-cắm ≠ 0`);
+  }
+
   // HỢP ĐỒNG: ô đã CẮM phải có BÊN ĐỌC. Không có nó thì cơ chế chạy, tốn một process mỗi lần
   // nổ, và không tới ai — đúng thứ vừa bị cắt ở #177 (cảnh báo mềm `package.json`).
   {
     const wired = (() => { try { return Object.keys(readJson(repoPath('.claude', 'settings.json'))?.hooks ?? {}); } catch { return []; } })();
     const docSrc = readFileSync(repoPath('tooling', 'harness-doctor.mjs'), 'utf8');
-    const CAPTURE = [['PostToolUseFailure', 'tool-failures'], ['Notification', 'notifications']];
+    const CAPTURE = [['PostToolUseFailure', 'tool-failures'], ['Notification', 'notifications'],
+      ['UserPromptExpansion', 'skill-calls'], ['SubagentStart', 'subagent-runs'], ['PermissionDenied', 'permission-denied']];
     const orphan = CAPTURE.filter(([ev, log]) => wired.includes(ev) && !docSrc.includes(log));
     if (orphan.length) fail.push(`ô CAPTURE mồ côi${' '.repeat(12)} ${orphan.map(([e]) => e).join(' · ')} đã cắm mà harness-doctor KHÔNG đọc sổ của nó — `
       + 'một cơ chế ghi mà không ai đọc là mục tiếp theo của danh sách cắt bỏ');
@@ -5016,7 +5061,7 @@ if (repoRole() === 'template') {
 // SÀN TỪNG TỤT LẠI SAU TỔNG THẬT, và đó là một chế độ hỏng riêng đáng ghi ra: 2026-08-08 đo
 // được `195/195 pass, sàn 185` — 10 ca thêm vào mà không ai nâng sàn, tức 10 ca có thể NGỪNG
 // CHẠY mà thứ duy nhất nhìn thấy điều đó vẫn xanh. Sàn không bám tổng thật là sàn đã nghỉ việc.
-const RATCHET = 262;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195)
+const RATCHET = 266;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195)
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa

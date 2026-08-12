@@ -2541,6 +2541,82 @@ export function frictionReading({ failures = null, notifications = null, wired =
 }
 
 /**
+ * ═══ BA BỘ ĐẾM TỪ BA Ô NATIVE (#135 · #136 · #137) ═══════════════════════════
+ *
+ * **THUẦN** — nhận TEXT, không đọc đĩa. Mỗi con số trả lời một câu hỏi mà trước đó harness
+ * chỉ SUY được:
+ *
+ *   skills   `/entropy-sweep` cắt skill bằng phép ĐẾM (`12/12`) vì nó chưa từng có dữ liệu
+ *            skill nào được gọi. Suy gián tiếp từ artefact sai được: skill chạy rồi bỏ giữa
+ *            chừng không để lại gì.
+ *   agents   `AGENTS.md` đặt trần <5s ở `SubagentStop` vì *"nhân với tối đa 16 agent song
+ *            song"* — con số 16 CHƯA AI ĐO.
+ *   denied   harness đếm được guard của CHÍNH NÓ, không có số nào cho lần vendor chặn.
+ *
+ * ── HAI RANH GIỚI, VÀ CẢ HAI ĐỀU LÀ CHỖ MỘT CON SỐ SẼ NÓI DỐI
+ *
+ * ① `maxConcurrent` cần CẢ start LẪN stop. Đếm start rồi gọi nó là "đồng thời" là phép gộp
+ *    sai: 40 lần khởi động rải rác một tuần không phải 40 agent cùng lúc. Hàm này dựng lại
+ *    đường cong bằng cách duyệt hai loại mốc theo thứ tự thời gian; thiếu `stop` thì con số
+ *    chỉ có thể LỚN HƠN sự thật, nên nó trả kèm `unpaired` để chỗ in nói ra điều đó.
+ *
+ * ② `denied` phải TÁCH theo `reason`. Tập giá trị của vendor có cả `hook` — tức lần chặn của
+ *    CHÍNH TA. Gộp nó vào "vendor chặn việc thật" là tự đếm mình hai lần, và thổi phồng đúng
+ *    con số đang định dùng để tranh luận (`L0005`).
+ */
+export function slotCounters({ skills = null, agents = null, denied = null, now = Date.now(), days = 7 } = {}) {
+  const sinceMs = now - days * 86400000;
+  const out = { days, skills: null, agents: null, denied: null };
+
+  if (skills !== null) {
+    const byName = tallyLines(skills, { field: 2, sinceMs });
+    const rows = [...byName].map(([name, subs]) => ({ name, calls: Object.values(subs).reduce((s, n) => s + (Number(n) || 0), 0) }));
+    rows.sort((a, b) => b.calls - a.calls);
+    out.skills = { distinct: rows.length, total: rows.reduce((s, r) => s + r.calls, 0), top: rows.slice(0, 3) };
+  }
+
+  if (agents !== null) {
+    // Duyệt theo THỜI GIAN, không theo tổng: `+1` ở mỗi `start`, `-1` ở mỗi `stop`, và đỉnh của
+    // đường cong đó mới là "đồng thời". Dòng hỏng (thiếu cột) bị bỏ qua, không đoán.
+    const evs = [];
+    for (const line of String(agents).split('\n')) {
+      const p = line.split('|');
+      if (p.length < 4) continue;
+      const t = Date.parse(p[0]);
+      if (!Number.isFinite(t) || t < sinceMs) continue;
+      if (p[3] !== 'start' && p[3] !== 'stop') continue;
+      evs.push({ t, kind: p[3], type: p[2] });
+    }
+    evs.sort((a, b) => a.t - b.t);
+    let live = 0, peak = 0, starts = 0, stops = 0;
+    const types = new Set();
+    for (const e of evs) {
+      if (e.kind === 'start') { live++; starts++; types.add(e.type); if (live > peak) peak = live; }
+      else { stops++; if (live > 0) live--; }
+    }
+    out.agents = { starts, stops, peak, unpaired: Math.max(0, starts - stops), types: types.size };
+  }
+
+  if (denied !== null) {
+    const byTool = tallyLines(denied, { field: 2, sinceMs });
+    let vendor = 0, ours = 0;
+    const rows = [];
+    for (const [tool, subs] of byTool) {
+      let v = 0, o = 0;
+      for (const [reason, n] of Object.entries(subs)) {
+        const c = Number(n) || 0;
+        if (reason === 'hook') o += c; else v += c;
+      }
+      vendor += v; ours += o;
+      rows.push({ tool, vendor: v, ours: o });
+    }
+    rows.sort((a, b) => b.vendor - a.vendor);
+    out.denied = { vendor, ours, top: rows.slice(0, 3) };
+  }
+  return out;
+}
+
+/**
  * Ghi một dòng vào log telemetry. `kind` = tên file không đuôi.
  *
  * BẤT BIẾN: việc ghi chép KHÔNG BAO GIỜ được đổi kết quả của hook. Log không ghi
