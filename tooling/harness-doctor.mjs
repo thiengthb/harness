@@ -17,7 +17,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, devId, TEST_TELEMETRY_DIR, TEST_RUN_ID, sweepStaleTestRuns, coordinationLayer, verificationCoverage, readPacks, packPending, budgetSnapshot, configCoverage, stuckRituals, readRitualStates, releaseTagGap, emitVerdict, frictionReading } from './lib/harness.mjs';
+import { repoPath, run, config, readJson, git, exists, missingLines, REQUIRED_ATTRIBUTES, repoRole, currentBranch, matchAny, pathsFor, governanceDrift, prohibitionText, isRecordedRemoval, declaredCommands, tallyLines, devId, TEST_TELEMETRY_DIR, TEST_RUN_ID, sweepStaleTestRuns, coordinationLayer, verificationCoverage, readPacks, packPending, budgetSnapshot, configCoverage, stuckRituals, readRitualStates, releaseTagGap, emitVerdict, frictionReading, slotCounters } from './lib/harness.mjs';
 
 const QUICK = process.argv.includes('--quick');
 // PHẢI chụp TRƯỚC khi chạy các suite bên dưới: nó là mốc phân biệt "telemetry suite của lần
@@ -379,6 +379,29 @@ else if (pend.count) advice.push(`${pend.count} pack chờ quyết (${pend.mater
   console.log(LINE[fr.mode]);
   // Con số `idle` KHÔNG so được giữa hai máy — ngưỡng `messageIdleNotifThresholdMs` là của
   // NGƯỜI DÙNG, và vendor không gửi thời lượng. Nói ra ở chỗ nó được in, không giấu trong lib.
+  // Ba bộ đếm từ ba ô native khác (#135 · #136 · #137). Cùng chỗ in, vì chúng trả lời cùng một
+  // câu hỏi ở ba tầng: cái gì đang cản, và cái gì đang KHÔNG được dùng.
+  const sc = slotCounters({ skills: readLog('skill-calls'), agents: readLog('subagent-runs'), denied: readLog('permission-denied') });
+  if (sc.skills) {
+    console.log(`  skill được gọi ${sc.days} ngày: ${sc.skills.total} lần / ${sc.skills.distinct} skill khác nhau`
+      + (sc.skills.top.length ? ` · hay dùng nhất: ${sc.skills.top.map(s => `${s.name} ${s.calls}`).join(' · ')}` : ''));
+    // Đây là mẫu số mà `/entropy-sweep` chưa từng có. KHÔNG tự động cắt theo nó: một tuần dữ
+    // liệu chưa nói được skill nào chết — đúng lý do `stuckRituals` có mode `warming`.
+    if (sc.skills.total === 0) advice.push('chưa có lần gọi skill nào được ghi — ô `UserPromptExpansion` vừa cắm, cần vài phiên mới có mẫu. Đây là `?`, không phải "không skill nào được dùng"');
+  }
+  if (sc.agents) {
+    console.log(`  subagent ${sc.days} ngày: ${sc.agents.starts} lần khởi động · ${sc.agents.types} loại · đỉnh ĐỒNG THỜI ${sc.agents.peak}`
+      + (sc.agents.unpaired ? ` (${sc.agents.unpaired} chưa thấy mốc kết thúc ⇒ đỉnh có thể CAO HƠN sự thật)` : ''));
+    // Con số 16 trong AGENTS.md là GIẢ ĐỊNH. Chỉ nói ra khi phép đo THẬT vượt nó.
+    if (sc.agents.peak > 16) {
+      advice.push(`đỉnh ${sc.agents.peak} subagent đồng thời — vượt con số 16 mà AGENTS.md dùng để đặt trần <5s ở SubagentStop. `
+        + 'Trần đó nay là một giả định đã bị phép đo bác; đo lại bằng `node tooling/gates.mjs --list --timing`.');
+    }
+  }
+  if (sc.denied) {
+    console.log(`  bị TỪ CHỐI ${sc.days} ngày: ${sc.denied.vendor} lần do vendor · ${sc.denied.ours} lần do hook của ta`
+      + (sc.denied.top.length ? ` · nhiều nhất: ${sc.denied.top.map(d => `${d.tool} ${d.vendor}`).join(' · ')}` : ''));
+  }
   if (fr.mode === 'measured' && fr.idle > 0) {
     advice.push(`${fr.idle} lần agent chờ người vượt ngưỡng trong ${fr.days} ngày — đây là SỐ LẦN của MÁY NÀY `
       + '(ngưỡng `messageIdleNotifThresholdMs` do bạn chỉnh, và sự kiện không mang thời lượng), nên nó đọc được XU HƯỚNG chứ không so được với máy khác.');
