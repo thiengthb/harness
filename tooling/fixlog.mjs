@@ -86,9 +86,26 @@ if (args[0] === '--top') {
   const closed = readClosed();
   const tracked = readTracked();
   const manual = new Set(RULES.map(r => r.key));
-  const sorted = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
+
+  // TRẦN 15 + SẮP THEO TẦN SUẤT là một phép cắt IM LẶNG, và nó cắt sai đầu.
+  //
+  // Đo 2026-08-13: sổ có 17 nhóm, 14 trong đó ĐÃ ĐÓNG. Mọi nhóm đều `1×`, nên thứ tự quyết
+  // định bởi thứ tự chèn — và hai nhóm bị rơi khỏi trần là hai nhóm MỚI NHẤT, tức đúng hai
+  // mục chưa ai xử. `rituals` nói *"2/17 chưa xử"* trong khi `--top` — cái lệnh bảng nghi
+  // thức chỉ bạn tới để XEM chúng — hiện đúng 1. Hai công cụ, hai con số, cho cùng câu hỏi:
+  // đúng lớp lỗi mà mục fixlog về `accept.mjs`/`rituals`/`doctor` đã ghi.
+  //
+  // Hai sửa, và cái thứ nhất mới là cái chữa gốc:
+  //   ① CHƯA XỬ đứng trước ĐÃ XỬ. Một nhóm đã đóng không còn là việc, nên nó không được
+  //      chiếm suất của một nhóm đang là việc. Sau đó mới tới tần suất.
+  //   ② Phần bị cắt phải TỰ KHAI. Một cái trần không nói gì đọc y hệt "đã in hết" — và với
+  //      công cụ mà nhiệm vụ là KHÔNG ĐÁNH RƠI phát hiện nào, đó là chế độ hỏng tệ nhất.
+  const handledTop = handledGroups(new Map([...groups].map(([k, rs]) => [k, rs.map(r => r.ts)])), closed, tracked);
+  const sorted = [...groups.entries()].sort((a, b) =>
+    (handledTop.has(a[0]) ? 1 : 0) - (handledTop.has(b[0]) ? 1 : 0) || b[1].length - a[1].length);
+  const CAP = 15;
   console.log('\n=== NHÓM THEO TẦN SUẤT ===');
-  for (const [k, rows] of sorted.slice(0, 15)) {
+  for (const [k, rows] of sorted.slice(0, CAP)) {
     const done = closed.get(k);
     const track = tracked.get(k);
     // TÁI PHÁT: đã đóng, mà vẫn có mục ghi SAU ngày đóng. Dấu ✔ khi đó là một lời khai sai —
@@ -119,6 +136,14 @@ if (args[0] === '--top') {
       console.log(`         ⇢ ĐANG CHỜ ${trk.recurred.length ? `— và đã TÁI PHÁT ${trk.recurred.length} lần kể từ khi ghi` : ''}`.trimEnd());
       console.log(`         ${String(track.note).slice(0, 150)} (ghi ${String(track.ts).slice(0, 10)})`);
     }
+  }
+  // Phần bị trần cắt TỰ KHAI. Với ① ở trên, `chưa xử` ở đây chỉ khác 0 khi có hơn 15 nhóm
+  // đang là việc thật — và nếu ngày đó tới thì đây đúng là con số cần đọc.
+  const hidden = sorted.slice(CAP);
+  if (hidden.length) {
+    const hiddenOpen = hidden.filter(([k]) => !handledTop.has(k)).length;
+    console.log(`\n  … ${hidden.length} nhóm nữa KHÔNG in (trần ${CAP} nhóm)`
+      + ` — ${hiddenOpen} trong số đó CHƯA XỬ. Nhóm đã đóng xếp sau, nên trần cắt phần đã xử trước.`);
   }
   console.log('\n  ★ = xuất hiện ≥2 lần → ĐỦ ĐIỀU KIỆN promote thành bài học (một lần là ngẫu nhiên).');
   console.log('  ✔ = đã xử lý xong, không tính là việc tới hạn nữa.');

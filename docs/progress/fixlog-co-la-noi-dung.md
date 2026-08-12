@@ -48,6 +48,23 @@ mục mô tả chính bug này mở đầu bằng `--help`. Guard không có đ�
 Và ca test đã bị **mutation-test**: đặt bản vá sau một cờ `MUTANT`, chạy lại ⇒ **6/6 khẳng
 định đỏ, suite exit 1**. Nó không phải một ca trang trí chưa từng đỏ.
 
+### 1b. Bug thứ hai, tìm được vì bug thứ nhất bắt tôi nhìn kỹ sổ
+
+Sau khi rà xong, `rituals` nói **2/17 mục chưa xử** còn `fixlog --top` hiện **1**. Hai công cụ
+hai con số cho cùng câu hỏi — đúng lớp lỗi tôi vừa đóng ở mục #9 vài phút trước.
+
+Gốc: `fixlog.mjs:91` `sorted.slice(0, 15)`. Trần 15 nhóm, sắp theo tần suất, **vứt phần dư
+không nói gì**. Sổ có 17 nhóm mà 14 đã đóng; mọi nhóm đều `1×` nên thứ tự rơi về thứ tự chèn,
+và hai nhóm bị đánh rơi là hai nhóm **mới nhất** — tức đúng hai mục chưa ai xử. Trần cắt đúng
+cái đang là việc và giữ lại cái đã xong.
+
+Sửa: nhóm CHƯA XỬ sắp trước nhóm đã xử; phần bị trần cắt tự khai kèm số chưa xử. `test-hooks`
+⑪, sàn **272 → 273**, mutation-test cho ra đúng câu *"trần của --top GIẤU 4/4 nhóm CHƯA XỬ"*.
+
+Ghi lại một chi tiết vì nó tốn của tôi một lượt: ca ⑪ đỏ lần đầu vì **test sai, không phải
+code sai** — needle `nhomdadong1` khớp cả `nhomdadong10..15` nên `--close` từ chối vì mơ hồ và
+fixture dựng ra không phải hình dạng cần đo. Ca test giờ **khẳng định fixture** trước khi đo.
+
 ### 2. Rà 16 mục fixlog của máy này với code upstream — 15 đóng
 
 Sổ fixlog **không đi theo repo** (`.claude/telemetry/` bị gitignore, cố ý). Nên sổ ở máy này

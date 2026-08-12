@@ -2187,6 +2187,54 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
 
   if (bad10.length) fail.push(`fixlog cờ lạ${' '.repeat(17)} ${bad10.length} ca sai: ${bad10.join(' | ')}`);
   else ok.push(`fixlog cờ lạ${' '.repeat(17)} \`--help\` im · cờ gõ sai KÊU ở stderr và không ghi · \`--\` cứu nội dung mở đầu bằng gạch · đường thường không hỏng`);
+
+  // ⑪ TRẦN CỦA `--top` KHÔNG ĐƯỢC GIẤU VIỆC. Trần 15 nhóm + sắp theo tần suất là một phép cắt
+  //    im lặng, và trên sổ thật nó cắt SAI ĐẦU: đo 2026-08-13, sổ 17 nhóm mà 14 đã đóng, mọi
+  //    nhóm đều `1×` nên thứ tự rơi về thứ tự chèn — hai nhóm bị rơi là hai nhóm MỚI NHẤT, tức
+  //    đúng hai mục chưa ai xử. `rituals` nói "2/17 chưa xử"; `--top`, cái lệnh bảng nghi thức
+  //    chỉ bạn tới để XEM chúng, hiện đúng 1. Hai công cụ hai con số cho cùng câu hỏi.
+  //
+  //    Ca này dựng đúng hình dạng đó: nhiều nhóm hơn trần, và nhóm CHƯA XỬ chèn SAU cùng — tức
+  //    vị trí mà bản cũ đánh rơi. Không dựng đủ số nhóm thì nhánh trần không bao giờ chạy và
+  //    mutant "quay lại sort theo tần suất" SỐNG SÓT.
+  const t11 = mkdtempSync(join(tmpdir(), 'harness-cap-'));
+  const fx11 = (...a) => spawnSync(process.execPath, [repoPath('tooling', 'fixlog.mjs'), ...a],
+    { encoding: 'utf8', cwd: repoPath(), env: { ...process.env, HARNESS_TELEMETRY_DIR: t11 } });
+  const bad11 = [];
+  const CLOSED_N = 16, OPEN_N = 4;          // 20 nhóm > trần 15
+  // Tên KHÔNG được lồng tiền tố nhau: `--close` khớp theo chuỗi con, nên `nhomdadong1` cũng
+  // khớp `nhomdadong10..15` ⇒ mơ hồ ⇒ bị từ chối ⇒ fixture dựng ra KHÔNG phải hình dạng cần
+  // đo, và ca test đỏ vì lý do không liên quan. Hậu tố `zz` chốt đuôi mỗi tên lại.
+  const CLOSED = (i) => `nhomdadong${String(i).padStart(2, '0')}zz`;
+  const OPEN = (i) => `nhomconmo${String(i).padStart(2, '0')}zz`;
+  let body11 = '';
+  for (let i = 0; i < CLOSED_N; i++) body11 += `2026-07-01T00:00:0${i % 10}.000Z|fixture|main|${CLOSED(i)} mot loi da duoc xu ly xong roi\n`;
+  for (let i = 0; i < OPEN_N; i++) body11 += `2026-08-13T00:00:0${i}.000Z|fixture|main|${OPEN(i)} mot loi VAN CHUA AI XU LY\n`;
+  writeFileSync(join(t11, 'manual-fixes.log'), body11, 'utf8');
+  // Khẳng định FIXTURE dựng đúng. Không có dòng này thì một `--close` bị từ chối làm ca test
+  // đỏ ở một khẳng định KHÁC, và người đọc đi sửa nhầm chỗ — đã xảy ra khi viết chính ca này.
+  const failedClose = [];
+  for (let i = 0; i < CLOSED_N; i++) {
+    if (fx11('--close', CLOSED(i), `đã xử ở ca thử ${i}`).status !== 0) failedClose.push(CLOSED(i));
+  }
+  if (failedClose.length) bad11.push(`fixture hỏng: ${failedClose.length}/${CLOSED_N} lệnh --close bị từ chối (${failedClose.slice(0, 3).join(' ')}) — ca này KHÔNG đo được thứ nó định đo`);
+
+  const top11 = fx11('--top').stdout || '';
+  // ① Mọi nhóm CHƯA XỬ phải in ra, kể cả khi số nhóm đã đóng một mình đã vượt trần.
+  const missing11 = [];
+  for (let i = 0; i < OPEN_N; i++) if (!top11.includes(OPEN(i))) missing11.push(OPEN(i));
+  if (missing11.length) bad11.push(`trần của --top GIẤU ${missing11.length}/${OPEN_N} nhóm CHƯA XỬ (${missing11.join(' ')}) — rituals đếm chúng, --top không in chúng`);
+  // ② Và chúng phải đứng TRƯỚC nhóm đã đóng: một nhóm hết là việc không được chiếm suất.
+  const firstClosed = top11.search(/nhomdadong\d/);
+  const lastOpen = top11.lastIndexOf('nhomconmo');
+  if (firstClosed >= 0 && lastOpen >= 0 && lastOpen > firstClosed) bad11.push('nhóm ĐÃ ĐÓNG in trước nhóm CHƯA XỬ — trần sẽ lại cắt đúng phần đang là việc');
+  // ③ Phần bị cắt phải TỰ KHAI. Một cái trần im lặng đọc y hệt "đã in hết".
+  if (!/nhóm nữa KHÔNG in/.test(top11)) bad11.push('trần cắt bớt mà KHÔNG khai — "đã in hết" và "in 15/20" đọc giống hệt nhau');
+  else if (!/\d+ trong số đó CHƯA XỬ/.test(top11)) bad11.push('dòng khai phần bị cắt không nói bao nhiêu trong đó CHƯA XỬ — đó là con số duy nhất đáng đọc');
+  rmSync(t11, { recursive: true, force: true });
+
+  if (bad11.length) fail.push(`fixlog --top trần${' '.repeat(13)} ${bad11.length} ca sai: ${bad11.join(' | ')}`);
+  else ok.push(`fixlog --top trần${' '.repeat(13)} nhóm CHƯA XỬ không bị trần giấu và đứng trước nhóm đã đóng · phần bị cắt tự khai kèm số chưa xử`);
 }
 
 // ─── L0008: một tín hiệu TỚI HẠN phải TẮT ĐƯỢC bằng hành động nó đề nghị ─────
@@ -5180,7 +5228,7 @@ if (repoRole() === 'template') {
 // SÀN TỪNG TỤT LẠI SAU TỔNG THẬT, và đó là một chế độ hỏng riêng đáng ghi ra: 2026-08-08 đo
 // được `195/195 pass, sàn 185` — 10 ca thêm vào mà không ai nâng sàn, tức 10 ca có thể NGỪNG
 // CHẠY mà thứ duy nhất nhìn thấy điều đó vẫn xanh. Sàn không bám tổng thật là sàn đã nghỉ việc.
-const RATCHET = 272;   // +1 cờ-lạ-không-phải-nội-dung (fixlog ⑩) · +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
+const RATCHET = 273;   // +1 cờ-lạ-không-phải-nội-dung (fixlog ⑩) · +1 trần --top không giấu việc (fixlog ⑪) · +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa

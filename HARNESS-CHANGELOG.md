@@ -13,8 +13,15 @@
 
 ## 2.72.0 — 2026-08-13
 
-**minor.** `fixlog.mjs` thôi nhận một CỜ làm NỘI DUNG. Thêm `--help`/`-h`, và cửa thoát
-POSIX `--` cho nội dung thật sự mở đầu bằng dấu gạch.
+**minor.** `fixlog.mjs` thôi mất dữ liệu im lặng — **hai đường**, cả hai đều tìm được bằng
+cách dùng chính công cụ đó trong một phiên.
+
+Cùng một mục đích, vì cả hai đều là **cùng một chế độ hỏng ở cùng một file**: cái sổ mà toàn
+bộ vòng học đứng trên, tự đánh rơi hoặc tự làm bẩn dữ liệu của nó mà không kêu một tiếng.
+
+## ĐƯỜNG 1 — một CỜ không phải là NỘI DUNG
+
+Thêm `--help`/`-h`, và cửa thoát POSIX `--` cho nội dung thật sự mở đầu bằng dấu gạch.
 
 ### Lỗi
 
@@ -49,6 +56,37 @@ cứu được nội dung mở đầu bằng gạch · đường thường khôn
 
 Ca test đã bị **mutation-test**: tắt bản vá ⇒ 6/6 khẳng định đỏ, suite exit 1. Nó không phải
 một ca trang trí chưa từng đỏ.
+
+## ĐƯỜNG 2 — trần của `--top` giấu đúng phần đang là việc
+
+`--top` cắt ở 15 nhóm và **vứt phần dư không nói gì**. Trên sổ thật, phép cắt đó cắt **sai
+đầu**.
+
+### Số đo, 2026-08-13
+
+Sổ có **17 nhóm, 14 đã đóng**. Mọi nhóm đều `1×`, nên phép sắp theo tần suất rơi về thứ tự
+chèn — và hai nhóm bị trần đánh rơi là hai nhóm **mới nhất**, tức đúng hai mục **chưa ai xử**.
+
+Kết quả: `rituals` nói *"2/17 mục fixlog chưa xử"*, còn `--top` — chính cái lệnh mà bảng nghi
+thức chỉ bạn tới để XEM chúng — hiện đúng **1**. Hai công cụ, hai con số, cho cùng một câu
+hỏi. Đó là lớp lỗi mà mục fixlog về `accept.mjs`/`rituals`/`doctor` đã ghi từ 2026-08-05.
+
+### Hai sửa, và cái thứ nhất chữa gốc
+
+1. **CHƯA XỬ đứng trước ĐÃ XỬ**, rồi mới tới tần suất. Một nhóm đã đóng không còn là việc,
+   nên nó không được chiếm suất của một nhóm đang là việc.
+2. **Phần bị cắt tự khai**, kèm bao nhiêu trong đó chưa xử. Một cái trần không nói gì đọc y
+   hệt *"đã in hết"* — và với công cụ có nhiệm vụ KHÔNG ĐÁNH RƠI phát hiện nào, đó là chế độ
+   hỏng tệ nhất nó có thể có.
+
+### Bằng chứng
+
+`test-hooks` ⑪ dựng 20 nhóm (16 đã đóng, 4 mở) — nhiều hơn trần, và phần mở nằm ở đúng vị
+trí bản cũ đánh rơi. Ca này còn **khẳng định fixture dựng đúng** trước khi đo, vì khi viết nó
+16 lệnh `--close` từng bị từ chối do tên lồng tiền tố nhau và ca đỏ ở một khẳng định **khác**.
+
+Sàn **272 → 273**. Suite `273/273 exit 0`. Mutation-test: trả phép sắp về tần suất-đơn-thuần
+⇒ ca đỏ với đúng câu *"trần của --top GIẤU 4/4 nhóm CHƯA XỬ"*.
 
 ---
 
