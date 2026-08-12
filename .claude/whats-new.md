@@ -1,4 +1,4 @@
-<!-- version: 2026-08-12-e -->
+<!-- version: 2026-08-12-f -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,26 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-12 — ba câu hỏi cũ nay có SỐ (v2.69.0)
+
+```
+node tooling/harness-doctor.mjs      # §VÒNG HỌC
+  skill được gọi 7 ngày: 0 lần / 0 skill khác nhau
+  subagent 7 ngày: 0 lần khởi động · 0 loại · đỉnh ĐỒNG THỜI 0
+  bị TỪ CHỐI 7 ngày: 0 lần do vendor · 0 lần do hook của ta
+```
+
+Toàn số 0 là **đúng cho hôm nay** — ba ô vừa cắm. Vài phiên nữa mới có mẫu.
+
+Ba thứ đáng biết:
+
+1. **Con số `16`** trong `AGENTS.md` (*"nhân với tối đa 16 agent song song"*) **chưa ai đo**.
+   Từ nay nó được đo, và doctor sẽ nói nếu phép đo vượt nó.
+2. **"đồng thời" ≠ tổng** — đỉnh tính theo đường cong start/stop, không phải đếm lần khởi động.
+3. **"do hook của ta" tách khỏi "do vendor"** — gộp là tự đếm mình hai lần.
+
+`/entropy-sweep` **chưa** đổi cách cắt skill: một tuần dữ liệu chưa nói được skill nào chết.
 
 ## 2026-08-12 — harness tự ghi "hôm nay cái gì cản" (v2.68.0)
 

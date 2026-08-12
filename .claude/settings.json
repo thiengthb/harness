@@ -111,6 +111,17 @@
         ]
       }
     ],
+    "SubagentStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/observe.mjs"
+          }
+        ]
+      }
+    ],
     "SubagentStop": [
       {
         "matcher": "*",
@@ -118,6 +129,32 @@
           {
             "type": "command",
             "command": "node tooling/gates.mjs --stage subagent"
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/observe.mjs"
+          }
+        ]
+      }
+    ],
+    "UserPromptExpansion": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/observe.mjs"
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/observe.mjs"
           }
         ]
       }
