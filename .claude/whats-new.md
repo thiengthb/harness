@@ -1,4 +1,4 @@
-<!-- version: 2026-08-12-c -->
+<!-- version: 2026-08-12-d -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -8,6 +8,20 @@
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
   Giữ file NGẮN — xoá mục cũ hơn 1 tháng.
 -->
+
+## 2026-08-12 — backtick trong `node -e "…"` bị chặn (v2.67.0)
+
+Bash **thay** backtick bằng output của lệnh. Đã hỏng thật: một file rỗng tên `0` ở gốc repo,
+một lần suýt ghi hỏng `MEMORY.md`, một tiêu đề issue mất ký tự.
+
+```
+node -e "const s = `xin chào`"    ⛔ CHẶN
+node -e 'const s = `xin chào`'    ✅ dùng nháy ĐƠN
+echo "hôm nay là `date`"          ✅ không đụng — substitution cố ý, ngoài node/gh
+```
+
+Văn bản **nhiều dòng** thì đừng nhét vào `node -e`: dùng công cụ `Write` ghi một file `.mjs`
+rồi `node file.mjs`. Thông báo chặn có sẵn câu đó.
 
 ## 2026-08-12 — `git checkout -- <file>` không còn bị chặn (v2.66.0)
 

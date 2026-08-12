@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -949,8 +949,21 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   const whys = [...dcgSrc.matchAll(/why:\s*'([^']+)'/g)].map(m => m[1]);
   const deny = new Set((readJson(repoPath('.claude', 'settings.json'))?.permissions?.deny) || []);
 
-  // `null` = CHƯA có tầng một. Đó là sự thật đo được, không phải thiếu sót của bảng —
-  // và nó được đếm chứ không bị giấu.
+  // BA giá trị, không phải hai — và giá trị thứ ba ra đời vì ratchet đang ép về một chỗ KHÔNG
+  // TỚI ĐƯỢC (#177):
+  //
+  //   '<pattern>'         ĐÃ có tầng một, và pattern đó phải THẬT SỰ nằm trong settings.json
+  //   null                CHƯA có — đếm vào ratchet, và ratchet chỉ được giảm
+  //   { why: '<lý do>' }  KHÔNG THỂ có — không đếm vào ratchet, nhưng PHẢI viết ra vì sao
+  //
+  // Gộp hai ca cuối là đúng lỗi mà cả repo này nói về: `permissions.deny` khớp theo TIỀN TỐ
+  // lệnh, nên có những điều cấm nó không bao giờ biểu diễn được (một ký tự ở giữa đối số).
+  // Ép chúng vào `null` thì ratchet đòi một thứ không tồn tại, và cách duy nhất đi tiếp là
+  // NỚI ratchet — tức phá đúng cái nó bảo vệ. `L0005` gọi tên chuyện này: một bộ đếm không
+  // phân biệt được hai trạng thái sẽ đổ về phía dễ chịu.
+  //
+  // Cái giữ nó trung thực: lý do là BẮT BUỘC và được IN RA ở dòng xanh mỗi lần chạy, nên
+  // "không thể có" là một lời khai review được trong PR, không phải một cửa thoát im lặng.
   const LAYER1 = new Map([
     ['ghi lại lịch sử chung',                        'Bash(git push --force:*)'],
     ['phá thay đổi chưa commit',                     'Bash(git reset --hard:*)'],
@@ -964,15 +977,23 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     ['chạm production',                              null],
     ['lệnh cấp hệ thống',                            null],
     ['fork bomb',                                    null],
+    ['backtick trong đối số văn bản: bash THAY nó bằng output của lệnh',
+      { why: '`permissions.deny` khớp theo TIỀN TỐ lệnh (`Bash(node -e:*)`), nên nó chỉ chặn được CẢ `node -e` '
+        + 'chứ không chặn được "một backtick nằm ngoài nháy đơn ở giữa đối số". Chặn cả `node -e` là bắn nhầm mọi lệnh một dòng hợp lệ' }],
   ]);
 
   // Ratchet: đo 2026-08-06. GIẢM thì sửa số này xuống; TĂNG là đỏ, và đó là mục đích.
   const UNCOVERED_RATCHET = 8;
 
+  const IMPOSSIBLE = (v) => Boolean(v) && typeof v === 'object';
   const missing = whys.filter(w => !LAYER1.has(w));
   const stale = [...LAYER1.keys()].filter(w => !whys.includes(w));
-  const lying = [...LAYER1].filter(([, p]) => p && !deny.has(p)).map(([w]) => w);
-  const uncovered = whys.filter(w => LAYER1.get(w) == null);
+  const lying = [...LAYER1].filter(([, p]) => typeof p === 'string' && !deny.has(p)).map(([w]) => w);
+  const uncovered = whys.filter(w => LAYER1.get(w) === null);
+  const impossible = whys.filter(w => IMPOSSIBLE(LAYER1.get(w)));
+  // "Không thể có" mà KHÔNG viết lý do thì không phân biệt được với "tôi lười" — và nó sẽ
+  // thành đường thoát mặc định cho mọi rule sau. Lý do là điều kiện để dùng ô thứ ba.
+  const mute = [...LAYER1].filter(([, p]) => IMPOSSIBLE(p) && !String(p.why || '').trim()).map(([w]) => w);
 
   if (naIfBare(1, 'dcg ↔ permissions.deny: không đối chiếu được hai tầng')) {
     // `LAYER1` đọc `permissions.deny` từ `settings.json` — không có file thì mọi mục đều
@@ -992,11 +1013,16 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
       + ` nghĩa là điều cấm tương ứng chỉ còn \`dcg\` đứng sau, mà \`dcg\` né được bằng cú pháp nháy của shell (issue #43).`
       + ` Thêm lại dòng deny, hoặc chấp nhận một lớp và ghi lý do. Đây KHÔNG phải test của template hỏng ở repo bạn —`
       + ` nó là phòng thủ của bạn vừa mỏng đi, và đó là thứ chỉ bạn biết.`);
+  } else if (mute.length) {
+    fail.push(`dcg ↔ permissions.deny${' '.repeat(6)} ${mute.length} mục khai "tầng một KHÔNG THỂ có" mà không viết vì sao: ${mute.join(' · ')}`
+      + ` — ô thứ ba là một LỜI KHAI review được, không phải cửa thoát. Không viết được lý do nghĩa là nó thuộc \`null\`.`);
   } else if (uncovered.length > UNCOVERED_RATCHET) {
     fail.push(`dcg ↔ permissions.deny${' '.repeat(6)} ${uncovered.length} điều cấm CHỈ có dcg đứng sau (ratchet ${UNCOVERED_RATCHET}) — `
       + `dcg né được bằng cú pháp nháy (issue #43), nên mỗi mục ở đây là một điều cấm KHÔNG có tầng nào cưỡng chế thật. Thêm dòng vào permissions.deny, đừng nới ratchet`);
   } else {
-    ok.push(`dcg ↔ permissions.deny${' '.repeat(6)} ${whys.length} điều cấm đều khai tầng một; ${whys.length - uncovered.length} có, ${uncovered.length} chưa (ratchet ${UNCOVERED_RATCHET}, chỉ được giảm)`);
+    ok.push(`dcg ↔ permissions.deny${' '.repeat(6)} ${whys.length} điều cấm đều khai tầng một; `
+      + `${whys.length - uncovered.length - impossible.length} có, ${uncovered.length} chưa (ratchet ${UNCOVERED_RATCHET}, chỉ được giảm)`
+      + (impossible.length ? `, ${impossible.length} KHÔNG THỂ có: ${impossible.map(w => `${w} — ${LAYER1.get(w).why}`).join(' | ')}` : ''));
   }
 }
 
@@ -3153,6 +3179,8 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     // (chúng chỉ minh hoạ ngữ nghĩa KHỚP), còn rule này có một ranh giới hẹp (`.` vs `./src`)
     // mà một bản chép sẽ trôi khỏi bản thật mà không ai thấy (#160).
     { program: GIT, re: GIT_DISCARD_WHOLE_TREE, why: 'checkout bỏ cả cây' },
+    // `test:` — cần TRẠNG THÁI nháy, thứ `re` không thấy được vì nó khớp trên bản đã bỏ nháy.
+    { test: backtickEvalHazard, why: 'backtick' },
   ];
   const BLOCKED = true, ALLOWED = false;
   //                                                                        mong đợi
@@ -3195,6 +3223,29 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     [`git checkout -- src/*`, ALLOWED, '#160 glob CÓ PHẠM VI thư mục — hẹp, không phải cả cây'],
     [`git checkout main`, ALLOWED, '#160 chuyển nhánh, không phải bỏ thay đổi'],
     [`git checkout -b feat/x`, ALLOWED, '#160 tạo nhánh'],
+    // ── #177: backtick NGOÀI nháy đơn = command substitution ────────────────
+    //
+    // Chiều CHO QUA là chiều `L0002` đòi, và `dcg` chính là hook đã bắn nhầm 5 lần ở #43 —
+    // nên nửa dưới của bảng này dài hơn nửa trên, cố ý.
+    [`node -e "const s = \`xin chào\`"`, BLOCKED, '#177 backtick trong nháy KÉP — bash thay bằng output lệnh'],
+    [`node --eval "x = \`a\`"`, BLOCKED, '#177 `--eval` cũng vậy'],
+    [`gh issue create --title "sửa \`foo\`"`, BLOCKED, '#177 lần 7 đã đo: tiêu đề mất ký tự'],
+    [`gh pr create --body "dùng \`npm ci\` nhé"`, BLOCKED, '#177 `--body` cùng gốc rễ'],
+    [`node -e "console.log(\`a\`)" && echo xong`, BLOCKED, '#177 lệnh đầu trong chuỗi && vẫn bị soi'],
+    [`node -e 'const s = \`xin chào\`'`, ALLOWED, '#177 backtick trong nháy ĐƠN — bash KHÔNG diễn giải, đây là cách đi đúng'],
+    [`node -e "console.log('a')"`, ALLOWED, '#177 không có backtick'],
+    [`node tooling/rituals.mjs --all`, ALLOWED, '#177 không phải `-e`'],
+    [`echo "hôm nay là \`date\`"`, ALLOWED, '#177 substitution CỐ Ý ngoài node/gh — chặn nó là bắn nhầm (L0002)'],
+    [`gh issue create --body-file spec.md`, ALLOWED, '#177 `--body-file` KHÔNG phải `--body`'],
+    [`node -e "const s = \\\`a\\\`"`, ALLOWED, '#177 backtick ĐÃ escape là backtick literal, không phải substitution'],
+    // FALSE NEGATIVE ĐÃ BIẾT, và ca này tồn tại để nó không im lặng: backtick trong đối số của
+    // một script node THẬT cũng bị bash thay, nhưng rule khoá vào `-e|--eval|--title|--body` —
+    // bảy lần đã đo đều nằm ở đó. Nới phạm vi ra "mọi đối số" là quay lại bắn nhầm (L0002).
+    [`node scripts/x.mjs "ghi \`date\` vào log"`, ALLOWED, '#177 phạm vi HẸP có chủ ý — không phải cờ văn-bản-dài'],
+    // CA PHÂN BIỆT cho gate CHƯƠNG TRÌNH, và nó cần cả ba thứ cùng lúc: chương trình NGOÀI
+    // node/gh · một cờ TRÙNG TÊN (`grep -e`) · một backtick. Thiếu vế giữa thì mutant "bỏ gate
+    // chương trình" SỐNG SÓT — gate cờ che mất nó. Đo 2026-08-12: đúng thế, mutant N3 sống lượt đầu.
+    [`grep -e "tìm \`x\`" file.txt`, ALLOWED, '#177 `grep -e` cũng có cờ `-e` — gate CHƯƠNG TRÌNH mới là thứ loại nó'],
   ];
   const bad = [];
   for (const [cmd, want, label] of TABLE) {
@@ -3203,7 +3254,25 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   }
   if (bad.length) fail.push(`dcg khớp lệnh${L} ${bad.length}/${TABLE.length} ca sai: ${bad.join(' | ')}`);
   else ok.push(`dcg khớp lệnh${L} ${TABLE.length} ca — 5 lần chặn nhầm ĐÃ ĐO đều đi qua, 5 biến thể nguỵ trang đều bị chặn, `
-    + `và \`git checkout --\` phân biệt được BỎ CẢ CÂY với KHÔI PHỤC MẤY FILE (#160)`);
+    + `\`git checkout --\` phân biệt BỎ CẢ CÂY với KHÔI PHỤC MẤY FILE (#160), backtick phân biệt nháy ĐƠN với nháy KÉP (#177)`);
+
+  // Máy đọc nháy, tách riêng khỏi bảng trên: bảng kia đo RULE (có gate `node|gh`), khối này đo
+  // PHÉP ĐỌC. Một mutant làm hỏng phép đọc mà rule vẫn đúng ở 11 ca kia là chuyện có thật —
+  // gate chương trình che mất phần lớn đầu vào.
+  const QUOTE = [
+    ['x = `a`', true, 'không nháy — bash VẪN thay'],
+    ['"x = `a`"', true, 'nháy kép'],
+    ["'x = `a`'", false, 'nháy ĐƠN — an toàn'],
+    ['"a" `b`', true, 'ra khỏi nháy kép rồi mới tới backtick'],
+    ['\'a\' "`b`"', true, 'nháy đơn ĐÓNG rồi, backtick sau đó nằm trong nháy kép'],
+    ['"\\`a\\`"', false, 'đã escape ⇒ backtick literal'],
+    ["'\\`a\\`'", false, 'trong nháy đơn thì `\\` cũng chỉ là ký tự — vẫn an toàn'],
+    ['x = 1', false, 'không có backtick'],
+    ['', false, 'chuỗi rỗng'],
+  ];
+  const badQ = QUOTE.filter(([s, want]) => backtickSubstitution(s) !== want);
+  if (badQ.length) fail.push(`backtickSubstitution${' '.repeat(7)} ${badQ.length}/${QUOTE.length} ca sai: ${badQ.map(([, , l]) => l).join(' · ')}`);
+  else ok.push(`backtickSubstitution${' '.repeat(7)} ${QUOTE.length} ca — nháy ĐƠN an toàn, nháy kép và KHÔNG nháy thì không`);
 
   // GIỚI HẠN PHẢI ĐƯỢC NÓI RA, không được để người đọc tự suy là đã kín. Biến shell cần
   // THỰC THI mới biết giá trị — regex không bao giờ với tới. Ca này khẳng định đúng điều đó:

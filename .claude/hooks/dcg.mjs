@@ -8,7 +8,7 @@
  * `--force-with-lease` CỐ Ý không bị chặn: đó là biến thể an toàn và agent cần nó
  * để rebase nhánh của chính mình.
  */
-import { hookInput, toolCommand, block, pass, telemetry, hookRan, config, declareFailMode, dangerousCommand, GIT_DISCARD_WHOLE_TREE } from '../../tooling/lib/harness.mjs';
+import { hookInput, toolCommand, block, pass, telemetry, hookRan, config, declareFailMode, dangerousCommand, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard } from '../../tooling/lib/harness.mjs';
 
 declareFailMode(2, 'Không phân tích được lệnh nên không biết nó có phá lịch sử chung hay production hay không (nhóm 1+3).');
 
@@ -39,6 +39,10 @@ const DENY = [
   { program: /^(kubectl|helm)$/, re: /--context[= ]\S*prod/i, why: 'chạm production', fix: 'agent chỉ được chạm staging; người bấm nút prod' },
   { program: /^terraform$/, re: /^terraform\s+apply[^|;&]*-auto-approve/, why: 'apply hạ tầng không review plan', fix: 'chạy `terraform plan`, đọc plan, rồi người apply' },
   { program: /^(shutdown|reboot|mkfs(\..+)?|dd)$/, re: /^(shutdown|reboot|mkfs|dd\s+if=)/, why: 'lệnh cấp hệ thống', fix: 'ngoài phạm vi của agent' },
+  // `test:` thay vì `re:` — phán đoán này cần TRẠNG THÁI NHÁY, mà `re` khớp trên bản đã bỏ
+  // nháy (#177). Backtick trong nháy ĐƠN được phép: bash không diễn giải gì trong `'…'`.
+  { test: backtickEvalHazard, why: 'backtick trong đối số văn bản: bash THAY nó bằng output của lệnh',
+    fix: 'dùng nháy ĐƠN cho đối số có backtick, hoặc — với văn bản nhiều dòng — dùng công cụ `Write` ghi một file `.mjs` rồi `node file.mjs`' },
   // KHÔNG có `program`: SQL nằm bên trong đối số của psql/mysql/bất kỳ client nào, và fork
   // bomb không có token chương trình nào để bám vào.
   { re: /\b(DROP\s+(TABLE|DATABASE|SCHEMA)|TRUNCATE\s+TABLE)\b/i, why: 'phá dữ liệu', fix: 'viết migration có rollback plan, chạy trên staging trước' },
@@ -54,6 +58,14 @@ if (hit) {
   );
 }
 
+// ĐO 2026-08-12 (#177): dòng dưới KHÔNG TỚI ĐƯỢC AGENT. Chạy hook trực tiếp thì nó in ra;
+// chạy một lệnh Bash thật khớp đúng điều kiện thì không dòng nào xuất hiện trong kết quả công
+// cụ. `console.error` + exit 0 ở PreToolUse là một kênh mà người gây ra lỗi không nghe thấy.
+//
+// KHÔNG XOÁ ở lô này — biến nó thành `block()` là THÊM một điều cấm, và đó là quyết định của
+// DRI. Ghi phép đo lại đây để người sau không tưởng nó đang có tác dụng: một cơ chế vẫn chạy,
+// vẫn tốn một nhánh, và không tới ai là đúng thứ `/harness-retro` bước 4 phải cắt.
+//
 // Cảnh báo mềm (không chặn): thêm dependency không qua package manager
 if (/\bpackage\.json\b/.test(cmd) && /(>>|>|sed\s+-i|tee)\s/.test(cmd)) {
   console.error('⚠️  Đang sửa package.json bằng shell. Dùng lệnh của package manager thay vì sửa tay.');

@@ -1507,6 +1507,55 @@ export const GIT_DISCARD_WHOLE_TREE =
   /^git\s+checkout\s+(?:\S+\s+)*--(?:$|\s(?:\S+\s)*(?:\.\.\/|\.\.|\.\/|\.|:\/|\*)(?:\s|$))/;
 
 /**
+ * ═══ BACKTICK NGOÀI NHÁY ĐƠN LÀ COMMAND SUBSTITUTION, KHÔNG PHẢI VĂN BẢN (#177) ══
+ *
+ * Lớp lỗi `Context`, không phải `Constraint`: đây là kiến thức tôi **CÓ** — nó nằm trong
+ * auto-memory nhiều phiên liền — và vẫn vi phạm **≥9 lần**. Một lời nhắc đã thuộc lòng mà vẫn
+ * bị vi phạm thì không phải cơ chế, nó là ghi chép. Dạng rẻ hơn trên thang giá (gotcha 1 dòng)
+ * **đã thử và đã thất bại có bằng chứng**.
+ *
+ * Thiệt hại đo được, 2026-08-07: `cap > 0` trong `node -e` bị bash đọc thành **redirect** ⇒ tạo
+ * một file rỗng tên `0` ở gốc repo (`apply-to.mjs --audit` bắt được); một lần suýt ghi hỏng
+ * `MEMORY.md`; backtick trong `--title` của `gh issue create` bị thay bằng output của lệnh.
+ *
+ * NHÁY ĐƠN LÀ AN TOÀN và đó là nửa quan trọng hơn của hàm này. Bash không diễn giải gì bên
+ * trong `'…'`, nên bắt cả hai loại nháy là bắn nhầm — và `L0002` vừa tính xong cái giá của
+ * việc đó ở #160. Backtick **KHÔNG có nháy** cũng bị thay, nên nó cùng nhóm với nháy kép.
+ *
+ * `\` trước một ký tự vô hiệu hoá nó ở mọi nơi TRỪ trong nháy đơn — nên `"\`"` là backtick
+ * literal và KHÔNG phải hazard.
+ */
+export function backtickSubstitution(raw) {
+  const s = String(raw ?? '');
+  let quote = null;                                  // null | "'" | '"'
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (quote !== "'" && ch === '\\') { i++; continue; }
+    if (quote === null && (ch === "'" || ch === '"')) { quote = ch; continue; }
+    if (quote !== null && ch === quote) { quote = null; continue; }
+    if (ch === '`' && quote !== "'") return true;
+  }
+  return false;
+}
+
+/**
+ * Hazard backtick TRONG một đối số VĂN BẢN DÀI — hàm THUẦN trên một lệnh đơn.
+ *
+ * HẸP CÓ CHỦ Ý. `echo "hôm nay là \`date\`"` là command substitution **cố ý** và hợp lệ; chặn
+ * nó là đúng thứ `L0002` cấm. Bảy lần đã đo đều nằm trong đúng hai hình dạng — `node -e|--eval`
+ * và `gh --title|--body` — nên rule khoá vào chúng thay vì vào "mọi backtick".
+ *
+ * Đọc `c.raw` (còn nguyên nháy) chứ không `c.text`: `simpleCommands()` **bỏ nháy** trước khi
+ * khớp, nên tới lúc một rule `re` nhìn thấy chuỗi thì thông tin cần thiết đã mất. Đây là lý do
+ * rule này phải là `test:` chứ không thể là `re:`.
+ */
+export function backtickEvalHazard(c) {
+  if (!c || !/^(node|gh)$/.test(String(c.program ?? ''))) return false;
+  if (!/(?:^|\s)(?:-e|--eval|--title|--body)(?:[\s=]|$)/.test(String(c.text ?? ''))) return false;
+  return backtickSubstitution(c.raw);
+}
+
+/**
  * PHÁN ĐOÁN của `dcg` — hàm THUẦN, test khẳng định thẳng vào đây.
  *
  * Rule có `program` chỉ nổ khi một LỆNH ĐƠN có đúng chương trình đó, và khớp trên dạng đã bỏ
@@ -1517,7 +1566,13 @@ export function dangerousCommand(cmd, rules) {
   const cmds = simpleCommands(cmd);
   const whole = stripHeredocs(cmd);
   for (const r of rules) {
-    if (r.program) {
+    // `test:` — dành cho phán đoán mà REGEX KHÔNG BIỂU DIỄN ĐƯỢC. Ca duy nhất tới giờ (#177):
+    // "backtick nằm ngoài nháy đơn" cần TRẠNG THÁI nháy, mà `r.re` thì khớp trên `c.text` —
+    // bản ĐÃ BỎ NHÁY. Nhận cả object lệnh đơn nên nó đọc được `raw` (còn nguyên nháy).
+    if (r.test) {
+      const hit = cmds.find(c => r.test(c));
+      if (hit) return { ...r, matched: hit.text.slice(0, 200) };
+    } else if (r.program) {
       const hit = cmds.find(c => r.program.test(c.program) && r.re.test(c.text));
       if (hit) return { ...r, matched: hit.text.slice(0, 200) };
     } else if (r.re.test(whole)) {
