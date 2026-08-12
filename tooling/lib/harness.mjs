@@ -2679,6 +2679,39 @@ export function contextLossPending(lossAt, progressAt, now = Date.now()) {
 }
 
 /**
+ * ═══ "TỰ KHEN": passes=true MÀ KHÔNG CÓ BẰNG CHỨNG (#131) ════════════════════
+ *
+ * **THUẦN**, không đọc đĩa. Trả danh sách tiêu chí đang khai ĐẠT mà `evidence` rỗng.
+ *
+ * `README` gọi *"agent tự khen, mark done sớm"* là vấn đề trung tâm, và `AGENTS.md
+ * §Verification` viết luật ra rồi: *"`evidence` bắt buộc khi `passes: true` … 'Tôi đã kiểm tra'
+ * KHÔNG phải bằng chứng"*. Luật đó đang được cưỡng chế ở `check-feature-integrity.mjs` — tức ở
+ * **CI**, tức SAU khi agent đã tin là nó xong.
+ *
+ * Tách ra `lib` để `TaskCompleted` hỏi được CÙNG câu hỏi ở CÙNG định nghĩa. Hai bản chép của
+ * một luật là hình dạng chính xác của #125, và ở đây nó còn tệ hơn: hai bên sẽ bất đồng về
+ * việc *"đã xong chưa"*, câu hỏi đắt nhất trong repo.
+ *
+ * `a11y`/`perf` là ANH EM của `platforms`, không nằm trong nó — bỏ sót chúng là lỗ đã có thật
+ * trước 2.3.0. Phép hợp nhất nằm ở đây để cả hai bên đọc thừa hưởng nó.
+ *
+ * KHÔNG kiểm "evidence trỏ tới thứ CÓ THẬT" — phép đó cần đọc đĩa, và nó ở lại
+ * `check-feature-integrity.mjs`. Hàm này chỉ trả lời vế **cú pháp**, vế duy nhất trả lời được
+ * mà không chạm IO, và là vế bắt được ca *"tôi đã kiểm tra rồi"*.
+ */
+export function selfPraiseClaims(feature) {
+  const now = feature && typeof feature === 'object' ? feature : {};
+  const criteria = { ...(now.platforms || {}) };
+  for (const k of ['a11y', 'perf']) if (now[k] !== undefined) criteria[k] = now[k];
+  const out = [];
+  for (const [name, v] of Object.entries(criteria)) {
+    if (v?.passes !== true) continue;
+    if (!String(v.evidence ?? '').trim()) out.push(name);
+  }
+  return out;
+}
+
+/**
  * Ghi một dòng vào log telemetry. `kind` = tên file không đuôi.
  *
  * BẤT BIẾN: việc ghi chép KHÔNG BAO GIỜ được đổi kết quả của hook. Log không ghi

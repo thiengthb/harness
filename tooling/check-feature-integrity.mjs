@@ -11,7 +11,7 @@
  */
 import { readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, git, readJson, report, exists } from './lib/harness.mjs';
+import { repoPath, git, readJson, report, exists, selfPraiseClaims } from './lib/harness.mjs';
 
 const base = process.argv[2] || 'origin/main';
 const dir = repoPath('features');
@@ -124,13 +124,16 @@ for (const f of readdirSync(dir).filter(f => f.endsWith('.json') && !f.startsWit
   const beforeCrit = { ...(before?.platforms || {}) };
   for (const k of ['a11y', 'perf']) if (before?.[k] !== undefined) beforeCrit[k] = before[k];
 
+  // Vế "evidence RỖNG" đi qua `selfPraiseClaims()` ở lib — CÙNG hàm mà hook `TaskCompleted`
+  // gọi (#131). Hai bản chép của luật này sẽ bất đồng về câu *"đã xong chưa"*, câu đắt nhất
+  // trong repo. Vế "trỏ tới thứ CÓ THẬT" ở lại đây, vì nó cần đọc đĩa.
+  const praised = new Set(selfPraiseClaims(now));
+  for (const name of praised) {
+    fail.push(`${rel}: ${name}.passes=true nhưng evidence rỗng. "Tôi đã kiểm tra" không phải bằng chứng.`);
+  }
   for (const [name, v] of Object.entries(criteria)) {
-    if (v?.passes !== true) continue;
+    if (v?.passes !== true || praised.has(name)) continue;
     const ev = String(v.evidence ?? '').trim();
-    if (!ev) {
-      fail.push(`${rel}: ${name}.passes=true nhưng evidence rỗng. "Tôi đã kiểm tra" không phải bằng chứng.`);
-      continue;
-    }
     if (!/^https?:\/\//.test(ev) && !exists(repoPath(ev))) {
       fail.push(`${rel}: ${name}.evidence trỏ tới "${ev}" — KHÔNG tồn tại trong repo.\n`
         + `         Bằng chứng phải là đường dẫn có thật (docs/evidence/<issue>/... — xem skill \`verify-ui\`) hoặc URL http(s).`);

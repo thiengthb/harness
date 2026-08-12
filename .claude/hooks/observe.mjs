@@ -37,8 +37,10 @@
  * tiếp thì gỡ nhánh đó — nó là thiết bị đo, không phải gate.
  * ĐIỀU KIỆN THOÁT (StopFailure): khi org bật spend limit cứng ở gateway.
  */
-import { hookInput, telemetry, hookRan, unattended, config, pass, stateDir, writeJson, declareFailMode } from '../../tooling/lib/harness.mjs';
+import { hookInput, telemetry, hookRan, unattended, config, pass, stateDir, writeJson, declareFailMode,
+  repoPath, readJson, exists, selfPraiseClaims } from '../../tooling/lib/harness.mjs';
 import { join } from 'node:path';
+import { readdirSync } from 'node:fs';
 
 declareFailMode(1, 'Không ghi được quan sát. Hook này CỐ Ý không bao giờ chặn — mất một dòng đo không đáng đổi bằng một lệnh bị chặn.');
 
@@ -189,6 +191,38 @@ if (ev === 'InstructionsLoaded') {
   // thứ issue hình dung — và vì thế nó không thuộc file này: `observe.mjs` khai ở dòng đầu là
   // *"quan sát, không quyết định gì"*, còn lái phép nén là một quyết định, và là một quyết định
   // KHÔNG có cách kiểm tất định nào. Ghi lại để nó không bị phát hiện lại lần thứ hai.
+} else if (ev === 'TaskCompleted') {
+  // ── "AGENT TỰ KHEN" — GHI SỐ TRƯỚC, LÊN ĐẠN SAU (#131) ────────────────────
+  //
+  // Đây là ô DUY NHẤT trong nhóm #129 mà vendor cho CHẶN: *"Exit code 2 - show stderr to model
+  // and prevent task completion"* (đo từ binary 2.1.228). Và nó bắn đúng khoảnh khắc lời tuyên
+  // bố được đưa ra — sớm hơn hẳn `Stop`/CI, nơi lớp lỗi này đang bị bắt.
+  //
+  // NHƯNG NÓ CHƯA ĐƯỢC LÊN ĐẠN, và đó là quyết định chứ không phải việc còn dở:
+  //
+  //   · payload KHÔNG trỏ tới sản phẩm nào (`task_id`, `task_subject`, `task_description`),
+  //     nên gate phải TỰ đi tìm thứ để kiểm — tức nó đoán, và đoán sai thì nó chặn nhầm;
+  //   · `L0002` đã tính xong cái giá của guard bắn nhầm, hai lần trong tuần này;
+  //   · và tôi **không chạy được canary 2 ngày**, thứ duy nhất đo được tỉ lệ bắn nhầm.
+  //
+  // Nên lô này ghi ĐÚNG con số mà quyết định lên đạn cần: bao nhiêu lần `TaskCompleted` nổ, và
+  // trong đó bao nhiêu lần gate SẼ chặn. Đó chính là canary, chỉ khác là nó không chặn ai trong
+  // lúc đo. Lên đạn là một dòng đổi `pass()` thành `block()`, có số liệu đứng sau.
+  let claims = 0, files = 0;
+  try {
+    const dir = repoPath('features');
+    for (const f of (exists(dir) ? readdirSync(dir) : [])) {
+      if (!f.endsWith('.json') || f.startsWith('_')) continue;
+      files++;
+      claims += selfPraiseClaims(readJson(join(dir, f))).length;
+    }
+  } catch { claims = -1; }   // -1 = KHÔNG ĐỌC ĐƯỢC, khác hẳn 0
+  telemetry('task-completed', [
+    claims < 0 ? '?' : claims > 0 ? 'would-block' : 'clean',
+    String(claims),
+    String(i?.task_subject ?? '').slice(0, 60),
+    String(files),
+  ]);
 } else if (ev === 'SessionStart') {
   // Auto-memory là quan sát THÔ, máy-cục-bộ, được phép sai. Trỏ nó vào cây repo là
   // biến quan sát chưa kiểm của MỘT người thành chỉ thị cho CẢ ĐỘI — và nó nạp 200

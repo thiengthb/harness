@@ -11,6 +11,47 @@
 
 ---
 
+## 2.71.0 — 2026-08-12
+
+**minor.** `TaskCompleted` được cắm — **chạy KHÔNG ĐẠN**. Nó ghi đúng con số mà quyết định
+"có nên lên đạn không" cần, và không chặn ai trong lúc đo (#131).
+
+Đóng nốt nhóm #129: **6/6 ô** đã cắm, **11 file hook** (không đổi từ 2026-08-05).
+
+### Ô duy nhất trong nhóm mà vendor cho CHẶN
+
+Đo từ binary 2.1.228: *"`TaskCompleted` — Exit code 2 — show stderr to model and **prevent task
+completion**"*. Và nó bắn đúng khoảnh khắc lời tuyên bố được đưa ra — sớm hơn hẳn `Stop`/CI, nơi
+lớp lỗi *"agent tự khen, mark done sớm"* đang bị bắt.
+
+### Vì sao CHƯA lên đạn — ba lý do, không phải "để sau"
+
+1. Payload **không trỏ tới sản phẩm nào** (`task_id`, `task_subject`, `task_description`), nên
+   gate phải **tự đi tìm** thứ để kiểm. Một guard phải đoán là một guard bắn nhầm được.
+2. `L0002` vừa tính xong cái giá của guard bắn nhầm — **hai lần trong tuần này** (#160, #177).
+3. Canary 2 ngày **không chạy được** bởi agent, và đó là thứ duy nhất đo được tỉ lệ bắn nhầm.
+
+Nên lô này ghi con số ấy thay vì đoán nó:
+
+```
+node tooling/harness-doctor.mjs
+  task ĐÁNH DẤU XONG 7 ngày: 24 lần · 3 lần gate SẼ chặn nếu được lên đạn (13%)
+```
+
+**Đó chính là canary, chỉ khác là nó không chặn ai trong lúc đo.** Lên đạn về sau là một dòng,
+có số liệu đứng sau.
+
+### MỘT định nghĩa của "tự khen", hai bên đọc
+
+`selfPraiseClaims()` ra `lib`, và `check-feature-integrity.mjs` **gọi** nó thay vì giữ bản chép.
+Hai bản chép của luật này sẽ bất đồng về câu *"đã xong chưa"* — câu đắt nhất trong repo, và đúng
+hình dạng của #125. Có ca test bắt `check-feature-integrity` phải gọi hàm đó.
+
+Phép hợp nhất `a11y`/`perf` (anh em của `platforms`, không nằm trong nó — lỗ đã có thật trước
+2.3.0) nằm trong hàm chung, nên cả hai bên thừa hưởng.
+
+---
+
 ## 2.70.0 — 2026-08-12
 
 **minor.** `PreCompact` + `SessionEnd` ghi mốc mất context, và **`/handoff` tự tới hạn** khi
