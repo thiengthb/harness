@@ -2144,6 +2144,49 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
 
   if (badT9.length) fail.push(`fixlog --track${' '.repeat(15)} ${badT9.length} ca sai: ${badT9.join(' | ')}`);
   else ok.push(`fixlog --track${' '.repeat(15)} ★ → ⇢ · địa chỉ BẮT BUỘC và được in · số đếm không bị giấu · tái phát ĐẾM mà KHÔNG đổi dấu · rituals đồng ý`);
+
+  // ⑩ MỘT CỜ KHÔNG PHẢI LÀ NỘI DUNG. Nhánh mặc định nhận mọi đối số không khớp cờ nào làm nội
+  //    dung, nên `--help` ghi một dòng rác vào chính cái sổ mà công cụ này tồn tại để giữ sạch,
+  //    rồi in `✓ đã ghi` như thể vừa làm đúng. Ghi sổ 2026-08-05 (mục 12/16), tái hiện Y NGUYÊN
+  //    2026-08-13 trên v2.71.0 — 59 minor version ở giữa và không lần nào có triệu chứng nào
+  //    ngoài một dòng rác không ai đọc lại.
+  //
+  //    Bốn chiều, và chiều ④ KHÔNG phải cho đủ lệ: ba chiều đầu mà thiếu nó thì bản vá thành
+  //    guard bắn nhầm (L0002), vì sổ này đầy dòng nói về `--force` / `--auto-approve` và mục
+  //    mô tả chính bug này mở đầu bằng `--help`.
+  const t10 = mkdtempSync(join(tmpdir(), 'harness-flag-'));
+  const fx10 = (...a) => spawnSync(process.execPath, [repoPath('tooling', 'fixlog.mjs'), ...a],
+    { encoding: 'utf8', cwd: repoPath(), env: { ...process.env, HARNESS_TELEMETRY_DIR: t10 } });
+  const log10 = () => { try { return readFileSync(join(t10, 'manual-fixes.log'), 'utf8').split('\n').filter(Boolean); } catch { return []; } };
+  const bad10 = [];
+
+  // ① `--help` — cờ quy ước nhất của mọi CLI — không ghi gì, và exit 0: hỏi cách dùng không phải lỗi.
+  const h10 = fx10('--help');
+  if (log10().length) bad10.push('`--help` GHI vào sổ — sổ tự bẩn bằng đúng cái lệnh hỏi cách dùng nó');
+  if (h10.status !== 0) bad10.push(`\`--help\` exit ${h10.status} ≠ 0 — hỏi cách dùng không phải một lỗi`);
+
+  // ② Và không chỉ chữ "help". Thứ làm bẩn sổ là NHÁNH MẶC ĐỊNH, nên phải chặn theo HÌNH DẠNG:
+  //    `--to` là cách gõ hụt `--top`, và im lặng hoá thành một dòng dữ liệu là kiểu hỏng tệ nhất
+  //    có thể xảy ra cho một cái SỔ.
+  const typo10 = fx10('--to');
+  if (log10().length) bad10.push('cờ gõ sai `--to` bị ghi thành NỘI DUNG — chặn theo TÊN cờ chứ không theo hình dạng, cả lớp vẫn hở');
+  if (typo10.status === 0) bad10.push('cờ không nhận ra vẫn exit 0 — gõ sai không để lại triệu chứng nào');
+  if (!/cờ không nhận ra/.test(typo10.stderr || '')) bad10.push('từ chối cờ lạ mà KHÔNG nói ở stderr — hỏng im lặng qua ống dẫn');
+
+  // ③ Cửa thoát POSIX `--`: nội dung THẬT mở đầu bằng dấu gạch vẫn ghi được, và nguyên văn.
+  const esc10 = fx10('--', '--force bị dcg chặn oan');
+  if (esc10.status !== 0) bad10.push(`\`-- "<nội dung>"\` exit ${esc10.status} ≠ 0 — chặn không có đường thoả là guard bắn nhầm (L0002)`);
+  const got10 = log10();
+  if (got10.length !== 1) bad10.push(`sau \`--\` phải có ĐÚNG 1 mục, đếm được ${got10.length}`);
+  else if (!/\|--force bị dcg chặn oan$/.test(got10[0])) bad10.push(`\`--\` làm méo nội dung: "${got10[0].split('|').slice(3).join('|')}"`);
+
+  // ④ Đường thường vẫn ghi được — ca bắt bản vá chặn quá tay.
+  fx10('mot muc binh thuong');
+  if (log10().length !== 2) bad10.push('nội dung thường KHÔNG còn ghi được — bản vá chặn quá tay');
+  rmSync(t10, { recursive: true, force: true });
+
+  if (bad10.length) fail.push(`fixlog cờ lạ${' '.repeat(17)} ${bad10.length} ca sai: ${bad10.join(' | ')}`);
+  else ok.push(`fixlog cờ lạ${' '.repeat(17)} \`--help\` im · cờ gõ sai KÊU ở stderr và không ghi · \`--\` cứu nội dung mở đầu bằng gạch · đường thường không hỏng`);
 }
 
 // ─── L0008: một tín hiệu TỚI HẠN phải TẮT ĐƯỢC bằng hành động nó đề nghị ─────
@@ -5137,7 +5180,7 @@ if (repoRole() === 'template') {
 // SÀN TỪNG TỤT LẠI SAU TỔNG THẬT, và đó là một chế độ hỏng riêng đáng ghi ra: 2026-08-08 đo
 // được `195/195 pass, sàn 185` — 10 ca thêm vào mà không ai nâng sàn, tức 10 ca có thể NGỪNG
 // CHẠY mà thứ duy nhất nhìn thấy điều đó vẫn xanh. Sàn không bám tổng thật là sàn đã nghỉ việc.
-const RATCHET = 271;   // +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
+const RATCHET = 272;   // +1 cờ-lạ-không-phải-nội-dung (fixlog ⑩) · +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa

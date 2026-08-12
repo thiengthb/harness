@@ -238,15 +238,52 @@ if (args[0] === '--close') {
   process.exit(0);
 }
 
-const text = args.join(' ').trim();
-if (!text) {
-  console.error(`Cách dùng:
+/** MỘT nguồn cho bảng cách-dùng: `--help`, gọi rỗng và cờ gõ sai phải in cùng một thứ. */
+function usage(out) {
+  out(`Cách dùng:
   node tooling/fixlog.mjs "mô tả việc bạn vừa phải sửa tay"
   node tooling/fixlog.mjs --list     # 7 ngày qua
   node tooling/fixlog.mjs --top      # nhóm theo tần suất, đánh dấu cái đủ điều kiện promote
   node tooling/fixlog.mjs --group "<tên-nhóm>" "<vài chữ chung>"     # khai hai dòng là cùng gốc rễ
   node tooling/fixlog.mjs --track "<vài chữ>" "<issue + chờ gì>"     # đã thành việc CÓ ĐỊA CHỈ, đang chờ
-  node tooling/fixlog.mjs --close "<vài chữ>" "<đã xử lý thế nào>"   # đóng một nhóm đã xử XONG`);
+  node tooling/fixlog.mjs --close "<vài chữ>" "<đã xử lý thế nào>"   # đóng một nhóm đã xử XONG
+  node tooling/fixlog.mjs -- "<nội dung mở đầu bằng dấu gạch>"       # \`--\` = hết cờ, phần sau là NỘI DUNG`);
+}
+
+// ── PHẦN CÒN LẠI là NỘI DUNG — nhưng một CỜ thì không phải nội dung ──────────
+//
+// Bản trước nhận mọi thứ không khớp năm cờ ở trên làm nội dung. Nên `--help` — cờ quy ước
+// nhất của mọi CLI — ghi thẳng một dòng rác vào chính cái sổ mà công cụ này tồn tại để giữ
+// sạch, rồi in `✓ đã ghi (tổng 17)` như thể vừa làm đúng. Không có gì kêu.
+//
+// Ghi sổ 2026-08-05 (mục 12/16), tái hiện 2026-08-13 trên v2.71.0: cùng một lệnh, cùng một
+// kết quả, 59 minor version ở giữa. Lần thứ hai là lần chứng minh nó không phải tai nạn —
+// nó là MẶC ĐỊNH SAI CHIỀU. Với một công cụ mà đầu ra là dữ liệu được giữ lâu, "không nhận
+// ra đối số này" phải KÊU; nó không được lặng lẽ hoá thành một dòng dữ liệu.
+//
+// Vì sao không chỉ thêm mỗi `--help`: thứ làm bẩn sổ không phải chữ "help", mà là nhánh mặc
+// định. `--to` (gõ hụt `--top`), `--lst`, `--closs` đều hạ cánh vào đúng chỗ đó và đều im
+// lặng y hệt. Chặn theo HÌNH DẠNG (mở đầu bằng `-`) mới đóng được cả lớp, chứ không phải
+// đuổi theo từng cái tên — đúng lỗi mà `--close`-theo-danh-sách-tên đã mắc ở #149.
+//
+// Cửa thoát là quy ước POSIX `--`, và nó KHÔNG phải cho đủ lệ: sổ này đầy dòng nói về
+// `--force`, `--auto-approve`, và mục 12/16 mô tả chính bug này mở đầu bằng `--help`. Một
+// guard chặn cả nhóm mà không có đường thoả là guard bắn nhầm (L0002), và ở đây ca bắn nhầm
+// lại đúng là ca thường gặp nhất của chính repo này.
+if (args[0] === '--help' || args[0] === '-h') { usage(console.log); process.exit(0); }
+
+if (args[0] === '--') args.shift();
+else if (args[0]?.startsWith('-')) {
+  console.error(`✗ cờ không nhận ra: ${args[0]} — KHÔNG ghi gì vào sổ.`);
+  usage(console.error);
+  console.error(`\n  Nội dung THẬT SỰ mở đầu bằng dấu gạch? Đặt \`--\` trước nó:`);
+  console.error(`    node tooling/fixlog.mjs -- "${args[0]} bị chặn oan"`);
+  process.exit(1);
+}
+
+const text = args.join(' ').trim();
+if (!text) {
+  usage(console.error);
   process.exit(1);
 }
 
