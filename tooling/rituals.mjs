@@ -428,6 +428,10 @@ export const RITUALS = [
           : { state: 'due', why: b.advice };
       }
       if (b.mode === 'template-cap') return { state: 'due', why: b.advice };
+      // Cùng một đường rò với `template-cap`, field khác — xem `budgetStatus` §"HAI FIELD, MỘT
+      // ĐƯỜNG RÒ". `due` chứ không `?`: hành động tắt được nó là một dòng sửa config, và mục này
+      // TẮT ngay khi sửa (khác `flat-limited`, treo vào một con số 30 ngày bất biến).
+      if (b.mode === 'template-plan') return { state: 'due', why: b.advice };
       // GÓI PHẲNG (#111): CAPO vẫn đo được và vẫn đáng đo — nhưng nó đọc là *"giá trị rút ra
       // trên một khoản phí CỐ ĐỊNH"*, không phải *"tiền đã tiêu"*. Cổ chai là rate limit, và
       // con số đó do chính harness đếm, không phải người chép từ dashboard.

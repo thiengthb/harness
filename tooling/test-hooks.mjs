@@ -2825,22 +2825,50 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   //     và "chưa chạm lần nào" là hai chuyện — gộp chúng là đúng phép gộp AGENTS.md cấm.
   const FULL = { usd: 20, days: 30, at: at(1) };
   const PLAN_TABLE = [
-    //  plan        cap  role        hits   mode
+    //  plan        cap  role        hits   mode              configPlan
     ['flat',      0,   'consumer',  0,     'flat-ok'],
     ['flat',      20,  'consumer',  12,    'flat-limited'],
     ['flat',      20,  'consumer',  null,  'flat-unmeasured'],
-    ['flat',      0,   'template',  0,     'flat-ok'],       // template không cap ⇒ vẫn phẳng
+    ['flat',      0,   'template',  0,     'flat-ok'],       // template không cap, gói khai bằng env ⇒ vẫn phẳng
     ['flat',      20,  'template',  0,     'template-cap'],  // ← cap lạc vào template VẪN phải kêu
     ['metered',   20,  'consumer',  0,     'over'],          // ← hành vi cũ, không được đổi
     [undefined,   20,  'consumer',  0,     'over'],          // ← không khai plan = metered
+
+    // ── ĐƯỜNG RÒ THỨ HAI: `plan` khai trong CONFIG chảy xuống consumer (2026-08-13) ──
+    //
+    // Cột cuối là NGUỒN, và nó là cả bản vá: cùng một `plan: 'flat'` đã hợp nhất, hai hàng đầu
+    // dưới đây phải ra HAI kết quả khác nhau. Một hàng thôi thì mutant "kêu bất kể nguồn" sống,
+    // và nó sống theo chiều bắn nhầm vào người khai đúng (`L0007` + `lessons/0002`).
+    ['flat',      0,   'template',  3,     'template-plan',   'flat'],     // ← khai bằng CONFIG ⇒ kêu
+    ['flat',      0,   'template',  3,     'flat-limited',    'metered'],  // ← khai bằng ENV ⇒ đo bình thường
+    ['flat',      0,   'template',  3,     'template-plan',   ' FLAT '],   // ← hoa/thường + space không cứu
+    ['flat',      0,   'consumer',  3,     'flat-limited',    'flat'],     // ← consumer khai gói CỦA MÌNH: hợp lệ
+    ['flat',      20,  'template',  0,     'template-cap',    'flat'],     // ← cả hai field rò ⇒ CAP kêu trước
   ];
   const badPlan = [];
-  for (const [plan, cap, role, rateLimitHits, want] of PLAN_TABLE) {
-    const got = budgetStatus({ cap, role, plan, rateLimitHits, latest: FULL });
-    if (got.mode !== want) badPlan.push(`plan=${plan} cap=${cap} role=${role} hits=${rateLimitHits} → ${got.mode}, cần ${want}`);
+  for (const [plan, cap, role, rateLimitHits, want, configPlan] of PLAN_TABLE) {
+    const got = budgetStatus({ cap, role, plan, configPlan, rateLimitHits, latest: FULL });
+    if (got.mode !== want) badPlan.push(`plan=${plan}${configPlan === undefined ? '' : `/cfg=${configPlan}`} cap=${cap} role=${role} hits=${rateLimitHits} → ${got.mode}, cần ${want}`);
   }
   if (badPlan.length) fail.push(`budgetStatus${L} gói phẳng ${badPlan.length}/${PLAN_TABLE.length} ca sai: ${badPlan.join(' | ')}`);
-  else ok.push(`budgetStatus${L} ${PLAN_TABLE.length} ca gói phẳng — \`metered\` KHÔNG đổi, và "chưa đọc được sổ" ≠ "chưa chạm lần nào"`);
+  else ok.push(`budgetStatus${L} ${PLAN_TABLE.length} ca gói phẳng — \`metered\` KHÔNG đổi, "chưa đọc được sổ" ≠ "chưa chạm lần nào", và \`plan\` khai bằng CONFIG ≠ khai bằng ENV`);
+
+  // ── TIỀN ĐỀ của gác `template-plan`: đo THIỆT HẠI, không tả nó ─────────────
+  //
+  // Ca này KHÔNG kiểm bản vá — nó kiểm điều khiến bản vá đáng tồn tại: `plan: flat` thừa kế
+  // xuống một consumer có trần thật làm trần đó TRƠ. Nếu một ngày nhánh phẳng học cách so cap,
+  // hai dòng dưới đổi kết quả và gác `template-plan` mất lý do; lúc đó phải xét lại GÁC, không
+  // phải sửa số cho test xanh. Không có ca này thì lý do chỉ nằm trong comment, và comment
+  // không fail được.
+  const OVER30 = { usd: 500, days: 30, at: at(1) };
+  const asMetered = budgetStatus({ cap: 50, role: 'consumer', plan: 'metered', rateLimitHits: 3, latest: OVER30 });
+  const asFlat = budgetStatus({ cap: 50, role: 'consumer', plan: 'flat', rateLimitHits: 3, latest: OVER30 });
+  if (asMetered.mode !== 'over' || asMetered.percent !== 1000 || asFlat.mode !== 'flat-limited' || asFlat.percent != null) {
+    fail.push(`budgetStatus${L} tiền đề của \`template-plan\` không còn đúng — metered → ${asMetered.mode}/${asMetered.percent}, `
+      + `flat → ${asFlat.mode}/${asFlat.percent}. Xét lại chính cái gác, đừng sửa con số.`);
+  } else {
+    ok.push(`budgetStatus${L} thiệt hại ĐO ĐƯỢC: cap $50 + chi $500/30 ngày ⇒ metered \`over\` 1000% · flat thừa kế \`flat-limited\` percent=null (trần thành trơ)`);
+  }
 
   // ── CHẠM TRẦN N LẦN, VÀ N ĐÓ ĐỔI ĐƯỢC BAO NHIÊU (#180) ────────────────────
   //
