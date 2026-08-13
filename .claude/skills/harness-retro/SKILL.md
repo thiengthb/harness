@@ -107,6 +107,19 @@ giả định đã hết hạn.
 `.claude/learnings/<năm>-W<tuần>-<tên>.md`. **KHÔNG tự sửa harness.**
 Người quyết định promote → `/knowledge-promote`.
 
+**Nếu kết luận của bạn là "không có gì đáng promote"** — kể cả khi file chỉ chứa kết quả xét
+cắt ở bước 4 — hãy khai lý do vào frontmatter của chính file vừa ghi:
+
+```yaml
+---
+promote: là kết quả XÉT CẮT, chưa đủ 2 lần độc lập
+---
+```
+
+Không có dòng đó, bước 5 này **luôn** bật đỏ `/knowledge-promote`: nó đếm file ở
+`.claude/learnings/` mới hơn bài học mới nhất, nên chạy đúng hai nghi thức theo đúng thứ tự
+vẫn kết thúc bằng đèn đỏ y như lúc bắt đầu. Đo 2026-08-05, còn nguyên tới 2026-08-13.
+
 Rồi trả lời sổ fixlog, nếu không nó hỏi lại bạn đúng câu đó mỗi phiên:
 
 ```

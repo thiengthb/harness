@@ -1,3 +1,16 @@
+---
+# promote: — KHAI KHI BẠN ĐÃ XÉT VÀ QUYẾT LÀ KHÔNG. Bỏ trống/xoá dòng = vẫn là ứng viên.
+#
+# `/knowledge-promote` đếm file ở đây mới hơn bài học mới nhất. Không có trường này thì
+# `/harness-retro` — thứ BẮT BUỘC ghi một file vào thư mục này — bật đỏ `/knowledge-promote`
+# mỗi lần nó chạy ĐÚNG, kể cả khi kết luận của retro là "không có gì đáng promote".
+# Một tín hiệu mà hành động đúng không tắt được là tín hiệu sẽ bị bỏ qua (L0008).
+#
+# Viết LÝ DO, đừng viết `no`: lần sau phải dựng lại được quyết định.
+#   promote: chưa đủ 2 lần — mới 1 ca, xem lại sau W35
+#   promote: là kết quả XÉT CẮT, không phải bài học mang đi được
+---
+
 # Learnings — tuần <W>, <tên bạn>
 
 <!--

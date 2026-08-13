@@ -56,7 +56,14 @@ node tooling/harness-size.mjs
 ## 3. Skill
 
 - Đường dẫn/lệnh trong skill còn tồn tại không?
-- Skill nào không được dùng 2 tuần qua? → đề xuất bỏ
+- Skill nào không được dùng 2 tuần qua? → đề xuất bỏ — **nhưng KHÔNG theo bộ đếm một mình.**
+  `harness-doctor` in `skill NGƯỜI GÕ … lần`, và cái tên đó là cả một cảnh báo: ô
+  `UserPromptExpansion` **không thấy skill do model tự gọi** (đo trực tiếp 2026-08-13 —
+  gọi qua công cụ `Skill` không tạo mục nào). Nên `0 lần` không phân biệt được *"chết"* với
+  *"chỉ model gọi"*, và 3/12 skill ở repo này model gọi được.
+  Trước khi đề xuất bỏ, cần **một bằng chứng thứ hai**: `disable-model-invocation: true` trong
+  frontmatter của nó (⇒ bộ đếm THẤY được nó, nên `0` mới có nghĩa), hoặc `rg` không ra tham
+  chiếu nào còn sống.
 - Skill nào dài > 1 trang? → chẻ thành mục lục + file con (progressive disclosure)
 - Tổng số skill > 12? → bằng chứng cộng đồng: ≤12 cho kết quả tốt hơn skill tràn lan
 
