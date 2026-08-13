@@ -2796,8 +2796,26 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   // Doctor in bằng một bảng tra `mode → dòng`. Thiếu một mode ⇒ nó in `undefined` — và đó là
   // ca KHÔNG bảng thuần nào ở trên bắt được, vì lỗi nằm ở chỗ HIỂN THỊ. Không dựng repo có
   // `cap > 0` được (`harness.config.json` là vùng cấm), nên đối chiếu bằng mã nguồn.
-  const MODES = ['off', 'unmeasured', 'stale', 'ok', 'alert', 'over', 'template-na', 'template-cap',
-    'flat-ok', 'flat-limited', 'flat-unmeasured', 'flat-capo'];
+  // MODES phải ĐO TỪ NGUỒN, không chép tay. Bản trước là một mảng literal 12 phần tử, và
+  // `template-plan` (2026-08-13) vào codebase với ĐÚNG 0 coverage: mutant "bỏ nhánh
+  // `template-plan` khỏi rituals" và mutant "bỏ dòng hiển thị khỏi doctor" đều KHÔNG bị giết,
+  // trong khi hai ca dưới vẫn xanh và vẫn in một con số đọc như độ phủ ("đủ 11 mode"). Danh
+  // sách-phải-nhớ-cập-nhật là dạng rule cứng trá hình: nó mục đúng lúc có thứ mới cần phủ.
+  //
+  // Sàn 13 là bắt buộc, không phải cho chắc: `MODES` rỗng làm CẢ HAI ca `filter(...).length === 0`
+  // ⇒ xanh vô căn cứ. Sai theo chiều DỄ CHỊU, `L0005`. Phép bóc trôi thì phải kêu, không im.
+  const libSrc = readFileSync(repoPath('tooling', 'lib', 'harness.mjs'), 'utf8');
+  const bsStart = libSrc.indexOf('export function budgetStatus(');
+  const bsEnd = libSrc.indexOf('\nexport ', bsStart + 1);
+  const bsBlock = bsStart >= 0 ? libSrc.slice(bsStart, bsEnd > bsStart ? bsEnd : undefined) : '';
+  const MODES = [...new Set([...bsBlock.matchAll(/\bmode:\s*'([a-z-]+)'/g)].map(m => m[1]))];
+  const MODES_FLOOR = 13;
+  if (MODES.length < MODES_FLOOR) {
+    fail.push(`budgetStatus${L} chỉ bóc được ${MODES.length} mode từ nguồn \`budgetStatus\` (sàn ${MODES_FLOOR}) — `
+      + 'phép bóc đã trôi, và MODES thiếu làm HAI ca "đủ mode" dưới đây xanh mà không kiểm gì cả');
+  } else {
+    ok.push(`budgetStatus${L} ${MODES.length} mode bóc TỪ NGUỒN (sàn ${MODES_FLOOR}) — mode mới không vào được codebase mà không có ai phủ`);
+  }
   const doc = readFileSync(repoPath('tooling', 'harness-doctor.mjs'), 'utf8');
   // CẮT ĐÚNG KHỐI, không cắt tới cuối file. Bản trước lấy từ `── NGÂN SÁCH ──` tới hết file, nên
   // một bảng `mode → dòng` KHÁC ở phía dưới (§VÒNG HỌC có `unmeasured:` · `stale:` · `ok:`) đủ
