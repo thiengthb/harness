@@ -11,6 +11,66 @@
 
 ---
 
+## 2.77.0 — 2026-08-13
+
+**minor.** Hai field ngân sách đi cùng một đường xuống consumer (`apply-to.mjs:48` chép
+`harness.config.json`). Một cái có gác, một cái không — và cái không có gác rò nặng hơn.
+
+### Thiệt hại, đo trên hàm thuần
+
+| repo | cap | plan | chi thật | phán quyết |
+|---|---|---|---|---|
+| consumer | $50 | `metered` | $500/30 ngày | **`over` 1000%** |
+| consumer | $50 | `flat` *(thừa kế)* | $500/30 ngày | `flat-limited`, `percent = null` |
+
+Một cap sai chỉ mang theo một con số sai. `plan: flat` thừa kế **tắt hẳn phép so cap** — và
+`docs/ECONOMICS.md` gọi cap là *"lớp duy nhất gây thiệt hại tài chính TRỰC TIẾP"*.
+
+Không phải rủi ro giả định: `setup.mjs` **không hỏi** `plan`, nên đường duy nhất field này vào
+config là sửa TAY. Xảy ra thật 2026-08-13 09:50; `protect-harness.mjs` vẫn chặn nguyên, nhưng
+sửa tay không đi qua tool nên `harness-edits.log` không thấy — thứ phát hiện ra là `git status`.
+
+### Gác mới: `template-plan`
+
+Phân biệt theo **nguồn**, không theo giá trị. `budget.plan` trong config CHẢY XUỐNG;
+`HARNESS_BUDGET_PLAN` (ở `settings.local.json` của từng người) thì không. Nên:
+
+- template + `plan` khai bằng **config** ⇒ `due`, kèm đường đi tiếp;
+- template + `plan` khai bằng **env** ⇒ đo bình thường, không kêu;
+- **consumer** ⇒ không bao giờ kêu (ở đó `plan` không chảy đi đâu nữa, và một repo solo khai gói
+  của chính mình là hợp lệ). Gộp hai nguồn lại là bắn nhầm vào người đã làm đúng — `L0002`.
+
+Đặt trước nhánh gói-phẳng, cùng chỗ và cùng lý do với `template-cap`. Cap kêu trước khi cả hai rò.
+
+### Và thứ tìm ra khi mutation-test bản vá trên
+
+`MODES` — danh sách mode mà hai ca "doctor có đủ dòng" + "rituals phân nhánh đủ" đối chiếu — là
+một **mảng khai tay**. `template-plan` vào codebase với **đúng 0 coverage**: bỏ nhánh khỏi
+`rituals` ⇒ suite XANH; bỏ dòng khỏi `harness-doctor` ⇒ suite XANH. Trong khi cả hai ca vẫn in
+một con số đọc như độ phủ (*"đủ 11 mode"*).
+
+Nay bóc từ nguồn `budgetStatus`, kèm **sàn 13**: `MODES` rỗng làm cả hai ca
+`filter(...).length === 0` ⇒ xanh vô căn cứ, đúng chiều dễ chịu của `L0005`.
+
+### Điều kiện tiên quyết: bộ eval đang ĐỎ, và nó đỏ vì chính nó hỏng
+
+Đo trên `main` sạch (`c534fc8`), không liên quan bản vá trên: eval `0007` gọi `m.mergeBaseline`
+sau khi `import('./tooling/lib/harness.mjs')`, nhưng hàm đó export ở `tooling/rituals.mjs` và
+**chưa bao giờ** ở lib (`git log -S` trên lib: không một commit nào). ⇒ `TypeError` ⇒ cả assertion
+chết ⇒ `✗ EVAL — 1 FAIL`, exit 1. Task đó chấm *"agent có viết ca cho chiều còn lại không"*, nên
+phép đo im lặng đo một crash thay vì đo điều nó tuyên bố đo.
+
+CI chạy `evals/run.mjs --dry` (đúng — chiều thật cần mạng + agent), nên assertion **không bao giờ
+được thực thi ở CI** và lỗi này vô hình ở đó.
+
+Nay `tooling/test-evals.mjs` (CI **có** chạy) đối chiếu tĩnh: mọi `m.NAME(` trong một assertion
+phải có thật ở module mà assertion đó import — 20 lời gọi, kèm sàn 10 chống phép-bóc-trôi. Một
+câu hỏi tất định thì đừng để nó chờ một lần chạy có mạng mới trả lời.
+
+BREAKING: không. `configPlan` mặc định `null` ⇒ mọi bên gọi cũ giữ nguyên hành vi.
+
+---
+
 ## 2.76.0 — 2026-08-13
 
 **minor.** `v2.75.0` vá `runConfigured`. Cùng lớp lỗi vẫn còn nguyên ở **tầng dưới nó**:

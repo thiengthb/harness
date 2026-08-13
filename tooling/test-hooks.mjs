@@ -2796,8 +2796,26 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   // Doctor in bằng một bảng tra `mode → dòng`. Thiếu một mode ⇒ nó in `undefined` — và đó là
   // ca KHÔNG bảng thuần nào ở trên bắt được, vì lỗi nằm ở chỗ HIỂN THỊ. Không dựng repo có
   // `cap > 0` được (`harness.config.json` là vùng cấm), nên đối chiếu bằng mã nguồn.
-  const MODES = ['off', 'unmeasured', 'stale', 'ok', 'alert', 'over', 'template-na', 'template-cap',
-    'flat-ok', 'flat-limited', 'flat-unmeasured', 'flat-capo'];
+  // MODES phải ĐO TỪ NGUỒN, không chép tay. Bản trước là một mảng literal 12 phần tử, và
+  // `template-plan` (2026-08-13) vào codebase với ĐÚNG 0 coverage: mutant "bỏ nhánh
+  // `template-plan` khỏi rituals" và mutant "bỏ dòng hiển thị khỏi doctor" đều KHÔNG bị giết,
+  // trong khi hai ca dưới vẫn xanh và vẫn in một con số đọc như độ phủ ("đủ 11 mode"). Danh
+  // sách-phải-nhớ-cập-nhật là dạng rule cứng trá hình: nó mục đúng lúc có thứ mới cần phủ.
+  //
+  // Sàn 13 là bắt buộc, không phải cho chắc: `MODES` rỗng làm CẢ HAI ca `filter(...).length === 0`
+  // ⇒ xanh vô căn cứ. Sai theo chiều DỄ CHỊU, `L0005`. Phép bóc trôi thì phải kêu, không im.
+  const libSrc = readFileSync(repoPath('tooling', 'lib', 'harness.mjs'), 'utf8');
+  const bsStart = libSrc.indexOf('export function budgetStatus(');
+  const bsEnd = libSrc.indexOf('\nexport ', bsStart + 1);
+  const bsBlock = bsStart >= 0 ? libSrc.slice(bsStart, bsEnd > bsStart ? bsEnd : undefined) : '';
+  const MODES = [...new Set([...bsBlock.matchAll(/\bmode:\s*'([a-z-]+)'/g)].map(m => m[1]))];
+  const MODES_FLOOR = 13;
+  if (MODES.length < MODES_FLOOR) {
+    fail.push(`budgetStatus${L} chỉ bóc được ${MODES.length} mode từ nguồn \`budgetStatus\` (sàn ${MODES_FLOOR}) — `
+      + 'phép bóc đã trôi, và MODES thiếu làm HAI ca "đủ mode" dưới đây xanh mà không kiểm gì cả');
+  } else {
+    ok.push(`budgetStatus${L} ${MODES.length} mode bóc TỪ NGUỒN (sàn ${MODES_FLOOR}) — mode mới không vào được codebase mà không có ai phủ`);
+  }
   const doc = readFileSync(repoPath('tooling', 'harness-doctor.mjs'), 'utf8');
   // CẮT ĐÚNG KHỐI, không cắt tới cuối file. Bản trước lấy từ `── NGÂN SÁCH ──` tới hết file, nên
   // một bảng `mode → dòng` KHÁC ở phía dưới (§VÒNG HỌC có `unmeasured:` · `stale:` · `ok:`) đủ
@@ -2825,22 +2843,50 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   //     và "chưa chạm lần nào" là hai chuyện — gộp chúng là đúng phép gộp AGENTS.md cấm.
   const FULL = { usd: 20, days: 30, at: at(1) };
   const PLAN_TABLE = [
-    //  plan        cap  role        hits   mode
+    //  plan        cap  role        hits   mode              configPlan
     ['flat',      0,   'consumer',  0,     'flat-ok'],
     ['flat',      20,  'consumer',  12,    'flat-limited'],
     ['flat',      20,  'consumer',  null,  'flat-unmeasured'],
-    ['flat',      0,   'template',  0,     'flat-ok'],       // template không cap ⇒ vẫn phẳng
+    ['flat',      0,   'template',  0,     'flat-ok'],       // template không cap, gói khai bằng env ⇒ vẫn phẳng
     ['flat',      20,  'template',  0,     'template-cap'],  // ← cap lạc vào template VẪN phải kêu
     ['metered',   20,  'consumer',  0,     'over'],          // ← hành vi cũ, không được đổi
     [undefined,   20,  'consumer',  0,     'over'],          // ← không khai plan = metered
+
+    // ── ĐƯỜNG RÒ THỨ HAI: `plan` khai trong CONFIG chảy xuống consumer (2026-08-13) ──
+    //
+    // Cột cuối là NGUỒN, và nó là cả bản vá: cùng một `plan: 'flat'` đã hợp nhất, hai hàng đầu
+    // dưới đây phải ra HAI kết quả khác nhau. Một hàng thôi thì mutant "kêu bất kể nguồn" sống,
+    // và nó sống theo chiều bắn nhầm vào người khai đúng (`L0007` + `lessons/0002`).
+    ['flat',      0,   'template',  3,     'template-plan',   'flat'],     // ← khai bằng CONFIG ⇒ kêu
+    ['flat',      0,   'template',  3,     'flat-limited',    'metered'],  // ← khai bằng ENV ⇒ đo bình thường
+    ['flat',      0,   'template',  3,     'template-plan',   ' FLAT '],   // ← hoa/thường + space không cứu
+    ['flat',      0,   'consumer',  3,     'flat-limited',    'flat'],     // ← consumer khai gói CỦA MÌNH: hợp lệ
+    ['flat',      20,  'template',  0,     'template-cap',    'flat'],     // ← cả hai field rò ⇒ CAP kêu trước
   ];
   const badPlan = [];
-  for (const [plan, cap, role, rateLimitHits, want] of PLAN_TABLE) {
-    const got = budgetStatus({ cap, role, plan, rateLimitHits, latest: FULL });
-    if (got.mode !== want) badPlan.push(`plan=${plan} cap=${cap} role=${role} hits=${rateLimitHits} → ${got.mode}, cần ${want}`);
+  for (const [plan, cap, role, rateLimitHits, want, configPlan] of PLAN_TABLE) {
+    const got = budgetStatus({ cap, role, plan, configPlan, rateLimitHits, latest: FULL });
+    if (got.mode !== want) badPlan.push(`plan=${plan}${configPlan === undefined ? '' : `/cfg=${configPlan}`} cap=${cap} role=${role} hits=${rateLimitHits} → ${got.mode}, cần ${want}`);
   }
   if (badPlan.length) fail.push(`budgetStatus${L} gói phẳng ${badPlan.length}/${PLAN_TABLE.length} ca sai: ${badPlan.join(' | ')}`);
-  else ok.push(`budgetStatus${L} ${PLAN_TABLE.length} ca gói phẳng — \`metered\` KHÔNG đổi, và "chưa đọc được sổ" ≠ "chưa chạm lần nào"`);
+  else ok.push(`budgetStatus${L} ${PLAN_TABLE.length} ca gói phẳng — \`metered\` KHÔNG đổi, "chưa đọc được sổ" ≠ "chưa chạm lần nào", và \`plan\` khai bằng CONFIG ≠ khai bằng ENV`);
+
+  // ── TIỀN ĐỀ của gác `template-plan`: đo THIỆT HẠI, không tả nó ─────────────
+  //
+  // Ca này KHÔNG kiểm bản vá — nó kiểm điều khiến bản vá đáng tồn tại: `plan: flat` thừa kế
+  // xuống một consumer có trần thật làm trần đó TRƠ. Nếu một ngày nhánh phẳng học cách so cap,
+  // hai dòng dưới đổi kết quả và gác `template-plan` mất lý do; lúc đó phải xét lại GÁC, không
+  // phải sửa số cho test xanh. Không có ca này thì lý do chỉ nằm trong comment, và comment
+  // không fail được.
+  const OVER30 = { usd: 500, days: 30, at: at(1) };
+  const asMetered = budgetStatus({ cap: 50, role: 'consumer', plan: 'metered', rateLimitHits: 3, latest: OVER30 });
+  const asFlat = budgetStatus({ cap: 50, role: 'consumer', plan: 'flat', rateLimitHits: 3, latest: OVER30 });
+  if (asMetered.mode !== 'over' || asMetered.percent !== 1000 || asFlat.mode !== 'flat-limited' || asFlat.percent != null) {
+    fail.push(`budgetStatus${L} tiền đề của \`template-plan\` không còn đúng — metered → ${asMetered.mode}/${asMetered.percent}, `
+      + `flat → ${asFlat.mode}/${asFlat.percent}. Xét lại chính cái gác, đừng sửa con số.`);
+  } else {
+    ok.push(`budgetStatus${L} thiệt hại ĐO ĐƯỢC: cap $50 + chi $500/30 ngày ⇒ metered \`over\` 1000% · flat thừa kế \`flat-limited\` percent=null (trần thành trơ)`);
+  }
 
   // ── CHẠM TRẦN N LẦN, VÀ N ĐÓ ĐỔI ĐƯỢC BAO NHIÊU (#180) ────────────────────
   //
@@ -5446,7 +5492,7 @@ if (repoRole() === 'template') {
 // SÀN TỪNG TỤT LẠI SAU TỔNG THẬT, và đó là một chế độ hỏng riêng đáng ghi ra: 2026-08-08 đo
 // được `195/195 pass, sàn 185` — 10 ca thêm vào mà không ai nâng sàn, tức 10 ca có thể NGỪNG
 // CHẠY mà thứ duy nhất nhìn thấy điều đó vẫn xanh. Sàn không bám tổng thật là sàn đã nghỉ việc.
-const RATCHET = 284;   // +1 run() maxBuffer + status===null (ca HÀNH VI, spawn thật) · +2 runConfigured (maxBuffer + status===null) · +5 nghi thức số-khớp-câu (knowledge-promote ×4 + promoteDeclined; handoff/slotCounters gộp vào ca sẵn có) · +3 drift hai chiều (claude-code-drift ×2 + mergeBaseline không hạ mốc) · +1 cờ-lạ-không-phải-nội-dung (fixlog ⑩) · +1 trần --top không giấu việc (fixlog ⑪) · +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
+const RATCHET = 286;   // +1 thiệt hại đo được của plan thừa kế (tiền đề của gác template-plan) · +1 MODES bóc-từ-nguồn + sàn 13 · +1 run() maxBuffer + status===null (ca HÀNH VI, spawn thật) · +2 runConfigured (maxBuffer + status===null) · +5 nghi thức số-khớp-câu (knowledge-promote ×4 + promoteDeclined; handoff/slotCounters gộp vào ca sẵn có) · +3 drift hai chiều (claude-code-drift ×2 + mergeBaseline không hạ mốc) · +1 cờ-lạ-không-phải-nội-dung (fixlog ⑩) · +1 trần --top không giấu việc (fixlog ⑪) · +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa

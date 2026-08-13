@@ -208,6 +208,8 @@ console.log(`  ${cov.unread.length || cov.undeclared.length ? '⚠️ ' : '✓'}
     'template-na': `  n/a  trần tháng KHÔNG khai được ở repo template (setup.mjs từ chối — cap ở đây chảy xuống mọi consumer)`
       + `. CAPO thì đo được: ${b.measured ? `đã đo ${b.ageDays ?? '?'} ngày trước` : 'CHƯA lần nào'}`,
     'template-cap': `  ⚠️   trần $${cap} nằm trong REPO TEMPLATE — nó sẽ chảy xuống MỌI consumer áp template sau này`,
+    'template-plan': '  ⚠️   budget.plan = "flat" nằm trong REPO TEMPLATE — chảy xuống mọi consumer, và ở đó nó TẮT phép so trần'
+      + ' (gói cước là thuộc tính của người trả tiền: khai ở settings.local.json → env.HARNESS_BUDGET_PLAN)',
     'flat-unmeasured': '  ?    gói PHẲNG — không đọc được `budget-alarm.log`, nên số lần chạm rate limit KHÔNG ĐO ĐƯỢC',
     'flat-limited': `  ⚠️   gói PHẲNG · ${b.rateLimitHits} lần chạm rate limit trong 30 ngày — ĐÂY là trần thật, không phải USD`,
     // ⚠️ → ok là CÓ CHỦ Ý, và lý do không phải "ít nghiêm trọng hơn": cùng ${b.rateLimitHits}
@@ -221,7 +223,7 @@ console.log(`  ${cov.unread.length || cov.undeclared.length ? '⚠️ ' : '✓'}
   // Dòng "harness không đọc được hoá đơn" chỉ đúng khi con số ĐANG hiển thị là USD nhập tay.
   // Ở gói phẳng thì con số là số lần chạm rate limit, do chính harness đo — in câu đó ở đây
   // là nói sai về nguồn gốc dữ liệu của chính mình.
-  if (!['off', 'template-na', 'flat-ok', 'flat-limited', 'flat-unmeasured', 'flat-capo'].includes(b.mode)) {
+  if (!['off', 'template-na', 'template-plan', 'flat-ok', 'flat-limited', 'flat-unmeasured', 'flat-capo'].includes(b.mode)) {
     console.log('       harness KHÔNG đọc được hoá đơn — con số này do người chép từ dashboard billing.');
   }
   if (b.advice) advice.push(b.advice);

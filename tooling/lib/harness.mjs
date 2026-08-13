@@ -506,6 +506,9 @@ export function budgetSnapshot(cfg = null, role = null, now = Date.now()) {
     flatCapo: flatCapoEntries(),
     role: role ?? repoRole(),
     plan: budgetPlan(c),
+    // Giá trị THÔ trong config, không phải giá trị đã hợp nhất với env — `budgetStatus` cần biết
+    // gói phẳng này CÓ chảy xuống consumer hay không, và chỉ nguồn config mới chảy.
+    configPlan: c.budget?.plan ?? null,
     rateLimitHits: hits,
     now,
   });
@@ -524,7 +527,7 @@ export function rateLimitHitsIn(text, sinceMs = 0) {
 }
 
 export function budgetStatus({ cap, alertAtPercent = 80, latest = null, now = Date.now(), role = null,
-  plan = 'metered', rateLimitHits = null, flatCapo = [] } = {}) {
+  plan = 'metered', configPlan = null, rateLimitHits = null, flatCapo = [] } = {}) {
   const c = Number(cap);
   // MỘT phép kiểm "số đo có dùng được không", dùng ở CẢ HAI chỗ cần nó: cờ `measured` (nhánh
   // template) và mode `unmeasured` (nhánh có cap). Viết hai lần thì hai bản sẽ lệch, và lúc
@@ -532,6 +535,42 @@ export function budgetStatus({ cap, alertAtPercent = 80, latest = null, now = Da
   const usd = Number(latest?.usd), days = Number(latest?.days);
   const at = Date.parse(latest?.at ?? '');
   const measured = Number.isFinite(usd) && Number.isFinite(days) && days > 0 && Number.isFinite(at);
+
+  // ── HAI FIELD, MỘT ĐƯỜNG RÒ XUỐNG CONSUMER ────────────────────────────────
+  //
+  // `apply-to.mjs:48` chép `harness.config.json` xuống MỌI consumer. `monthlyUsdCap` đã có gác
+  // cho đường đó (`template-cap`, #92). `budget.plan` thì chưa — và nó rò NẶNG HƠN: một cap sai
+  // chỉ mang theo một con số sai, còn `plan: flat` thừa kế **tắt hẳn phép so cap**. Đo
+  // 2026-08-13, consumer cap $50 với chi thật $500/30 ngày:
+  //
+  //     plan metered         → `over`, 1000%                ← gác nổ
+  //     plan flat (thừa kế)  → `flat-limited`, percent=null  ← cap không so với gì cả
+  //
+  // Không phải rủi ro giả định. `setup.mjs` KHÔNG hỏi `plan`, nên đường DUY NHẤT field này vào
+  // config là sửa TAY — và sửa tay vào vùng cấm thì `harness-edits.log` không thấy (sổ đó chỉ
+  // ghi lệnh đi qua tool, `protect-harness.mjs` vẫn chặn nguyên). Xảy ra thật trên máy này
+  // 2026-08-13 09:50; thứ phát hiện ra là `git status`, không phải harness.
+  //
+  // Phân biệt theo NGUỒN, không theo giá trị. `configPlan` là thứ chảy xuống; `HARNESS_BUDGET_PLAN`
+  // thì không — nó ở `settings.local.json` của từng người, đúng như `$comment_plan` khai. Nên gói
+  // phẳng khai bằng env ở template vẫn đo bình thường; chỉ khai bằng config mới kêu. Gộp hai
+  // nguồn lại là bắn nhầm vào người đã làm ĐÚNG (`lessons/0002`).
+  //
+  // Vai `consumer` KHÔNG kêu, có chủ ý: ở đó `plan` không chảy đi đâu nữa, và một repo solo khai
+  // gói của chính mình trong config là hợp lệ. Kêu ở đó là kêu vào 99% ca đúng.
+  const templateLeak = role !== 'template' ? null
+    : (Number.isFinite(c) && c > 0) ? 'cap'
+      : String(configPlan).trim().toLowerCase() === 'flat' ? 'plan' : null;
+
+  if (templateLeak === 'plan') {
+    return { mode: 'template-plan', percent: null, runRate: null, measured, plan: 'flat', rateLimitHits: null,
+      flatCapo: null, flatDays: null, flatAgeDays: null,
+      advice: 'budget.plan = "flat" nằm trong REPO TEMPLATE — nó chảy xuống MỌI consumer áp template sau này, và ở đó nó '
+        + 'TẮT phép so trần: một project có `monthlyUsdCap` thật sẽ không bao giờ được đối chiếu run-rate nữa (đo: cap $50, '
+        + 'chi $500/30 ngày ⇒ `flat-limited` thay vì `over` 1000%). Gói cước là thuộc tính của NGƯỜI TRẢ TIỀN, không của '
+        + 'project: đưa `budget.plan` về "metered" và khai theo máy ở `.claude/settings.local.json` → '
+        + '`env.HARNESS_BUDGET_PLAN = "flat"` (env thắng config, đã có test).' };
+  }
 
   // ── GÓI PHẲNG (#111) ──────────────────────────────────────────────────────
   //
@@ -555,7 +594,7 @@ export function budgetStatus({ cap, alertAtPercent = 80, latest = null, now = Da
   //
   // `rateLimitHits === null` ⇒ `?`, KHÔNG phải 0. "Chưa đọc được sổ" và "chưa lần nào chạm
   // trần" là hai chuyện, và gộp chúng là đúng phép gộp AGENTS.md cấm.
-  if (String(plan) === 'flat' && !(role === 'template' && Number.isFinite(c) && c > 0)) {
+  if (String(plan) === 'flat' && !templateLeak) {
     if (rateLimitHits == null) {
       return { mode: 'flat-unmeasured', percent: null, runRate: null, measured, plan: 'flat', rateLimitHits: null,
         advice: 'gói PHẲNG: tiền không phải cổ chai, rate limit mới là — nhưng chưa đọc được `budget-alarm.log` nên KHÔNG ĐO ĐƯỢC. Đây là `?`, không phải "ổn".' };

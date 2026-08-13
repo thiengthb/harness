@@ -1090,6 +1090,61 @@ const NEUTRAL_155 = 'node -e "process.exit(0)"';
   rmSync(p, { force: true });
 }
 
+// ── ㉜ ASSERTION GỌI MỘT EXPORT KHÔNG TỒN TẠI ────────────────────────────────
+//
+// Mọi case trên kiểm RUNNER. Case này kiểm CORPUS, và nó tồn tại vì một lỗ đo được: CI chạy
+// `evals/run.mjs --dry` (đúng — chiều thật cần mạng + agent thật), nên assertion **không bao giờ
+// được thực thi ở CI**. Một assertion trỏ vào module sai thì không crash ở đâu người ta nhìn.
+//
+// Đo 2026-08-13 trên `main` sạch (c534fc8): `0007` gọi `m.mergeBaseline` sau khi
+// `import('./tooling/lib/harness.mjs')`, nhưng `mergeBaseline` được export ở `tooling/rituals.mjs`
+// và **chưa bao giờ** ở lib (`git log -S` trên lib: không một commit nào). Kết quả: `TypeError: m
+// .mergeBaseline is not a function` ⇒ cả assertion chết ⇒ `✗ EVAL — 1 FAIL`, exit 1. Task ĐÓ chấm
+// "agent có viết ca cho chiều còn lại không" — nên phép đo im lặng đo một thứ khác hẳn: nó đo
+// một crash.
+//
+// Đây là `AGENTS.md` §Verification ở dạng nguyên bản — *"ưu tiên computational control trước
+// inferential control"*. Tên export tồn tại hay không là câu hỏi TẤT ĐỊNH; đừng để nó chờ một
+// lần chạy có mạng để trả lời.
+{
+  const EXPORTED = (src, name) =>
+    new RegExp(`export\\s+(?:async\\s+)?(?:function|const|let|var|class)\\s+${name}\\b`).test(src)
+    || new RegExp(`export\\s*\\{[^}]*\\b${name}\\b[^}]*\\}`, 's').test(src);
+
+  const symBad = [];
+  let symSeen = 0;
+  const dir = repoPath('evals', 'tasks');
+  for (const f of readdirSync(dir).filter(x => x.endsWith('.md') && !x.startsWith('_'))) {
+    const body = readFileSync(join(dir, f), 'utf8');
+    for (const hit of body.matchAll(/import\('(\.[^']+\.mjs)'\)\s*\.then\(\s*(\w+)\s*=>/g)) {
+      const [, rel, id] = hit;
+      const modPath = repoPath(...rel.replace(/^\.\//, '').split('/'));
+      if (!exists(modPath)) { symBad.push(`${f}: import \`${rel}\` — file KHÔNG tồn tại`); continue; }
+      const src = readFileSync(modPath, 'utf8');
+      // Cắt tới lời `import(` KẾ TIẾP: một file eval có nhiều assertion, mỗi cái import module
+      // riêng, và neo rộng hơn một assertion sẽ chấm tên của assertion này vào module của cái kia.
+      const next = body.indexOf("import('", hit.index + 1);
+      const chunk = body.slice(hit.index, next > hit.index ? next : undefined);
+      for (const call of chunk.matchAll(new RegExp(`\\b${id}\\.([A-Za-z_$][\\w$]*)\\s*\\(`, 'g'))) {
+        symSeen += 1;
+        if (!EXPORTED(src, call[1])) symBad.push(`${f}: \`${id}.${call[1]}()\` — \`${rel}\` KHÔNG export tên đó`);
+      }
+    }
+  }
+  // Sàn, cùng lý do với `MODES` ở `test-hooks`: phép bóc trôi ⇒ `symSeen === 0` ⇒ vòng lặp không
+  // chấm gì và case này xanh vô căn cứ. Sai theo chiều dễ chịu, `L0005`.
+  const SEEN_FLOOR = 10;
+  if (symBad.length) {
+    fail.push(`㉜ ${symBad.length} assertion trong bộ eval gọi export không tồn tại — nó CRASH, và crash đọc thành `
+      + `"eval FAIL" chứ không thành "eval hỏng": ${symBad.join(' · ')}`);
+  } else if (symSeen < SEEN_FLOOR) {
+    fail.push(`㉜ chỉ soi được ${symSeen} lời gọi export trong bộ eval (sàn ${SEEN_FLOOR}) — phép bóc đã trôi, `
+      + 'và 0 lời gọi làm case này xanh mà không kiểm gì cả');
+  } else {
+    ok.push(`㉜ ${symSeen} lời gọi export trong bộ eval đều có thật ở module được import — CI chạy \`--dry\` nên đây là tầng duy nhất bắt được`);
+  }
+}
+
 rmSync(WORK, { recursive: true, force: true });
 report('EVAL RUNNER TESTS', { ok, warn, fail });
 emitVerdict('EVAL HARNESS TESTS', { fail: fail.length, code: fail.length ? 1 : 0 });
