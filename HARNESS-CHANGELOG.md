@@ -72,11 +72,22 @@ Ba mutant, mỗi cái giết một **nhóm khẳng định khác nhau**:
 | mutant | ca bị giết |
 |---|---|
 | bỏ `maxBuffer` khỏi `run()` | `status=1` ở 2 MiB · `stdout` cắt còn 1 059 776 byte |
-| tắt nhánh `status === null` | thiếu `signal` · `detail` không nói *"KHÔNG PHẢI mã lỗi"* |
+| tắt nhánh `status === null` | thiếu `error` · `detail` không nói *"KHÔNG PHẢI mã lỗi"* |
 | một bản chép literal quay lại | ngưỡng viết bằng số ở 1 chỗ |
 
 Và có ca **chiều ngược**, để bản vá không thành *"cái gì cũng là sự cố hạ tầng"*: lệnh `exit 3`
 phải ra `status 3` với `detail` im.
+
+### Parity: bản đầu của ca test ĐỎ ở Windows, và đó là ca test hỏng
+
+`run()` mặc định `shell: IS_WIN`, nên trên Windows lệnh đi qua `cmd.exe` và dấu nháy trong
+`-e "…"` bị nát — `0 byte`, trông y hệt bug `maxBuffer`. Ca nay truyền `shell: false`, đúng
+đường mà `git()` (nạn nhân chính) đi qua.
+
+Cò của ca ② cũng đổi: **binary không tồn tại** (`ENOENT`) thay cho `SIGKILL`. Windows KHÔNG có
+signal — `process.kill(pid,'SIGKILL')` ở đó chỉ là `TerminateProcess` và `spawnSync` trả
+`signal: null`. Một ca dựng trên `signal` đỏ ở đúng một OS; `ENOENT` khoá cùng nhánh code mà
+giống nhau ở cả ba.
 
 ---
 

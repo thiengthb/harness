@@ -5391,23 +5391,36 @@ if (repoRole() === 'template') {
 {
   const badRun = [];
   const MIB = 1024 * 1024;
+  // `shell: false` BẮT BUỘC ở cả ba ca, và đó là một bài học đắt chứ không phải style.
+  //
+  // `run()` mặc định `shell: IS_WIN`, nên trên Windows lệnh đi qua `cmd.exe` và dấu nháy trong
+  // `-e "…"` bị nát. Bản đầu của ca này ĐỎ ở `parity (windows-latest)` với `0 byte` — trông y
+  // hệt bug maxBuffer, nhưng là CA TEST hỏng. `git()` cũng gọi `run(..., {shell:false})`, nên
+  // đường này đồng thời là đường mà nạn nhân chính của bug đi qua.
+  const node = (code) => run(process.execPath, ['-e', code], { shell: false });
 
   // ① Trên trần cũ 1 MiB: phải nhận ĐỦ và exit 0. Đây là ca bug, và nó cần > 1 MiB mới chạy
   //    vào nhánh hỏng — số nhỏ hơn thì mutant "bỏ maxBuffer" sống sót.
-  const big = run(process.execPath, ['-e', `process.stdout.write("x".repeat(2*${MIB}))`]);
+  const big = node(`process.stdout.write("x".repeat(2*${MIB}))`);
   if (big.status !== 0) badRun.push(`output 2 MiB ⇒ status=${big.status}, phải là 0 — Node GIẾT tiến trình con ở trần 1 MiB, và lệnh này exit 0`);
   if (big.stdout.length !== 2 * MIB) badRun.push(`output 2 MiB bị cắt còn ${big.stdout.length} byte — cắt cụt IM LẶNG là chế độ tệ hơn cả báo lỗi`);
 
-  // ② Tiến trình BỊ GIẾT ≠ lệnh trả mã lỗi. Fail-đóng (`status` vẫn khác 0) nhưng phải có tên.
-  const killed = run(process.execPath, ['-e', 'process.kill(process.pid, "SIGKILL")']);
-  if (killed.status === 0) badRun.push('tiến trình bị giết mà `status` = 0 — một lần chạy hỏng đọc thành thành công');
-  if (!killed.signal) badRun.push('tiến trình bị giết mà không nêu `signal` — bên gọi không phân biệt được với mã lỗi');
-  if (!/KHÔNG PHẢI lệnh trả mã lỗi/.test(killed.detail || '')) badRun.push('bị giết mà `detail` không nói đó KHÔNG phải mã lỗi — người đọc đi tìm bug ở chỗ không có gì sai');
+  // ② `status === null` ≠ lệnh trả mã lỗi. Fail-đóng (`status` khác 0) nhưng phải có TÊN.
+  //
+  //    Cò là một binary KHÔNG TỒN TẠI (`spawnSync` ⇒ `status: null` + `error.code = ENOENT`),
+  //    KHÔNG phải SIGKILL: **Windows không có signal** — `process.kill(pid,'SIGKILL')` ở đó chỉ
+  //    là `TerminateProcess`, và spawnSync trả `signal: null`. Một ca dựng trên `signal` sẽ đỏ
+  //    ở đúng một OS, mà Parity Contract đòi cả ba phải xanh. `ENOENT` giống nhau ở cả ba, và
+  //    nó khoá ĐÚNG nhánh code đó mà không mượn ngữ nghĩa riêng của POSIX.
+  const killed = run('binary-khong-ton-tai-o-may-nao-ca', [], { shell: false });
+  if (killed.status === 0) badRun.push('spawn thất bại mà `status` = 0 — một lần chạy hỏng đọc thành thành công');
+  if (!killed.error) badRun.push('spawn thất bại mà không nêu `error` — bên gọi không phân biệt được với mã lỗi');
+  if (!/KHÔNG PHẢI lệnh trả mã lỗi/.test(killed.detail || '')) badRun.push('spawn thất bại mà `detail` không nói đó KHÔNG phải mã lỗi — người đọc đi tìm bug ở chỗ không có gì sai');
 
   // ③ CHIỀU NGƯỢC, để bản vá không thành "cái gì cũng là sự cố hạ tầng": mã lỗi THẬT phải đi
   //    qua nguyên vẹn, và `detail` phải im. Không có ca này thì một mutant trả `status: 1` cho
   //    mọi thứ vẫn xanh.
-  const real = run(process.execPath, ['-e', 'process.exit(3)']);
+  const real = node('process.exit(3)');
   if (real.status !== 3) badRun.push(`lệnh exit 3 ⇒ status=${real.status}, mã lỗi thật bị nuốt`);
   if (real.detail) badRun.push('lệnh trả mã lỗi bình thường mà vẫn gắn `detail` sự-cố-hạ-tầng — mọi lần đỏ sẽ đọc như hạ tầng hỏng');
 

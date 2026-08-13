@@ -62,11 +62,28 @@ Ca **hành vi**, không phải quét nguồn — khác `runConfigured` (cần pr
 | mutant | ca bị giết |
 |---|---|
 | bỏ `maxBuffer` | status=1 ở 2 MiB · stdout cắt còn 1 059 776 byte |
-| tắt `status === null` | thiếu `signal` · `detail` không nói "KHÔNG PHẢI mã lỗi" |
+| tắt `status === null` | thiếu `error` · `detail` không nói "KHÔNG PHẢI mã lỗi" |
 | literal quay lại | ngưỡng viết bằng số ở 1 chỗ |
 
 Ca chiều ngược: `exit 3` ⇒ `status 3`, `detail` im. Không có nó thì một mutant trả `status: 1`
 cho mọi thứ vẫn xanh.
+
+## BÀI HỌC ĐẮT NHẤT CỦA LÔ — ca test đỏ ở Windows, và nó là CA TEST hỏng
+
+Bản đầu ĐỎ ở `parity (windows-latest)` với `output 2 MiB ⇒ status=1, 0 byte` — **trông y hệt
+chính cái bug đang sửa**. Nếu đọc vội, kết luận sẽ là "bản vá không chạy trên Windows".
+
+Hai nguyên nhân, cả hai đều là tôi mượn ngữ nghĩa POSIX:
+
+1. `run()` mặc định `shell: IS_WIN`. Trên Windows lệnh đi qua `cmd.exe`, dấu nháy trong
+   `-e "…"` nát ⇒ node nhận mã lỗi cú pháp ⇒ 0 byte. Sửa: `shell: false` — cũng đúng là đường
+   `git()` đi, tức nạn nhân chính của bug.
+2. Ca "bị giết" dựng trên `SIGKILL`. **Windows không có signal**: `process.kill(pid,'SIGKILL')`
+   ở đó là `TerminateProcess`, và `spawnSync` trả `signal: null`. Sửa: cò là **binary không tồn
+   tại** (`ENOENT`) — khoá đúng nhánh `status === null` mà giống nhau ở cả ba OS.
+
+Luật rút ra: **một ca test dựng trên ngữ nghĩa của MỘT hệ điều hành sẽ đỏ ở hệ kia, và nó đỏ
+theo cách đọc giống hệt bug thật.** Chọn cò nào có nghĩa như nhau ở cả ba.
 
 ## Ghi chú phối hợp — đọc mục này nếu bạn là phiên sau
 
