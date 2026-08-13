@@ -11,6 +11,86 @@
 
 ---
 
+## 2.76.0 — 2026-08-13
+
+**minor.** `v2.75.0` vá `runConfigured`. Cùng lớp lỗi vẫn còn nguyên ở **tầng dưới nó**:
+`run()` — nguyên thuỷ mà `git()` và 60+ nơi khác đi qua — cũng `stdio: 'pipe'` mà không khai
+`maxBuffer`.
+
+Đây đúng hình dạng `L0007` mô tả: một bản vá đúng, viết cho **ca đã nhìn thấy**, và cái cùng
+gốc rễ ở chỗ khác không có triệu chứng nào nên không ai đi tìm.
+
+### Tái hiện — không phải suy luận
+
+```
+run('node', ['-e', 'process.stdout.write("x".repeat(N))'])
+
+  N = 500 KiB  →  status 0  ·  nhận đủ 512 000 byte
+  N = 2 MiB    →  status 1  ·  nhận 1 059 776 byte      ← tiến trình con exit 0 ở CẢ HAI ca
+```
+
+Hai hại riêng biệt trong cùng một dòng: lệnh **thành công đọc ra là hỏng**, và `stdout` bị
+**cắt cụt im lặng**.
+
+### Ngòi nổ hiện thực
+
+`git()` đi qua `run()`, nên **mọi phép đo git của harness** đang chịu trần 1 MiB.
+
+`git status --porcelain` ≈ 45 byte/dòng ⇒ vỡ ở **~23 300 file bẩn**. Một repo tiêu thụ quên
+gitignore `node_modules` là quá đủ — đo trên máy phát hiện: **57 737** file (`sakubun`),
+**35 709** (`warehouse`).
+
+Khi đó `dirtyFiles` trong `collect()` thành `null`, và `/handoff` ra `?` với lý do *"không đọc
+được cây làm việc (`git status`)"*. Triệu chứng đúng, nguyên nhân sai: git không hỏng, cái trần
+này mới hỏng.
+
+Ở repo template hiện tại output lớn nhất là **32 952 byte** (`test-hooks`) — nên đây là **bom
+hẹn giờ chưa nổ**, không phải sự cố đang xảy ra. Ghi rõ để không ai đi tìm triệu chứng ở đây.
+
+### Ba sửa
+
+1. `run()` khai `maxBuffer`.
+2. `status === null` **không** còn gộp vào `r.status ?? 1`. Giữ `status: 1` để **fail-đóng** —
+   một lệnh bị cắt cụt không được đọc thành thành công — nhưng nói ra ở `signal` / `error` /
+   `detail`. Ba trường thêm là **phụ**: hợp đồng cũ `{status, stdout, stderr}` không đổi, nên
+   60+ nơi gọi không phải sửa gì.
+3. **`MAX_BUFFER` là MỘT hằng số.** Ngưỡng này vừa có bản chép thứ ba (`runConfigured` ·
+   `evals/run.mjs` · và `run()`, nơi vốn không khai gì cả). Ba bản chép của một ngưỡng thì trôi
+   khỏi nhau, và bản trôi chậm nhất luôn là bản không ai nhớ là nó tồn tại — cùng lý do
+   `versionCmp`, `codeOnly`, `handledGroups` đều đã phải gom về một chỗ.
+
+### Bằng chứng
+
+Sàn **283 → 284**. Suite `284/284 exit 0` · doctor · migrations · evals đều exit 0.
+
+Ca này là **HÀNH VI, không phải quét nguồn** — `run()` spawn được ngay trong test, khác
+`runConfigured` (cần một project đã cấu hình mới chạy thật). Ca hành vi không mục khi ai đó đổi
+cách viết, và nó bắt được cả chế độ hỏng chưa ai nghĩ ra tên.
+
+Ba mutant, mỗi cái giết một **nhóm khẳng định khác nhau**:
+
+| mutant | ca bị giết |
+|---|---|
+| bỏ `maxBuffer` khỏi `run()` | `status=1` ở 2 MiB · `stdout` cắt còn 1 059 776 byte |
+| tắt nhánh `status === null` | thiếu `error` · `detail` không nói *"KHÔNG PHẢI mã lỗi"* |
+| một bản chép literal quay lại | ngưỡng viết bằng số ở 1 chỗ |
+
+Và có ca **chiều ngược**, để bản vá không thành *"cái gì cũng là sự cố hạ tầng"*: lệnh `exit 3`
+phải ra `status 3` với `detail` im.
+
+### Parity: bản đầu của ca test ĐỎ ở Windows, và đó là ca test hỏng
+
+`run()` mặc định `shell: IS_WIN`, nên trên Windows lệnh đi qua `cmd.exe` và dấu nháy trong
+`-e "…"` bị nát — `0 byte`, trông y hệt bug `maxBuffer`. Ca nay truyền `shell: false`, đúng
+đường mà `git()` (nạn nhân chính) đi qua.
+
+Cò của ca ② cũng đổi: **binary không tồn tại** (`ENOENT`) thay cho `SIGKILL`. Windows KHÔNG có
+signal — `process.kill(pid,'SIGKILL')` ở đó chỉ là `TerminateProcess` và `spawnSync` trả
+`signal: null`. Một ca dựng trên `signal` đỏ ở đúng một OS; `ENOENT` khoá cùng nhánh code mà
+giống nhau ở cả ba.
+
+---
+
 ## 2.75.1 — 2026-08-13
 
 **patch.** Một ca trong `test-hooks.mjs` khẳng định thứ **chỉ đúng ở repo template**, nên nó đỏ

@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { parseFrontmatter } from '../tooling/lib/frontmatter.mjs';
-import { repoPath, readJson, writeJson, report, git, config, spill, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, stateDir } from '../tooling/lib/harness.mjs';
+import { repoPath, readJson, writeJson, report, git, config, spill, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, stateDir, MAX_BUFFER } from '../tooling/lib/harness.mjs';
 
 const argv = process.argv.slice(2);
 const has = f => argv.includes(f);
@@ -526,7 +526,7 @@ function runAgent(task, root) {
     shell: true, encoding: 'utf8', cwd: root,
     input: prompt,                         // prompt qua stdin: không có tầng escaping nào để sai
     timeout: maxMinutes * 60_000,          // wall-clock cap — guardrail BẮT BUỘC
-    maxBuffer: 64 * 1024 * 1024,
+    maxBuffer: MAX_BUFFER,
   });
   const minutes = (Date.now() - t0) / 60_000;
 

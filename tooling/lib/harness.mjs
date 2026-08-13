@@ -20,6 +20,23 @@ import { parseFrontmatter } from './frontmatter.mjs';
 export const IS_WIN = platform() === 'win32';
 
 /**
+ * TRẦN OUTPUT cho mọi `spawnSync` có `stdio: 'pipe'` trong harness.
+ *
+ * Mặc định của Node là **1 MiB**, và vượt ngưỡng thì nó **KHÔNG truncate — nó GIẾT tiến trình
+ * con** (SIGTERM, `status: null`, `error.code = 'ENOBUFS'`). Một lệnh chạy đúng và exit 0 đọc
+ * ra là thất bại, với output đã bị cắt cụt mà không có tín hiệu nào.
+ *
+ * MỘT hằng số, vì tới v2.75.0 ngưỡng này đã có **ba** bản chép rời nhau (`runConfigured`,
+ * `evals/run.mjs`, và chỗ thứ ba là `run()` — nơi vốn KHÔNG khai gì cả). Ba bản chép của một
+ * ngưỡng thì trôi khỏi nhau, và bản trôi chậm nhất là bản không ai nhớ là nó tồn tại — cùng lý
+ * do `versionCmp`, `codeOnly`, `handledGroups` đều đã phải gom về một chỗ.
+ *
+ * 64 MiB: đủ rộng để không bao giờ là ngưỡng thật trong thực tế, vẫn còn là một cái trần (một
+ * lệnh in vô hạn phải chết, không được ăn hết RAM).
+ */
+export const MAX_BUFFER = 64 * 1024 * 1024;
+
+/**
  * MỘT FILE LEARNINGS CÓ PHẢI ỨNG VIÊN PROMOTE KHÔNG — THUẦN, nhận nội dung file.
  *
  * `/knowledge-promote` đếm file trong `.claude/learnings/` mới hơn bài học mới nhất. Phép đếm
@@ -1029,7 +1046,7 @@ export function runConfigured(name, { placeholders = {}, capture = false, cwd = 
     // output dao động quanh ĐÚNG 1 MiB, nên cùng một commit lúc XANH lúc ĐỎ — 4 lần OK / 2 lần
     // FAIL trên cùng base. Report Playwright của đúng lần "FAIL" cho 28/28 test PASS: gate nói
     // đỏ trong khi bộ test nói xanh.
-    maxBuffer: 64 * 1024 * 1024,
+    maxBuffer: MAX_BUFFER,
   });
 
   // `status === null` KHÔNG BAO GIỜ nghĩa là "lệnh trả mã lỗi": tiến trình bị giết bằng signal
@@ -1093,10 +1110,43 @@ export function runConfigured(name, { placeholders = {}, capture = false, cwd = 
 export function run(bin, args = [], { cwd = REPO_ROOT, capture = true, input, shell = IS_WIN, env } = {}) {
   const r = spawnSync(bin, args, {
     cwd, encoding: 'utf8', input, shell,
+    // Cùng lớp lỗi `runConfigured` vừa sửa ở v2.75.0 — nhưng ở TẦNG DƯỚI nó. `run()` là thứ
+    // `git()` đi qua, nên mọi phép đo git của harness đều đang chịu trần 1 MiB của Node, và
+    // vượt ngưỡng thì Node GIẾT tiến trình con chứ không cắt bớt.
+    //
+    // Tái hiện 2026-08-13 — `run('node', ['-e', 'process.stdout.write("x".repeat(N))'])`:
+    //   500 KiB → status 0, nhận đủ 512 000 byte
+    //   2 MiB   → status 1, nhận 1 059 776 byte      ← tiến trình con exit 0 ở CẢ HAI ca
+    //
+    // Ngòi nổ hiện thực: `git status --porcelain` ≈ 45 byte/dòng ⇒ vỡ ở ~23 300 file bẩn. Một
+    // repo tiêu thụ quên gitignore `node_modules` là quá đủ — đo trên máy này: 57 737 file
+    // (`sakubun`), 35 709 (`warehouse`). Khi đó `dirtyFiles` ở `collect()` thành `null` và
+    // `/handoff` ra `?` kèm lý do *"không đọc được cây làm việc"*: đúng triệu chứng, sai
+    // nguyên nhân — git không hỏng, cái trần này mới hỏng.
+    maxBuffer: MAX_BUFFER,
     ...(env ? { env: { ...process.env, ...env } } : {}),
     stdio: capture ? 'pipe' : 'inherit',
   });
-  return { status: r.status ?? 1, stdout: (r.stdout ?? '').trim(), stderr: (r.stderr ?? '').trim() };
+  // `status === null` KHÔNG BAO GIỜ nghĩa là "lệnh trả mã lỗi" — tiến trình bị giết bằng signal
+  // (buffer, OOM, timeout) hoặc spawn thất bại. `r.status ?? 1` gộp hai chuyện đó vào cùng một
+  // số `1`, và từ đó không bên gọi nào phân biệt được nữa.
+  //
+  // Giữ `status: 1` để FAIL-ĐÓNG — một lệnh bị cắt cụt không được đọc thành thành công. Nhưng
+  // nói ra ở `detail`. Ba trường thêm là PHỤ: hợp đồng cũ `{status, stdout, stderr}` không đổi,
+  // nên 60+ nơi gọi không phải sửa gì.
+  if (r.status === null) {
+    const why = r.error ? `${r.error.code ?? r.error.name}: ${r.error.message}` : `bị giết bởi signal ${r.signal}`;
+    return {
+      status: 1,
+      stdout: (r.stdout ?? '').trim(),
+      stderr: (r.stderr ?? '').trim(),
+      signal: r.signal ?? null,
+      error: r.error ?? null,
+      detail: `KHÔNG PHẢI lệnh trả mã lỗi — \`${bin}\` không thoát bình thường (${why}). `
+        + 'Đây là sự cố hạ tầng của lần chạy: kiểm lượng output lệnh in ra, bộ nhớ, và timeout.',
+    };
+  }
+  return { status: r.status, stdout: (r.stdout ?? '').trim(), stderr: (r.stderr ?? '').trim(), signal: null, error: null, detail: null };
 }
 
 /**
