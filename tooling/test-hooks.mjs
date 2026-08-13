@@ -1432,9 +1432,18 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   //     `claudeCodeVersion: null` = không đo được (`?`, đã kiểm ở ②).
   //     `reviewedClaudeCode: null` = ĐO ĐƯỢC mà chưa ai rà (`due`).
   //     Gộp hai cái đó là cách một việc tới hạn thật biến thành một dòng im lặng.
+  //
+  //     Và DRIFT CÓ HAI CHIỀU. `reviewedVersion` là sự thật CỦA REPO (được commit, máy khác có
+  //     thể đã ghi); version đang chạy là sự thật CỦA MÁY NÀY — hai đại lượng khác chủ ngữ thì
+  //     lệch được cả hai chiều. Bản trước dùng `!==`, một phép so KHÔNG CÓ CHIỀU, nên chiều lùi
+  //     in *"đã đổi 2.1.228 → 2.1.222: đọc changelog bản mới"* về một bản CŨ HƠN (đo 2026-08-13).
+  //     Ca chiều lùi ở đây là ca mà mutant "quay lại `!==`" phải giết.
   const DRIFT = [
     [{ reviewedClaudeCode: null }, 'due', /CHƯA có bản rà/, 'chưa có baseline ⇒ tới hạn (không phải `?`)'],
-    [{ reviewedClaudeCode: '2.1.200' }, 'due', /2\.1\.200 → 2\.1\.221/, 'version đổi ⇒ tới hạn, và nêu CẢ HAI số'],
+    [{ reviewedClaudeCode: '2.1.200' }, 'due', /2\.1\.200 → 2\.1\.221/, 'chiều TIẾN: version đổi ⇒ tới hạn, và nêu CẢ HAI số'],
+    [{ reviewedClaudeCode: '2.1.228' }, 'ok', /CŨ HƠN/, 'chiều LÙI: sổ đã rà bản mới hơn máy này ⇒ KHÔNG có việc'],
+    [{ reviewedClaudeCode: '2.1.228' }, 'ok', /ĐỪNG chạy/, 'chiều LÙI còn phải CẢN lệnh rà — chạy nó ở đây hạ mốc đã rà của đội (L0008)'],
+    [{ reviewedClaudeCode: 'ban-nao-do' }, '?', /không so được/, 'không đọc được dạng x.y.z ⇒ `?`, KHÔNG im lặng coi như bằng nhau'],
     [{}, 'ok', /2\.1\.221/, 'đã rà đúng version đang chạy ⇒ im lặng'],
   ];
   for (const [state, want, msg, label] of DRIFT) {
@@ -4733,9 +4742,34 @@ if (repoRole() === 'template') {
       bad.push('hai lần rà liên tiếp (mới nhất đầu sổ, đo của cơ chế kia còn nguyên)');
     }
   }
-  const total = cases.length + 1;
+  // ⑯ RÀ MỘT BẢN CŨ HƠN KHÔNG ĐƯỢC HẠ MỐC. `reviewedVersion` trả lời *"bản mới nhất đã có
+  //    người rà là bản nào?"* — nó là một ĐỈNH, không phải "lần gần nhất". Hai máy chạy hai bản
+  //    là chuyện thường (đo 2026-08-13: máy A rà 2.1.228 và commit, máy B chạy 2.1.222); ghi đè
+  //    vô điều kiện làm mốc của đội TỤT, và 2.1.223–228 đọc thành "chưa ai rà" trong khi bản ghi
+  //    của chúng vẫn nằm ngay trong `history`.
+  //
+  //    Đây là chiều LẶNG của cùng bản vá đã sửa `claude-code-drift` — chiều ồn là dòng chữ sai,
+  //    chiều này là một con số âm thầm tụt lại, không triệu chứng (`L0007`).
+  {
+    const hi = mergeBaseline({ reviewedVersion: '2.1.228', reviewedAt: 'T-CU' },
+      { version: '2.1.222', at: 'T-MOI', found: 'rà bản cũ hơn ở máy khác' });
+    if (hi.reviewedVersion !== '2.1.228') bad.push(`rà bản CŨ hơn hạ mốc xuống ${hi.reviewedVersion} — mốc đã rà của đội bị vứt`);
+    // Cặp version↔ngày đi CÙNG nhau: giữ version cũ mà nhận ngày mới là khai một bản rà chưa
+    // từng xảy ra vào hôm nay.
+    if (hi.reviewedAt !== 'T-CU') bad.push('giữ version cũ nhưng nhận `reviewedAt` mới — cặp version↔ngày nói dối');
+    // Việc đã làm thật thì không được mất, kể cả khi nó không nâng mốc.
+    if (hi.history?.[0]?.version !== '2.1.222') bad.push('lần rà bản cũ KHÔNG vào history — việc đã làm bị nuốt');
+    // Chiều ngược, để bản vá không thành "không bao giờ cập nhật": bản MỚI hơn vẫn phải thắng.
+    const up = mergeBaseline({ reviewedVersion: '2.1.222', reviewedAt: 'T-CU' },
+      { version: '2.1.229', at: 'T-MOI', found: 'rà bản mới' });
+    if (!(up.reviewedVersion === '2.1.229' && up.reviewedAt === 'T-MOI')) bad.push('bản MỚI hơn không nâng được mốc — bản vá chặn quá tay');
+    // `prev` không đọc được dạng số ⇒ bản rà thật thay nó, đừng để một chuỗi rác khoá mốc mãi.
+    const junk = mergeBaseline({ reviewedVersion: 'khong-phai-version' }, { version: '2.1.229', at: 'T', found: 'x' });
+    if (junk.reviewedVersion !== '2.1.229') bad.push('mốc cũ là chuỗi rác vẫn khoá được mốc mới — không so được KHÔNG có nghĩa là lớn hơn');
+  }
+  const total = cases.length + 2;
   if (bad.length) fail.push(`mergeBaseline${' '.repeat(15)} sai ${bad.length}/${total} ca: ${bad.join(' · ')}`);
-  else ok.push(`mergeBaseline${' '.repeat(15)} ${total} ca — cả BA người ghi (+ người thứ tư chưa có) sống sót, bản rà MỚI thắng, trần 20 cắt đúng đầu, mục sổ không phình`);
+  else ok.push(`mergeBaseline${' '.repeat(15)} ${total} ca — cả BA người ghi sống sót, bản rà MỚI thắng, rà bản CŨ hơn KHÔNG hạ mốc, trần 20 cắt đúng đầu`);
 }
 
 // ─── mergeBaseline: thứ ra ĐĨA, không phải thứ trong bộ nhớ ──────────────────
@@ -5228,7 +5262,7 @@ if (repoRole() === 'template') {
 // SÀN TỪNG TỤT LẠI SAU TỔNG THẬT, và đó là một chế độ hỏng riêng đáng ghi ra: 2026-08-08 đo
 // được `195/195 pass, sàn 185` — 10 ca thêm vào mà không ai nâng sàn, tức 10 ca có thể NGỪNG
 // CHẠY mà thứ duy nhất nhìn thấy điều đó vẫn xanh. Sàn không bám tổng thật là sàn đã nghỉ việc.
-const RATCHET = 273;   // +1 cờ-lạ-không-phải-nội-dung (fixlog ⑩) · +1 trần --top không giấu việc (fixlog ⑪) · +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
+const RATCHET = 276;   // +3 drift hai chiều (claude-code-drift ×2 + mergeBaseline không hạ mốc) · +1 cờ-lạ-không-phải-nội-dung (fixlog ⑩) · +1 trần --top không giấu việc (fixlog ⑪) · +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa

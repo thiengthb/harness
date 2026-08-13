@@ -41,7 +41,7 @@
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, groupStillClosed, groupTracked, groupMarks, handledGroups, FIXLOG_CLOSED_FILE, FIXLOG_TRACKED_FILE, readJson, writeJson, readPacks, packPending, budgetSnapshot, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue, recordRitualStates, contextLossPending, stateDir } from './lib/harness.mjs';
+import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, groupStillClosed, groupTracked, groupMarks, handledGroups, FIXLOG_CLOSED_FILE, FIXLOG_TRACKED_FILE, readJson, writeJson, readPacks, packPending, budgetSnapshot, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue, recordRitualStates, contextLossPending, stateDir, versionCmp } from './lib/harness.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHẦN THUẦN — không đọc đĩa, không gọi git. Test khẳng định trực tiếp vào đây.
@@ -471,8 +471,35 @@ export const RITUALS = [
       if (!s.reviewedClaudeCode) {
         return { state: 'due', why: `đang chạy Claude Code ${s.claudeCodeVersion} và CHƯA có bản rà nào được ghi (.claude/claude-code-baseline.json) — chưa ai hỏi bản này có ra sẵn thứ harness tự viết không` };
       }
-      if (s.reviewedClaudeCode !== s.claudeCodeVersion) {
+      // DRIFT CÓ HAI CHIỀU, và bản trước chỉ viết cho một.
+      //
+      // `reviewedVersion` là sự thật CỦA REPO — nó được commit, và máy ghi nó có thể không
+      // phải máy này. Version đang chạy là sự thật CỦA MÁY NÀY. Hai đại lượng khác chủ ngữ thì
+      // lệch được theo CẢ HAI chiều, mà `!==` là một phép so không có chiều.
+      //
+      // Đo 2026-08-13: sổ đã rà `2.1.228` (ghi ở máy khác), máy này chạy `2.1.222`. Nghi thức
+      // in *"đã đổi 2.1.228 → 2.1.222: đọc changelog bản mới"* — không có bản mới nào.
+      //
+      // Và nó tệ hơn một dòng chữ sai. Ở chiều lùi, hành động DUY NHẤT tắt được đèn là chạy
+      // `--reviewed-claude-code`, mà làm thế sẽ hạ `reviewedVersion` đã commit từ `2.1.228`
+      // xuống `2.1.222` — vứt một bản rà của đội để làm xanh một mục trên máy mình. Đó đúng là
+      // `L0008`: *một tín hiệu TỚI HẠN phải TẮT ĐƯỢC bằng hành động nó đề nghị*, và ở đây hành
+      // động nó đề nghị gây thiệt hại. `mergeBaseline()` nay từ chối hạ mốc — chiều thứ hai của
+      // cùng bản vá này, vì một bản vá chỉ có ca cho chiều ồn ào là `L0007`.
+      const drift = versionCmp(s.claudeCodeVersion, s.reviewedClaudeCode);
+      if (drift === null) {
+        // KHÔNG SO ĐƯỢC ≠ BẰNG NHAU. Rơi vào đây nghĩa là một trong hai chuỗi không đọc được
+        // dạng `x.y.z` — nói thẳng ra, đừng im lặng đi tiếp như thể chúng bằng nhau.
+        return { state: '?', why: `không so được version: sổ ghi "${s.reviewedClaudeCode}", đang chạy "${s.claudeCodeVersion}" — `
+          + 'một trong hai không ở dạng `x.y.z`, nên KHÔNG kết luận được là có drift hay không' };
+      }
+      if (drift > 0) {
         return { state: 'due', why: `Claude Code đã đổi ${s.reviewedClaudeCode} → ${s.claudeCodeVersion}: đọc changelog bản mới với ĐÚNG một câu hỏi "nó vừa ra sẵn thứ nào harness đang tự làm tay?", rồi ghi lại bằng \`node tooling/rituals.mjs --reviewed-claude-code "<thấy gì>"\`` };
+      }
+      if (drift < 0) {
+        return { state: 'ok', why: `máy này chạy Claude Code ${s.claudeCodeVersion}, CŨ HƠN bản sổ đã rà (${s.reviewedClaudeCode}, ghi ở máy khác và được commit) — `
+          + 'KHÔNG có changelog nào chưa đọc, nên không có việc. ĐỪNG chạy `--reviewed-claude-code` ở đây: nó sẽ hạ mốc đã rà của đội xuống bản cũ. '
+          + 'Nếu bản mới đã cài rồi thì khởi động lại phiên để dùng nó.' };
       }
       // MÁY TRỪ ĐƯỢC THÌ ĐỪNG HỎI NGƯỜI. Phần "vendor ra sẵn thứ gì" là câu hỏi khó, đúng
       // là việc của người. Nhưng "tập sự kiện hook có đổi không" là một PHÉP TRỪ TẬP HỢP —
@@ -607,12 +634,31 @@ export function claudeCodeVersionMeasured(execPath = process.env.CLAUDE_CODE_EXE
  */
 export function mergeBaseline(prev, { version, at, found }) {
   const history = Array.isArray(prev?.history) ? prev.history : [];
+  // `reviewedVersion` LÀ MỘT ĐỈNH, KHÔNG PHẢI "LẦN GẦN NHẤT".
+  //
+  // Câu nó trả lời là *"bản mới nhất đã có người rà là bản nào?"* — nghi thức so nó với version
+  // đang chạy để biết còn changelog nào chưa đọc. Ghi đè vô điều kiện làm hỏng đúng câu đó khi
+  // hai máy chạy hai bản: máy A rà 2.1.228 và commit; máy B chạy 2.1.222, thấy đèn đỏ, chạy
+  // lệnh rà — và mốc của đội TỤT về 2.1.222. Từ đó 2.1.223–228 đọc thành "chưa ai rà", trong
+  // khi chúng đã được rà và bản ghi vẫn nằm ngay trong `history`.
+  //
+  // Đây là chiều LẶNG của cùng bản vá đã sửa `claude-code-drift` (chiều ồn là dòng chữ sai).
+  // `L0007` nói đúng chỗ này: bản vá có hai chiều mà chỉ chiều ồn có ca test thì chiều kia
+  // sống sót không triệu chứng — và ở đây triệu chứng của nó là một con số ÂM THẦM tụt lại.
+  //
+  // `reviewedAt` đi CÙNG `reviewedVersion`, không tách. Giữ version cũ mà nhận ngày mới thì cặp
+  // đó nói dối: nó khai một bản rà chưa từng xảy ra vào hôm nay.
+  //
+  // `history` thì LUÔN nhận bản ghi — lần rà bản cũ vẫn là việc đã làm thật, không được mất.
+  const back = versionCmp(version, prev?.reviewedVersion);
+  const keepPrev = back !== null && back < 0;
   return {
     ...prev,
     $comment: 'Bản rà Claude Code gần nhất. Nghi thức `claude-code-drift` so `reviewedVersion` với version đang chạy. '
+      + '`reviewedVersion` là ĐỈNH đã rà, không phải lần gần nhất — rà một bản CŨ hơn không hạ nó xuống. '
       + 'Đừng sửa tay — dùng `node tooling/rituals.mjs --reviewed-claude-code "<thấy gì>"`.',
-    reviewedVersion: version,
-    reviewedAt: at,
+    reviewedVersion: keepPrev ? prev.reviewedVersion : version,
+    reviewedAt: keepPrev ? prev.reviewedAt : at,
     history: [{ version, at, found }, ...history].slice(0, 20),
   };
 }

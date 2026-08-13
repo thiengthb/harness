@@ -2500,10 +2500,38 @@ export function tallyLines(text, { field = 2, sinceMs = 0 } = {}) {
  * So sánh bằng SỐ, không bằng chuỗi: `2.9.0` > `2.10.0` theo thứ tự từ vựng, và một phép so
  * sai ở đây báo "không có gì trễ" đúng lúc có.
  */
+/**
+ * SO HAI VERSION — THUẦN, và `null` khi KHÔNG SO ĐƯỢC.
+ *
+ * Phép so này ra đời khoá bên trong `releaseTagGap()`. Nó được kéo ra đây vì nghi thức
+ * `claude-code-drift` cần đúng nó, và bản đầu của nghi thức dùng `!==` — **một phép so KHÔNG
+ * CÓ CHIỀU**.
+ *
+ * Hậu quả, đo 2026-08-13: máy này chạy Claude Code `2.1.222` trong khi sổ đã rà tới `2.1.228`
+ * (máy khác ghi, và sổ đó ĐƯỢC COMMIT). Nghi thức in *"đã đổi 2.1.228 → 2.1.222: đọc changelog
+ * bản mới"* — `2.1.222` là bản CŨ HƠN, không có changelog nào chưa đọc. Việc đúng là KHÔNG LÀM
+ * GÌ, nhưng bảng báo có việc. Cùng lớp lỗi với `#194` (check tag chỉ hỏi một chiều).
+ *
+ * Để hai bản chép thì chúng trôi khỏi nhau — đúng điều `codeScanDesync` và `handledGroups`
+ * tồn tại để chặn. Một bản thì không trôi được.
+ *
+ * **`null` chứ không phải `0`.** "Không đọc được dạng số" và "hai version bằng nhau" là hai
+ * câu khác hẳn nhau; gộp chúng thì một chuỗi rác đọc thành *"không có drift"*. Bên gọi phải
+ * xử `null` TRƯỚC khi so với 0 — trong JS `null <= 0` là `true`, nên bỏ qua nó là im lặng.
+ */
+export function versionCmp(a, b) {
+  const parse = (v) => String(v).replace(/^v/, '').split('.').map(Number);
+  const valid = (p) => p.length === 3 && p.every(Number.isFinite);
+  const [pa, pb] = [parse(a), parse(b)];
+  if (!valid(pa) || !valid(pb)) return null;
+  return (pa[0] - pb[0]) || (pa[1] - pb[1]) || (pa[2] - pb[2]);
+}
+
 export function releaseTagGap({ versions = [], tags = [], current = '' } = {}) {
   const parse = (v) => String(v).replace(/^v/, '').split('.').map(Number);
   const valid = (p) => p.length === 3 && p.every(Number.isFinite);
-  const cmp = (a, b) => (a[0] - b[0]) || (a[1] - b[1]) || (a[2] - b[2]);
+  // Mọi chuỗi tới `versionCmp` dưới đây đã qua `valid()` ở trên, nên không ca nào ra `null`.
+  const cmp = (a, b) => versionCmp(a, b);
 
   const cur = parse(current);
   if (!valid(cur)) return null;                       // không đọc được `harness.version` ⇒ `?`
@@ -2511,14 +2539,14 @@ export function releaseTagGap({ versions = [], tags = [], current = '' } = {}) {
   const rel = versions.map(String).filter(v => valid(parse(v)));
   if (!rel.length) return null;                       // không đọc được changelog ⇒ `?`
 
-  const tagList = [...tagged].filter(t => valid(parse(t))).sort((a, b) => cmp(parse(a), parse(b)));
+  const tagList = [...tagged].filter(t => valid(parse(t))).sort((a, b) => cmp(a, b));
   const latestTag = tagList.at(-1) ?? null;
   // "Đã phát hành" = có mục changelog và KHÔNG mới hơn version đang ở trên main. Dùng phép so
   // này chứ không grep commit message: hai version từng ra trong CÙNG một commit (v2.54/v2.55),
   // nên grep gán nhầm mốc — và một cái tag đặt nhầm chỗ tệ hơn hẳn một cái tag thiếu.
-  const untagged = rel.filter(v => !tagged.has(v) && cmp(parse(v), cur) <= 0)
-    .sort((a, b) => cmp(parse(a), parse(b)));
-  const behind = latestTag ? untagged.filter(v => cmp(parse(v), parse(latestTag)) > 0).length : untagged.length;
+  const untagged = rel.filter(v => !tagged.has(v) && cmp(v, current) <= 0)
+    .sort((a, b) => cmp(a, b));
+  const behind = latestTag ? untagged.filter(v => cmp(v, latestTag) > 0).length : untagged.length;
   // `current` chỉ để HIỂN THỊ. Bản 2.67.0 viết chỗ này thành
   //   `rel.includes(…) ? String(current) : String(current)`
   // — hai nhánh giống hệt nhau, nên điều kiện chưa bao giờ quyết định gì. Kết quả vẫn đúng,
