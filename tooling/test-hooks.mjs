@@ -536,6 +536,10 @@ for (const [hook, input, expect, label, env, msg] of cases) {
   ok.push(`${hook.padEnd(28)} ${label}`);
 }
 
+// Đếm ca gate bỏ qua theo VAI. Khai ở đây vì `skipped` được `let` ở gần cuối file: cộng vào nó
+// từ trong khối bên dưới là ReferenceError (temporal dead zone), và nó chỉ nổ ở repo TIÊU THỤ.
+let gateCaseSkipped = 0;
+
 // ─── gates.mjs — cùng luật: code có quyền exit 2 thì phải có test ────────────
 // Nó không nằm trong .claude/hooks/ nhưng nó CHẶN được lượt, nên nó chịu cùng
 // hợp đồng. Ba nhánh dưới đây là toàn bộ hành vi fail-đóng của nó.
@@ -576,10 +580,29 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
       budget: {}, knowledge: {}, evals: { command: '' },
     }, null, 2) + '\n', 'utf8');
 
+    // `root: null` nghĩa là CHÍNH repo đang chạy suite — nên vai của nó là biến, không phải hằng.
+    // Ca ② khẳng định một kết quả CHỈ ĐÚNG khi vai đó là `template`: ở repo tiêu thụ, `gates.mjs`
+    // fail-đóng (exit 2) đúng như thiết kế, nên ca này đỏ VĨNH VIỄN ở mọi project đã áp template —
+    // đo được 2026-08-13 khi một repo tiêu thụ bắt kịp từ 2.13.0. Đây đúng là `knowledge/lessons/0003`
+    // (self-test của template khẳng định thứ chỉ đúng trong template), lớp lỗi mà chính dòng RATCHET
+    // ở cuối file này trích dẫn.
+    //
+    // Ba ca `root: null` còn lại KHÔNG có vấn đề đó, và lý do đáng ghi ra kẻo lần sau có người
+    // "dọn cho đồng bộ": ① và ③ mong đợi OK ở CẢ HAI vai (cảnh báo, và cửa thoát chủ ý), ⑥ mong đợi
+    // BLOCK ở cả hai. Chỉ ② phân biệt vai.
+    // Cộng vào `gateCaseSkipped`, KHÔNG vào `skipped`: `skipped` được `let` ở gần cuối file, nên
+    // chạm nó từ đây là ReferenceError (temporal dead zone) — và nó chỉ nổ ở repo TIÊU THỤ, vì ở
+    // template nhánh này không chạy. Đúng lớp lỗi mà chính bản vá này đang sửa, chỉ ngược chiều.
+    const templateOnly = repoRole() === 'template';
+    if (!templateOnly) gateCaseSkipped += 1;
+
     const GATE_CASES = [
-      // ① · ② · ③ — repo NÀY (template).
+      // ① · ③ — repo NÀY, kết quả giống nhau ở cả hai vai.
       [null, { HARNESS_CONFIG: UNCONF() }, OK, 'phiên CÓ người + gate bỏ qua → cảnh báo, KHÔNG chặn', /BỎ QUA/],
-      [null, { HARNESS_CONFIG: UNCONF(), CI: '1' }, OK, 'TEMPLATE + phiên không người → CHO QUA, và NÓI RA là không kiểm gì', /REPO TEMPLATE/],
+      // ② — CHỈ ở template: repo tiêu thụ phải fail-đóng ở đây, và có ca ④ khẳng định đúng điều đó.
+      ...(templateOnly
+        ? [[null, { HARNESS_CONFIG: UNCONF(), CI: '1' }, OK, 'TEMPLATE + phiên không người → CHO QUA, và NÓI RA là không kiểm gì', /REPO TEMPLATE/]]
+        : []),
       [null, { HARNESS_CONFIG: UNCONF(), CI: '1', HARNESS_ALLOW_SKIPPED_GATES: '1' }, OK, 'cửa thoát chủ ý mở được ở phiên không người', /BỎ QUA/],
       // ④ · ⑤ — cây TIÊU THỤ. Gác giữ nguyên sức mạnh ở đây.
       [consumer, { HARNESS_CONFIG: UNCONF(), CI: '1' }, BLOCK, 'TIÊU THỤ + phiên không người + gate bỏ qua → VẪN FAIL ĐÓNG', /KHÔNG có người ngồi xem/],
@@ -4314,7 +4337,7 @@ for (const [hook, apply, input, label, env] of MUTANTS) {
 // giống nhau nếu chỉ nhìn tổng — và sàn bên dưới tồn tại chính để phân biệt hai thứ đó. Đếm
 // tường minh thì sàn giữ được một con số cho MỌI vai, thay vì mỗi vai một hằng số phải nhớ
 // nâng. Đây là ba giá trị `0 / n/a / ?` mà repo này đòi ở mọi nơi khác, áp cho chính suite.
-let skipped = 0;
+let skipped = gateCaseSkipped;
 if (repoRole() === 'template') {
   // Bốn sự kiện có mặt từ bản đầu ⇒ mọi repo đã áp template đều có sẵn, không cần migration.
   const BASELINE = ['SessionStart', 'PreToolUse', 'PostToolUse', 'Stop'];
