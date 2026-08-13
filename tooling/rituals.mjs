@@ -41,7 +41,7 @@
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, groupStillClosed, groupTracked, groupMarks, handledGroups, FIXLOG_CLOSED_FILE, FIXLOG_TRACKED_FILE, readJson, writeJson, readPacks, packPending, budgetSnapshot, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue, recordRitualStates, contextLossPending, stateDir, versionCmp } from './lib/harness.mjs';
+import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, groupStillClosed, groupTracked, groupMarks, handledGroups, FIXLOG_CLOSED_FILE, FIXLOG_TRACKED_FILE, readJson, writeJson, readPacks, packPending, budgetSnapshot, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue, recordRitualStates, contextLossPending, stateDir, versionCmp, promoteDeclined } from './lib/harness.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHẦN THUẦN — không đọc đĩa, không gọi git. Test khẳng định trực tiếp vào đây.
@@ -153,17 +153,42 @@ export const RITUALS = [
       // Câu đúng đo được mà không cần issue: cây có bẩn không, và có commit nào chưa vào nhánh
       // tích hợp không. Hai tín hiệu đó CHÍNH LÀ thứ mất khi đổi máy hoặc hết quota giữa phiên.
       if (s.issue === null) {
-        const bits = [];
-        if (s.dirtyFiles > 0) bits.push(`${s.dirtyFiles} file chưa commit`);
-        if (s.ahead > 0) bits.push(`${s.ahead} commit chưa vào ${s.integrationBranch}`);
+        // HAI ĐẠI LƯỢNG KHÁC NHAU — và bản trước gộp chúng vào MỘT câu giải thích.
+        //
+        //   `dirtyFiles` + `unpushed`  chỉ tồn tại trên MÁY NÀY  ⇒ đúng là "biến mất khi đổi máy"
+        //   `ahead`                    chưa vào nhánh tích hợp    ⇒ sau khi push thì KHÔNG mất
+        //
+        // Đo 2026-08-13, ngay sau khi push nhánh và mở PR #198: mục này đỏ với câu *"2 commit
+        // chưa vào origin/main — đó là thứ biến mất khi bạn đổi máy"*, trong khi cả 2 commit
+        // đang nằm trên remote. Trạng thái "chưa merge" thì đáng theo dõi; câu GIẢI THÍCH thì sai.
+        //
+        // Đo bằng một đại lượng rồi giải thích bằng một đại lượng KHÁC là cách một cảnh báo
+        // đúng-về-trạng-thái vẫn dạy sai người đọc — và người đọc sẽ hiệu chỉnh niềm tin xuống,
+        // đúng cơ chế làm mọi cảnh báo mất giá.
+        const atRisk = [];
+        if (s.dirtyFiles > 0) atRisk.push(`${s.dirtyFiles} file chưa commit`);
+        if (s.unpushed > 0) atRisk.push(`${s.unpushed} commit chưa đẩy lên remote nào`);
+        // `ahead ⊇ unpushed` khi nhánh tích hợp là ref remote, nên hiệu là phần ĐÃ đẩy mà chưa
+        // merge. `Math.max(0, …)` phòng cấu hình lấy nhánh tích hợp LOCAL, nơi bao hàm đó gãy.
+        const pushedUnmerged = (s.ahead == null || s.unpushed == null) ? null : Math.max(0, s.ahead - s.unpushed);
+        const alsoPushed = pushedUnmerged ? ` (thêm ${pushedUnmerged} commit ĐÃ đẩy mà chưa vào ${s.integrationBranch} — cái đó KHÔNG mất)` : '';
+
         // Có tín hiệu DƯƠNG thì kết luận được ngay, kể cả khi tín hiệu kia không đọc được —
         // "biết chắc có việc dở" không cần cả hai phép đo. Thứ tự này cố ý: nó làm mục đỏ
         // sống sót qua một phép đo hỏng, thay vì bị một `null` nuốt mất.
-        if (bits.length) {
-          return { state: 'due', why: `nhánh \`${s.branch || '?'}\` không mang số issue nên không có docs/progress/ để tra, nhưng ${bits.join(' và ')} — đó là thứ biến mất khi bạn đổi máy hoặc hết quota giữa phiên` };
+        if (atRisk.length) {
+          return { state: 'due', why: `nhánh \`${s.branch || '?'}\` không mang số issue nên không có docs/progress/ để tra, nhưng ${atRisk.join(' và ')} — đó là thứ biến mất khi bạn đổi máy hoặc hết quota giữa phiên${alsoPushed}` };
         }
-        if (s.dirtyFiles == null || s.ahead == null) {
-          return { state: '?', why: `nhánh không mang số issue, và ${s.dirtyFiles == null ? 'không đọc được cây làm việc (`git status`)' : `không resolve được ${s.integrationBranch}`} — không nói được là có việc dở hay không` };
+        // Đã đẩy hết mà chưa merge: VẪN tới hạn, nhưng vì một lý do KHÁC. Không có gì để mất;
+        // thứ phiên sau thiếu là *nó đang nằm ở đâu và chờ gì*.
+        if (pushedUnmerged) {
+          return { state: 'due', why: `nhánh \`${s.branch || '?'}\`: ${pushedUnmerged} commit đã đẩy lên remote nhưng chưa vào ${s.integrationBranch} — KHÔNG mất khi bạn đổi máy, nhưng phiên sau không biết nó đang chờ gì nếu bạn không ghi lại` };
+        }
+        if (s.dirtyFiles == null || s.ahead == null || s.unpushed == null) {
+          const what = s.dirtyFiles == null ? 'không đọc được cây làm việc (`git status`)'
+            : s.unpushed == null ? 'không liệt kê được ref remote (`git rev-list --remotes`)'
+            : `không resolve được ${s.integrationBranch}`;
+          return { state: '?', why: `nhánh không mang số issue, và ${what} — không nói được là có việc dở hay không` };
         }
         return { state: 'n/a', cause: 'branch-no-issue', why: `nhánh \`${s.branch || '?'}\` không mang số issue, cây sạch và 0 commit đi trước ${s.integrationBranch} — không có gì để giao lại` };
       }
@@ -247,9 +272,13 @@ export const RITUALS = [
         // khi đổi máy, trong khi cái thật sự mất là tính MANG ĐI ĐƯỢC sang repo khác. Một lý do
         // sai hướng vẫn khiến người ta hành động, nhưng vì lý do không có thật — và khi họ phát
         // hiện ra bài học vẫn còn sau khi đổi máy, họ học được rằng bảng này nói quá.
-        return { state: 'due', why: `${s.learningsNewerThanLessons} file trong .claude/learnings/ mới hơn bài học mới nhất ở knowledge/lessons/ — bài học đang ở dạng chỉ-repo-này-thấy, chưa mang được sang project khác` };
+        return { state: 'due', why: `${s.learningsNewerThanLessons} file trong .claude/learnings/ mới hơn bài học mới nhất ở knowledge/lessons/ — bài học đang ở dạng chỉ-repo-này-thấy, chưa mang được sang project khác`
+          + '. Mục đã XÉT và quyết KHÔNG promote thì khai `promote: <lý do>` trong frontmatter của file đó — đừng để nó đỏ mãi' };
       }
-      return { state: 'ok', why: 'không có learnings nào mới hơn lessons' };
+      // Số file đã khai KHÔNG promote in ra kèm, vì một cơ chế im lặng là một cơ chế không ai
+      // biết mình đang dùng — và người sau sẽ tưởng mục này xanh do chưa ai ghi learnings nào.
+      return { state: 'ok', why: 'không có learnings nào CHỜ promote'
+        + (s.learningsDeclined ? ` (${s.learningsDeclined} file mới hơn lessons nhưng đã khai \`promote:\` là không)` : '') };
     },
   },
   {
@@ -813,6 +842,21 @@ export function collect() {
       return Number(r.stdout.trim());
     }),
 
+    // Commit KHÔNG nằm trên BẤT KỲ remote nào — tức thứ thật sự biến mất nếu máy này biến mất.
+    //
+    // Khác hẳn `ahead`, và sự khác đó là cả một bản vá: `ahead` đếm "chưa vào nhánh tích hợp",
+    // và sau khi push nhánh + mở PR thì con số đó vẫn dương trong khi công việc đã an toàn trên
+    // remote. `/handoff` từng đo `ahead` rồi giải thích bằng *"đó là thứ biến mất khi bạn đổi
+    // máy"* — đo một đại lượng, giải thích bằng một đại lượng khác.
+    //
+    // `HEAD --not --remotes` chứ không phải `@{upstream}..HEAD`: nhánh chưa có upstream thì
+    // `@{u}` NÉM LỖI, và ca đó (nhánh vừa tạo, chưa push) chính là ca cần đo nhất.
+    unpushed: num(() => {
+      const r = git(['rev-list', '--count', 'HEAD', '--not', '--remotes']);
+      if (r.status !== 0) return null;
+      return Number(r.stdout.trim());
+    }),
+
     // Số file cây làm việc đang bẩn. Tồn tại vì `/handoff` phải trả lời được "có việc dở
     // không" trên một nhánh KHÔNG mang số issue — xem chú thích dài ở nghi thức đó. `null`
     // khi `git status` không chạy được, và `null` ở đó KHÔNG được đọc là "cây sạch".
@@ -875,15 +919,22 @@ export function collect() {
 
     ...fixlogState(),
 
-    learningsNewerThanLessons: num(() => {
+    // ĐẾM ỨNG VIÊN, KHÔNG ĐẾM FILE. Phép đếm cũ gộp "có bài học tồn tại" với "có bài học SẴN
+    // SÀNG promote", nên `/harness-retro` — thứ BẮT BUỘC ghi một file vào `.claude/learnings/`
+    // — bật đỏ mục này mỗi lần nó chạy đúng, kể cả khi kết luận là "không có gì đáng promote".
+    // Xem `promoteDeclined()` ở lib. Hai số, vì số thứ hai làm cơ chế NHÌN THẤY ĐƯỢC.
+    ...(() => {
       const ld = repoPath('.claude', 'learnings'), kd = repoPath('knowledge', 'lessons');
-      if (!existsSync(ld) || !existsSync(kd)) return null;
-      const newest = (dir) => Math.max(0, ...readdirSync(dir).filter(f => f.endsWith('.md') && !f.startsWith('_'))
-        .map(f => statSync(join(dir, f)).mtimeMs));
-      const lessonAt = newest(kd);
-      return readdirSync(ld).filter(f => f.endsWith('.md') && !f.startsWith('_'))
-        .filter(f => statSync(join(ld, f)).mtimeMs > lessonAt).length;
-    }),
+      const fail = { learningsNewerThanLessons: null, learningsDeclined: null };
+      if (!existsSync(ld) || !existsSync(kd)) return fail;
+      try {
+        const mds = (dir) => readdirSync(dir).filter(f => f.endsWith('.md') && !f.startsWith('_'));
+        const lessonAt = Math.max(0, ...mds(kd).map(f => statSync(join(kd, f)).mtimeMs));
+        const newer = mds(ld).filter(f => statSync(join(ld, f)).mtimeMs > lessonAt);
+        const declined = newer.filter(f => promoteDeclined(readFileSync(join(ld, f), 'utf8')));
+        return { learningsNewerThanLessons: newer.length - declined.length, learningsDeclined: declined.length };
+      } catch { return fail; }
+    })(),
 
     skillCount: num(() => readdirSync(repoPath('.claude', 'skills'), { withFileTypes: true }).filter(d => d.isDirectory()).length),
     maxSkills: limit('maxSkills', 12),

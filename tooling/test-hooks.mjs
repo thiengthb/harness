@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution, verdictLine, emitVerdict, codeScanDesync, frictionReading, slotCounters, backtickEvalHazardIn, contextLossPending, selfPraiseClaims } from './lib/harness.mjs';
+import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution, verdictLine, emitVerdict, codeScanDesync, frictionReading, slotCounters, backtickEvalHazardIn, contextLossPending, selfPraiseClaims, promoteDeclined } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -800,6 +800,21 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     if (slotCounters({ skills: `${at(60 * 24 * 30)}|p|claim|slash_command|proj`, now: T0 }).skills.total !== 0) {
       badSC.push('mục 30 ngày trước vẫn lọt vào cửa sổ 7 ngày');
     }
+
+    // ④ CON SỐ PHẢI MANG THEO ĐIỂM MÙ CỦA NÓ. Sổ `skill-calls` do ô `UserPromptExpansion` ghi,
+    //    và ô đó chỉ bắn khi NGƯỜI GÕ lệnh gạch chéo — đo trực tiếp 2026-08-13: gọi skill bằng
+    //    công cụ `Skill` không tạo mục nào. Nên `total: 0` KHÔNG phân biệt được "skill chết"
+    //    với "skill chỉ được model gọi", trong khi `/entropy-sweep` đọc đúng con số này để
+    //    **đề xuất BỎ** skill. Một điểm mù đo lường nuôi một quyết định XOÁ.
+    //
+    //    `blindTo` đi kèm MỌI lần đọc, kể cả khi `total` khác 0 — vì bản trước chỉ cảnh báo ở
+    //    nhánh `total === 0`, nên ở mọi con số khác 0 phạm vi bị giấu hoàn toàn.
+    for (const [log, label] of [[`${at(10)}|p|claim|slash_command|proj`, 'có dữ liệu'], ['', 'sổ rỗng']]) {
+      const b = slotCounters({ skills: log, now: T0 }).skills?.blindTo;
+      if (!b) badSC.push(`(${label}) phép đọc skill KHÔNG mang theo điểm mù — mọi bên tiêu thụ sẽ đọc nó như sự thật về việc dùng skill`);
+      else if (!/model/i.test(b)) badSC.push(`(${label}) \`blindTo\` không nêu ĐÚNG thứ nó không thấy: "${b}"`);
+    }
+
     if (badSC.length) fail.push(`slotCounters${' '.repeat(16)} ${badSC.length} ca sai: ${badSC.join(' | ')}`);
     else ok.push(`slotCounters${' '.repeat(16)} "đồng thời" tính theo ĐƯỜNG CONG chứ không theo tổng · \`reason: hook\` tách khỏi vendor · chưa-cắm ≠ 0`);
   }
@@ -1299,8 +1314,8 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     issue: '', progressExists: false, commitsSinceProgress: 0, ahead: 0, integrationBranch: 'origin/main',
     // "Trạng thái ĐỦ" cho `/handoff` trên nhánh KHÔNG mang số issue = đã đo được cây làm việc.
     // `undefined` ở đây là "chưa nhìn" và phải ra `?` — ca ③ bên dưới khoá cả hai chiều.
-    branch: 'fix/1-x', dirtyFiles: 0,
-    fixlogTotal: 0, fixlogRepeated: 0, learningsNewerThanLessons: 0,
+    branch: 'fix/1-x', dirtyFiles: 0, unpushed: 0,
+    fixlogTotal: 0, fixlogRepeated: 0, learningsNewerThanLessons: 0, learningsDeclined: 0,
     skillCount: 5, maxSkills: 12, worktrees: 1, maxWorktrees: 4, pendingPacks: 0, harnessBlocks: 0,
     // "Trạng thái ĐỦ" cho guard nhánh tích hợp = đã gặp ít nhất một ca. 0/0 là `?` (mẫu số
     // rỗng, L0005), và ca ③ bên dưới khoá đúng điều đó.
@@ -1369,29 +1384,46 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     }
     // `/handoff` là NGOẠI LỆ CỐ Ý và nó phải được khẳng định riêng, không gộp vào bảng trên:
     // chủ ngữ của nó là CÔNG VIỆC SẼ MẤT, thứ tồn tại độc lập với tên nhánh. Cây bẩn ⇒ vẫn ĐỎ.
-    const dirty = get({ issue: null, dirtyFiles: 3, ahead: 0 }, 'handoff');
+    const dirty = get({ issue: null, dirtyFiles: 3, ahead: 0, unpushed: 0 }, 'handoff');
     if (dirty?.state !== 'due') bad.push(`handoff: nhánh không số issue + 3 file bẩn ⇒ \`${dirty?.state}\`, phải là \`due\` (đây là ca đã làm mất việc thật, nhật ký W32)`);
     else if (!/\d/.test(dirty.why)) bad.push('handoff: mục đỏ không kèm số đo');
-    const unpushed = get({ issue: null, dirtyFiles: 0, ahead: 2 }, 'handoff');
-    if (unpushed?.state !== 'due') bad.push(`handoff: nhánh không số issue + 2 commit chưa vào nhánh tích hợp ⇒ \`${unpushed?.state}\`, phải là \`due\``);
-    // Và chỉ khi CẢ HAI tín hiệu đã đo và đều bằng 0 thì mới được im.
-    const quiet = get({ issue: null, dirtyFiles: 0, ahead: 0 }, 'handoff');
+
+    // ── ĐO MỘT ĐẠI LƯỢNG, GIẢI THÍCH BẰNG MỘT ĐẠI LƯỢNG KHÁC ───────────────────────────
+    //
+    // `ahead` (chưa vào nhánh tích hợp) và `unpushed` (chưa ở remote NÀO) là hai đại lượng
+    // khác nhau, và chỉ cái thứ hai mới "biến mất khi bạn đổi máy". Bản trước đo `ahead` rồi
+    // in đúng câu đó — đo 2026-08-13, ngay sau khi push nhánh và mở PR #198: mục đỏ nói 2
+    // commit sắp mất, trong khi cả 2 đang nằm trên remote.
+    //
+    // Hai ca dưới có CÙNG `ahead: 2` và khác nhau đúng ở `unpushed`. Đó là điều kiện để
+    // mutant "quay lại đọc `ahead`" bị giết: một ca thôi thì nó sống.
+    const notPushed = get({ issue: null, dirtyFiles: 0, ahead: 2, unpushed: 2 }, 'handoff');
+    if (notPushed?.state !== 'due') bad.push(`handoff: 2 commit CHƯA đẩy ⇒ \`${notPushed?.state}\`, phải là \`due\``);
+    else if (!/biến mất/.test(notPushed.why)) bad.push('handoff: commit chưa đẩy mà KHÔNG nói nó sẽ mất — đó là cả lý do mục này tồn tại');
+
+    const pushedNotMerged = get({ issue: null, dirtyFiles: 0, ahead: 2, unpushed: 0 }, 'handoff');
+    if (pushedNotMerged?.state !== 'due') bad.push(`handoff: 2 commit ĐÃ đẩy mà chưa merge ⇒ \`${pushedNotMerged?.state}\`, phải là \`due\` (phiên sau vẫn cần biết nó chờ gì)`);
+    else if (/biến mất/.test(pushedNotMerged.why)) bad.push('handoff: commit ĐÃ ở trên remote mà vẫn bảo "biến mất khi đổi máy" — đo `ahead`, giải thích bằng `unpushed`');
+    else if (!/KHÔNG mất/.test(pushedNotMerged.why)) bad.push('handoff: không nói rõ phần đã đẩy thì KHÔNG mất — người đọc vẫn phải tự đoán đại lượng nào đang được nói');
+
+    // Và chỉ khi CẢ BA tín hiệu đã đo và đều bằng 0 thì mới được im.
+    const quiet = get({ issue: null, dirtyFiles: 0, ahead: 0, unpushed: 0 }, 'handoff');
     if (quiet?.state !== 'n/a') bad.push(`handoff: cây sạch + 0 commit đi trước ⇒ \`${quiet?.state}\`, phải là \`n/a\``);
-    // MUTANT: một tín hiệu KHÔNG ĐO ĐƯỢC mà tín hiệu kia bằng 0 ⇒ `?`. Đây là chỗ dễ trượt
+    // MUTANT: một tín hiệu KHÔNG ĐO ĐƯỢC mà các tín hiệu kia bằng 0 ⇒ `?`. Đây là chỗ dễ trượt
     // nhất của bản vá này — `null > 0` là `false`, nên một `null` lặng lẽ đi thẳng vào nhánh
     // "không có gì để giao lại" nếu thiếu đúng phép kiểm `== null`.
-    for (const [k, other] of [['dirtyFiles', 'ahead'], ['ahead', 'dirtyFiles']]) {
-      const r = get({ issue: null, [k]: null, [other]: 0 }, 'handoff');
+    for (const k of ['dirtyFiles', 'ahead', 'unpushed']) {
+      const zeros = { dirtyFiles: 0, ahead: 0, unpushed: 0 };
+      const r = get({ issue: null, ...zeros, [k]: null }, 'handoff');
       if (r?.state !== '?') bad.push(`handoff: \`${k}\` không đọc được (kia = 0) ⇒ \`${r?.state}\`, phải là \`?\` — "chưa nhìn" KHÔNG được thành "không có gì để giao lại"`);
     }
     // Nhưng một tín hiệu DƯƠNG thắng một tín hiệu hỏng: biết chắc có việc dở thì không cần
     // phép đo còn lại. Ngược lại là để một `null` nuốt mất một mục đỏ đúng.
-    const half = get({ issue: null, dirtyFiles: null, ahead: 4 }, 'handoff');
-    if (half?.state !== 'due') bad.push(`handoff: 4 commit chưa vào nhánh tích hợp + cây không đọc được ⇒ \`${half?.state}\`, phải là \`due\``);
-
+    const half = get({ issue: null, dirtyFiles: null, ahead: 4, unpushed: 4 }, 'handoff');
+    if (half?.state !== 'due') bad.push(`handoff: 4 commit chưa đẩy + cây không đọc được ⇒ \`${half?.state}\`, phải là \`due\``);
 
     if (bad.length) fail.push(`rituals.mjs${' '.repeat(17)} nhánh không mang số issue: ${bad.join(' · ')}`);
-    else ok.push(`rituals.mjs${' '.repeat(17)} nhánh không mang số issue ⇒ /claim + /verify-ui là \`n/a\` (không \`ok\`), /handoff vẫn ĐO cây bẩn + commit chưa đẩy`);
+    else ok.push(`rituals.mjs${' '.repeat(17)} nhánh không mang số issue ⇒ /claim + /verify-ui là \`n/a\` (không \`ok\`), /handoff phân biệt CHƯA ĐẨY (sẽ mất) với ĐÃ ĐẨY CHƯA MERGE (không mất)`);
   }
 
   // ④ Mọi mục TỚI HẠN phải kèm SỐ ĐO. Một dòng "nên chạy X" không có số là lời khuyên, và
@@ -1451,6 +1483,42 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
     if (r?.state !== want) fail.push(`rituals.mjs${' '.repeat(17)} claude-code-drift: ${label} → state=${r?.state}, mong đợi ${want}`);
     else if (!msg.test(r.why)) fail.push(`rituals.mjs${' '.repeat(17)} claude-code-drift: ${label} → \`why\` không khớp ${msg}`);
     else ok.push(`rituals.mjs${' '.repeat(17)} claude-code-drift: ${label}`);
+  }
+
+  // ④c `/knowledge-promote` phải ĐẾM ỨNG VIÊN, không đếm FILE.
+  //
+  //     `/harness-retro` BẮT BUỘC ghi một file vào `.claude/learnings/`, và mục này đếm file ở
+  //     đó mới hơn bài học mới nhất. Nên chạy đúng hai nghi thức theo đúng thứ tự kết thúc bằng
+  //     đèn đỏ y như lúc bắt đầu — kể cả khi kết luận của retro là "không có gì đáng promote".
+  //     Ghi sổ 2026-08-05, còn nguyên tới 2026-08-13. Một tín hiệu mà hành động ĐÚNG không tắt
+  //     được là tín hiệu sẽ bị bỏ qua (`L0008`).
+  const KP = [
+    [{ learningsNewerThanLessons: 2, learningsDeclined: 0 }, 'due', /2 file/, 'có ứng viên thật ⇒ vẫn tới hạn'],
+    [{ learningsNewerThanLessons: 2, learningsDeclined: 0 }, 'due', /promote:/, 'mục đỏ phải CHỈ RA cửa thoát, nếu không nó là mục đỏ không tắt được'],
+    [{ learningsNewerThanLessons: 0, learningsDeclined: 3 }, 'ok', /3 file/, 'đã khai KHÔNG promote ⇒ xanh, và số file khai HIỆN RA'],
+    [{ learningsNewerThanLessons: 0, learningsDeclined: 0 }, 'ok', /không có/, 'không có gì mới ⇒ xanh, không nhắc cơ chế'],
+  ];
+  for (const [state, want, msg, label] of KP) {
+    const r = get(state, 'knowledge-promote');
+    if (r?.state !== want) fail.push(`rituals.mjs${' '.repeat(17)} knowledge-promote: ${label} → state=${r?.state}, mong đợi ${want}`);
+    else if (!msg.test(r.why)) fail.push(`rituals.mjs${' '.repeat(17)} knowledge-promote: ${label} → \`why\` không khớp ${msg}: "${String(r.why).slice(0, 80)}"`);
+    else ok.push(`rituals.mjs${' '.repeat(17)} knowledge-promote: ${label}`);
+  }
+
+  // ④d Vị ngữ THUẦN đứng sau cửa thoát đó. Mặc định VẮNG = vẫn là ứng viên: 17 file learnings
+  //     đang có không đổi hành vi, nên cửa này chỉ mở khi có người chủ động khai.
+  {
+    const PD = [
+      ['---\npromote: chưa đủ 2 lần — mới 1 ca\n---\n# x', 'chưa đủ 2 lần — mới 1 ca', 'khai LÝ DO ⇒ trả về chính lý do đó'],
+      ['---\npromote: candidate\n---\n# x', null, '`candidate` = khai RÕ là vẫn chờ ⇒ vẫn đếm'],
+      ['---\npromote:\n---\n# x', null, 'trường bỏ TRỐNG là chưa quyết, không phải đã quyết là không'],
+      ['---\nowner: lan\n---\n# x', null, 'có frontmatter mà không có trường ⇒ vẫn là ứng viên'],
+      ['# x', null, 'không frontmatter ⇒ vẫn là ứng viên (mọi file cũ giữ nguyên hành vi)'],
+      ['', null, 'file rỗng không được ném'],
+    ];
+    const badPD = PD.filter(([src, want]) => promoteDeclined(src) !== want);
+    if (badPD.length) fail.push(`promoteDeclined${' '.repeat(14)} sai ${badPD.length}/${PD.length} ca: ${badPD.map(([, , l]) => l).join(' · ')}`);
+    else ok.push(`promoteDeclined${' '.repeat(14)} trả LÝ DO khi đã khai, \`null\` khi vắng/rỗng/candidate — ${PD.length} ca`);
   }
 
   // ④c Phép rút version từ đường dẫn thực thi. Đo được: `…/versions/2.1.221`. Thứ gì KHÔNG
@@ -3316,7 +3384,7 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   const L = ' '.repeat(19);
   const st = {
     issue: 'SKB-1', progressExists: false, commitsSinceProgress: 0, ahead: 0, integrationBranch: 'origin/main',
-    fixlogTotal: 0, fixlogRepeated: 0, learningsNewerThanLessons: 0,
+    fixlogTotal: 0, fixlogRepeated: 0, learningsNewerThanLessons: 0, learningsDeclined: 0,
     skillCount: 5, maxSkills: 12, worktrees: 1, maxWorktrees: 4, pendingPacks: 0,
     claudeCodeVersion: '2.1.221', reviewedClaudeCode: '2.1.221', reviewedClaudeCodeAt: '2026-08-05T00:00:00.000Z',
     // "Trạng thái ĐỦ" cho `claude-code-drift` giờ gồm cả PHÉP TRỪ TẬP HỢP, không chỉ phép so
@@ -5262,7 +5330,7 @@ if (repoRole() === 'template') {
 // SÀN TỪNG TỤT LẠI SAU TỔNG THẬT, và đó là một chế độ hỏng riêng đáng ghi ra: 2026-08-08 đo
 // được `195/195 pass, sàn 185` — 10 ca thêm vào mà không ai nâng sàn, tức 10 ca có thể NGỪNG
 // CHẠY mà thứ duy nhất nhìn thấy điều đó vẫn xanh. Sàn không bám tổng thật là sàn đã nghỉ việc.
-const RATCHET = 276;   // +3 drift hai chiều (claude-code-drift ×2 + mergeBaseline không hạ mốc) · +1 cờ-lạ-không-phải-nội-dung (fixlog ⑩) · +1 trần --top không giấu việc (fixlog ⑪) · +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
+const RATCHET = 281;   // +5 nghi thức số-khớp-câu (knowledge-promote ×4 + promoteDeclined; handoff/slotCounters gộp vào ca sẵn có) · +3 drift hai chiều (claude-code-drift ×2 + mergeBaseline không hạ mốc) · +1 cờ-lạ-không-phải-nội-dung (fixlog ⑩) · +1 trần --top không giấu việc (fixlog ⑪) · +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa

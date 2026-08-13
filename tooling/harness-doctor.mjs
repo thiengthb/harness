@@ -383,11 +383,17 @@ else if (pend.count) advice.push(`${pend.count} pack chờ quyết (${pend.mater
   // câu hỏi ở ba tầng: cái gì đang cản, và cái gì đang KHÔNG được dùng.
   const sc = slotCounters({ skills: readLog('skill-calls'), agents: readLog('subagent-runs'), denied: readLog('permission-denied') });
   if (sc.skills) {
-    console.log(`  skill được gọi ${sc.days} ngày: ${sc.skills.total} lần / ${sc.skills.distinct} skill khác nhau`
-      + (sc.skills.top.length ? ` · hay dùng nhất: ${sc.skills.top.map(s => `${s.name} ${s.calls}`).join(' · ')}` : ''));
-    // Đây là mẫu số mà `/entropy-sweep` chưa từng có. KHÔNG tự động cắt theo nó: một tuần dữ
-    // liệu chưa nói được skill nào chết — đúng lý do `stuckRituals` có mode `warming`.
-    if (sc.skills.total === 0) advice.push('chưa có lần gọi skill nào được ghi — ô `UserPromptExpansion` vừa cắm, cần vài phiên mới có mẫu. Đây là `?`, không phải "không skill nào được dùng"');
+    // CON SỐ PHẢI TỰ KHAI PHẠM VI CỦA NÓ. Bản trước in "skill được gọi 7 ngày: 0 lần" — đọc
+    // như một sự thật về việc dùng skill, trong khi nó chỉ đếm lệnh gạch chéo NGƯỜI GÕ. Lời
+    // cảnh báo *"đây là `?`"* thì có, nhưng nó nằm ở mục `Nên làm` phía dưới và chỉ hiện khi
+    // số bằng 0 — nên ở mọi con số KHÁC 0, phạm vi bị giấu hoàn toàn.
+    console.log(`  skill NGƯỜI GÕ ${sc.days} ngày: ${sc.skills.total} lần / ${sc.skills.distinct} skill khác nhau`
+      + (sc.skills.top.length ? ` · hay dùng nhất: ${sc.skills.top.map(s => `${s.name} ${s.calls}`).join(' · ')}` : '')
+      + `  (KHÔNG thấy: ${sc.skills.blindTo})`);
+    // Đây là mẫu số mà `/entropy-sweep` chưa từng có. KHÔNG tự động cắt theo nó — và lý do giờ
+    // mạnh hơn "một tuần dữ liệu chưa đủ": phép đo này có một điểm mù ĐO ĐƯỢC, nên `0` ở đây
+    // không phân biệt được với "có dùng, nhưng model tự gọi".
+    if (sc.skills.total === 0) advice.push('0 lần gọi skill NGƯỜI GÕ được ghi — và ô `UserPromptExpansion` KHÔNG thấy skill do model tự gọi (đo 2026-08-13). Đây là `?`, không phải "không skill nào được dùng": đừng cắt skill theo con số này');
   }
   if (sc.agents) {
     console.log(`  subagent ${sc.days} ngày: ${sc.agents.starts} lần khởi động · ${sc.agents.types} loại · đỉnh ĐỒNG THỜI ${sc.agents.peak}`

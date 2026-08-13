@@ -15,8 +15,39 @@ import { spawnSync } from 'node:child_process';
 import { join, relative, resolve, sep, dirname } from 'node:path';
 import { tmpdir, platform, homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { parseFrontmatter } from './frontmatter.mjs';
 
 export const IS_WIN = platform() === 'win32';
+
+/**
+ * MỘT FILE LEARNINGS CÓ PHẢI ỨNG VIÊN PROMOTE KHÔNG — THUẦN, nhận nội dung file.
+ *
+ * `/knowledge-promote` đếm file trong `.claude/learnings/` mới hơn bài học mới nhất. Phép đếm
+ * đó gộp hai câu khác nhau: *"có bài học tồn tại"* và *"có bài học SẴN SÀNG promote"*. Hệ quả
+ * đo được 2026-08-05 và còn nguyên tới 2026-08-13: `/harness-retro` **bắt buộc** ghi một file
+ * vào `.claude/learnings/`, nên chạy đúng hai nghi thức theo đúng thứ tự kết thúc bằng đèn đỏ
+ * y như lúc bắt đầu — kể cả khi kết luận của retro là *"không có gì đáng promote"*.
+ *
+ * Một tín hiệu mà hành động ĐÚNG không tắt được là tín hiệu sẽ bị bỏ qua (`L0008`).
+ *
+ * Cửa ra: file tự khai `promote:` trong frontmatter. Mặc định VẮNG = vẫn là ứng viên, nên
+ * 17 file learnings đang có không đổi hành vi — cửa này chỉ mở khi có người chủ động khai.
+ *
+ * Trả **lý do** (chuỗi) nếu đã khai KHÔNG promote, `null` nếu vẫn là ứng viên. Trả lý do chứ
+ * không trả boolean vì cùng lý do `--close` bắt buộc có lý do: một mục bị tắt mà không ghi vì
+ * sao thì lần sau không ai dựng lại được quyết định.
+ */
+export function promoteDeclined(src) {
+  let data;
+  try { ({ data } = parseFrontmatter(String(src))); } catch { return null; }
+  const v = data?.promote;
+  if (v == null) return null;
+  const s = String(v).trim();
+  // `candidate`/`yes`/`true` = khai RÕ rằng nó vẫn đang chờ promote. Khai rỗng cũng vậy —
+  // một trường bỏ trống là chưa quyết, không phải đã quyết là không.
+  if (!s || /^(candidate|yes|true)$/i.test(s)) return null;
+  return s;
+}
 
 /** Gốc repo = thư mục cha của tooling/lib/ */
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -2641,7 +2672,24 @@ export function slotCounters({ skills = null, agents = null, denied = null, now 
     const byName = tallyLines(skills, { field: 2, sinceMs });
     const rows = [...byName].map(([name, subs]) => ({ name, calls: Object.values(subs).reduce((s, n) => s + (Number(n) || 0), 0) }));
     rows.sort((a, b) => b.calls - a.calls);
-    out.skills = { distinct: rows.length, total: rows.reduce((s, r) => s + r.calls, 0), top: rows.slice(0, 3) };
+    // ĐO ĐƯỢC GÌ — và quan trọng hơn, KHÔNG đo được gì.
+    //
+    // Sổ `skill-calls` do ô `UserPromptExpansion` ghi, và ô đó chỉ bắn khi NGƯỜI GÕ một lệnh
+    // gạch chéo. Đo trực tiếp 2026-08-13: gọi skill bằng công cụ `Skill` (model tự gọi) KHÔNG
+    // tạo mục nào — sổ `skill-calls.log` thậm chí không được tạo ra. Đã loại trừ hai nguyên
+    // nhân dễ đổ lỗi: ô CÓ đăng ký trong `settings.json`, và `native-surface` xác nhận sự kiện
+    // CÓ trong binary (31 sự kiện, tập không đổi so với lần ghi 2.1.228).
+    //
+    // Nên `total: 0` KHÔNG có nghĩa *"không skill nào được dùng"*. Và `/entropy-sweep` đọc đúng
+    // con số này để **đề xuất BỎ** skill không được dùng: một điểm mù đo lường nuôi một quyết
+    // định XOÁ. `blindTo` đi kèm con số để không bên tiêu thụ nào đọc nó mà không thấy giới hạn
+    // — cùng lý do `nativeSlotState` trả `null` thay vì `0`.
+    out.skills = {
+      distinct: rows.length,
+      total: rows.reduce((s, r) => s + r.calls, 0),
+      top: rows.slice(0, 3),
+      blindTo: 'skill do model tự gọi (công cụ Skill) — ô UserPromptExpansion chỉ thấy lệnh NGƯỜI GÕ',
+    };
   }
 
   if (agents !== null) {

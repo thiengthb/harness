@@ -11,6 +11,95 @@
 
 ---
 
+## 2.74.0 — 2026-08-13
+
+**minor.** Ba nghi thức nói ra một câu mà con số đằng sau nó không nói. Cùng một chế độ hỏng,
+ba nạn nhân — nên sửa cùng lô, vì tách ra thì cái thứ ba đọc như một chuyện vặt về chữ nghĩa.
+
+Chế độ hỏng: **một cảnh báo đúng-về-trạng-thái vẫn dạy sai người đọc**, và người đọc hiệu chỉnh
+niềm tin xuống. Đó là cách mọi cảnh báo mất giá — không cần cái nào sai hẳn.
+
+## ① `/knowledge-promote` đếm FILE, đáng lẽ đếm ỨNG VIÊN
+
+Nó đếm file trong `.claude/learnings/` mới hơn bài học mới nhất. Phép đếm đó gộp *"có bài học
+tồn tại"* với *"có bài học SẴN SÀNG promote"*.
+
+Hệ quả: `/harness-retro` **bắt buộc** ghi một file vào đúng thư mục đó, nên chạy đúng hai nghi
+thức theo đúng thứ tự **kết thúc bằng đèn đỏ y như lúc bắt đầu** — kể cả khi kết luận của retro
+là *"không có gì đáng promote"*. Ghi sổ 2026-08-05, còn nguyên tới 2026-08-13.
+
+Một tín hiệu mà **hành động đúng không tắt được** là tín hiệu sẽ bị bỏ qua (`L0008`).
+
+**Cửa ra:** file tự khai `promote: <lý do>` trong frontmatter. Mặc định **vắng = vẫn là ứng
+viên**, nên 17 file learnings đang có không đổi hành vi — cửa chỉ mở khi có người chủ động khai.
+Trả **lý do** chứ không phải boolean, cùng lý do `--close` bắt buộc có lý do.
+
+`_TEMPLATE.md` và `/harness-retro` bước 5 dạy đúng cửa đó; `harness-doctor` in số file đã khai,
+vì một cơ chế im lặng là cơ chế không ai biết mình đang dùng.
+
+## ② `/handoff` đo một đại lượng, giải thích bằng một đại lượng KHÁC
+
+Nó đo `ahead` (chưa vào nhánh tích hợp) rồi in *"đó là thứ biến mất khi bạn đổi máy"*.
+
+Hai đại lượng khác nhau, và chỉ một cái biến mất:
+
+| đại lượng | ý nghĩa | mất khi đổi máy? |
+|---|---|---|
+| `dirtyFiles` | chưa commit | **có** |
+| `unpushed` | chưa ở remote NÀO | **có** |
+| `ahead` | chưa vào nhánh tích hợp | **không** — đã push thì nó nằm trên remote |
+
+Đo 2026-08-13, ngay sau khi push nhánh và mở PR `#198`: mục đỏ nói 2 commit sắp mất, trong khi
+cả 2 đang nằm an toàn trên remote.
+
+Thêm phép đo `unpushed` = `git rev-list --count HEAD --not --remotes`. Không dùng
+`@{upstream}..HEAD`: nhánh chưa có upstream thì `@{u}` **ném lỗi**, và ca đó (nhánh vừa tạo,
+chưa push) chính là ca cần đo nhất.
+
+Trạng thái "đã đẩy, chưa merge" **vẫn `due`** — không có gì để mất, nhưng phiên sau không biết
+nó đang chờ gì. Đổi câu, không tắt tín hiệu.
+
+## ③ Bộ đếm skill có điểm mù, và điểm mù đó nuôi một quyết định XOÁ
+
+`/entropy-sweep` §3 nói *"Skill nào không được dùng 2 tuần qua? → đề xuất bỏ"*, và nguồn duy
+nhất cho "được dùng" là sổ `skill-calls` — do ô `UserPromptExpansion` ghi.
+
+**Đo trực tiếp 2026-08-13:** gọi skill bằng công cụ `Skill` (model tự gọi) **không tạo mục
+nào** — `skill-calls.log` thậm chí không được sinh ra. Đã loại trừ hai nguyên nhân dễ đổ lỗi: ô
+**có** đăng ký trong `settings.json`, và `native-surface` xác nhận sự kiện **có** trong binary
+(31 sự kiện, tập không đổi so với lần ghi 2.1.228). Nên nguyên nhân là ngữ nghĩa sự kiện, không
+phải dây điện.
+
+Ở repo này **3/12 skill model gọi được**. `0 lần` không phân biệt được *"chết"* với *"chỉ model
+gọi"*.
+
+Không vá được đường ghi từ đây — nó cần `PreToolUse` trong `settings.json` và `observe.mjs`,
+cả hai đều là **vùng cấm**, tức `/harness-propose`. Vá được là **đường đọc**:
+
+- `slotCounters().skills` mang theo `blindTo` ở **mọi** lần đọc. Bản trước chỉ cảnh báo ở nhánh
+  `total === 0`, nên ở mọi con số khác 0 phạm vi bị giấu hoàn toàn.
+- `harness-doctor` in `skill NGƯỜI GÕ … (KHÔNG thấy: …)` — cái tên tự khai phạm vi.
+- `/entropy-sweep` đòi **bằng chứng thứ hai** trước khi đề xuất bỏ: `disable-model-invocation:
+  true` trong frontmatter (⇒ bộ đếm THẤY được nó, nên `0` mới có nghĩa), hoặc `rg` không ra
+  tham chiếu sống.
+
+### Bằng chứng
+
+Sàn **276 → 281**. Suite `281/281 exit 0` · doctor exit 0 · migrations, evals exit 0.
+
+**Cả ba đã mutation-test, và mỗi mutant chỉ giết ca của chính nó:**
+
+| mutant | ca bị giết |
+|---|---|
+| `promoteDeclined` luôn trả `null` | 1 ca `promoteDeclined` |
+| `atRisk` quay về đọc `ahead` | ca `handoff` *"commit ĐÃ ở trên remote mà vẫn bảo biến mất"* |
+| bỏ `blindTo` | 2 ca `slotCounters` (có dữ liệu · sổ rỗng) |
+
+Ca ② cố ý dựng **hai trạng thái cùng `ahead: 2`, khác nhau đúng ở `unpushed`** — một ca thôi
+thì mutant "quay lại đọc `ahead`" sống sót.
+
+---
+
 ## 2.73.0 — 2026-08-13
 
 **minor.** `claude-code-drift` thôi giả định drift chỉ đi một chiều. `versionCmp()` lên `lib`
