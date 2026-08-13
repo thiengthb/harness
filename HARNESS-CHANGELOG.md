@@ -11,6 +11,53 @@
 
 ---
 
+## 2.75.0 — 2026-08-13
+
+**minor.** Một gate có thể đỏ vì **lượng log nó in ra**, không vì kết quả nó đo. Cơ chế đã nằm
+trong `runConfigured` từ đầu, và nó vô hình đúng cho tới ngày một gate bắt đầu in nhiều.
+
+## Chế độ hỏng
+
+`spawnSync(..., { stdio: 'pipe' })` không truyền `maxBuffer` thì Node áp mặc định **1 MiB**. Vượt
+ngưỡng, Node **không truncate — nó GIẾT tiến trình con**: SIGTERM, `status: null`, `error.code =
+'ENOBUFS'`. Nhánh mặc định `stdio: 'inherit'` che ca này, nên bug chỉ nổ ở lời gọi
+`capture: true`, tức đúng những gate in nhiều nhất.
+
+Đo trên một project đã áp template (2026-08-10): gate `e2e` pipe cả log dev server, tổng output
+dao động quanh **đúng 1 MiB**, nên **cùng một commit lúc XANH lúc ĐỎ** — 4 lần OK / 2 lần FAIL
+trên cùng base. Report Playwright của đúng lần "FAIL" cho **28/28 test PASS**: gate nói đỏ trong
+khi bộ test nói xanh.
+
+| stdout của lệnh | `status` | `signal` | `error` | kết quả |
+|---|---|---|---|---|
+| 100 KB | `0` | - | - | PASS |
+| 2 MB | `null` | `SIGTERM` | `ENOBUFS` | **FAIL** |
+| 2 MB + `maxBuffer: 64MB` | `0` | - | - | PASS |
+
+## Lỗi thứ hai, và nó đắt hơn
+
+`return { status: r.status ?? 1 }` **ném đi** `r.signal` và `r.error`. Một sự cố HẠ TẦNG được
+báo cáo y hệt một test đỏ, nên người đọc CI đi tìm bug trong test của mình — chỗ không có gì
+sai. Cùng lớp lỗi mà `gen-clean` và `runGate` đã phải sửa: **MÀU đúng chưa đủ, CHẨN ĐOÁN phải
+đúng.**
+
+## Cửa ra
+
+1. `maxBuffer: 64 * 1024 * 1024` khi `stdio` là `'pipe'`.
+2. `status === null` có nhánh riêng: trả `signal`, `error`, và một `detail` nói thẳng *"KHÔNG
+   PHẢI lệnh trả mã lỗi"*. `gates.mjs:96` đã đọc `r.detail ?? …` từ trước, nên nó hiện ra ngay
+   mà không cần đổi chỗ nào khác.
+
+**Không BREAKING:** hai field mới (`signal`, `error`) là thêm vào; `status` giữ nguyên kiểu số.
+
+## Gác
+
+`test-hooks.mjs` +2 ca (sàn 281 → **283**). Test CẤU TRÚC, cùng lý do như ca `SECRET_PATTERNS`:
+chế độ hỏng không phải "logic sai" mà là "một đợt refactor bỏ mất hai dòng", và hành vi không
+dựng được rẻ vì `config()` cache module-level. Đã chốt bằng **phép thử ngược**: bỏ `maxBuffer`
+đi thì suite ĐỎ (`282/283`, exit 1), đắp lại thì `283/283`.
+
+
 ## 2.74.0 — 2026-08-13
 
 **minor.** Ba nghi thức nói ra một câu mà con số đằng sau nó không nói. Cùng một chế độ hỏng,

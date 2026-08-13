@@ -1020,12 +1020,48 @@ export function runConfigured(name, { placeholders = {}, capture = false, cwd = 
     cwd,
     encoding: 'utf8',
     stdio: capture ? 'pipe' : 'inherit',
+    // BẮT BUỘC khi stdio là 'pipe'. Mặc định của Node là 1 MiB, và vượt ngưỡng thì nó KHÔNG
+    // truncate — nó GIẾT tiến trình con (SIGTERM), trả `status: null` + `error.code = 'ENOBUFS'`.
+    // `stdio: 'inherit'` ở nhánh mặc định che ca này, nên bug chỉ nổ ở lời gọi `capture: true`,
+    // tức đúng những gate in nhiều nhất.
+    //
+    // Đo trên một project đã áp template (2026-08-10): gate `e2e` pipe cả log dev server, tổng
+    // output dao động quanh ĐÚNG 1 MiB, nên cùng một commit lúc XANH lúc ĐỎ — 4 lần OK / 2 lần
+    // FAIL trên cùng base. Report Playwright của đúng lần "FAIL" cho 28/28 test PASS: gate nói
+    // đỏ trong khi bộ test nói xanh.
+    maxBuffer: 64 * 1024 * 1024,
   });
+
+  // `status === null` KHÔNG BAO GIỜ nghĩa là "lệnh trả mã lỗi": tiến trình bị giết bằng signal
+  // (buffer, OOM, timeout) hoặc spawn thất bại. Gộp nó vào `r.status ?? 1` là biến một sự cố HẠ
+  // TẦNG thành một cái đỏ y hệt test đỏ — người đọc CI đi tìm bug trong test của mình, chỗ không
+  // có gì sai. Đây là cùng lớp lỗi mà cả `gen-clean` lẫn `runGate` đã phải sửa: MÀU đúng chưa đủ,
+  // CHẨN ĐOÁN phải đúng. `gates.mjs` in `r.detail` nếu có, nên nói thẳng ra ở đây.
+  if (r.status === null) {
+    const why = r.error
+      ? `${r.error.code ?? r.error.name}: ${r.error.message}`
+      : `bị giết bởi signal ${r.signal}`;
+    return {
+      skipped: false,
+      status: 1,
+      stdout: r.stdout ?? '',
+      stderr: r.stderr ?? '',
+      signal: r.signal ?? null,
+      error: r.error ?? null,
+      detail:
+        `KHÔNG PHẢI lệnh trả mã lỗi — tiến trình không thoát bình thường (${why}). `
+        + `Đây là sự cố hạ tầng của lần chạy, đừng đi tìm bug trong \`${name}\`: kiểm bộ nhớ, `
+        + `timeout, và lượng output mà lệnh in ra.`,
+    };
+  }
+
   return {
     skipped: false,
-    status: r.status ?? 1,
+    status: r.status,
     stdout: r.stdout ?? '',
     stderr: r.stderr ?? '',
+    signal: null,
+    error: null,
   };
 }
 
