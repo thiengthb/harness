@@ -11,6 +11,68 @@
 
 ---
 
+## 2.73.0 — 2026-08-13
+
+**minor.** `claude-code-drift` thôi giả định drift chỉ đi một chiều. `versionCmp()` lên `lib`
+làm phép so DÙNG CHUNG, và `mergeBaseline()` thôi hạ mốc đã rà.
+
+### Lỗi
+
+`reviewedVersion` là sự thật **của repo** — nó được commit, và máy ghi nó có thể không phải máy
+bạn. Version đang chạy là sự thật **của máy này**. Hai đại lượng khác chủ ngữ thì lệch được
+theo **cả hai chiều** — nhưng phép so là `!==`, một phép so **không có chiều**.
+
+Đo 2026-08-13: sổ đã rà `2.1.228` (máy khác ghi), máy này chạy `2.1.222`. Nghi thức in:
+
+```
+Claude Code đã đổi 2.1.228 → 2.1.222: đọc changelog bản mới…
+```
+
+`2.1.222` là bản **cũ hơn**. Không có changelog nào chưa đọc. Việc đúng là KHÔNG LÀM GÌ.
+
+Cùng lớp lỗi với **#194** (*check tag chỉ hỏi một chiều*) — lần thứ hai của lớp này.
+
+### Vì sao nó tệ hơn một dòng chữ sai
+
+Ở chiều lùi, hành động **duy nhất** tắt được đèn đỏ là chạy `--reviewed-claude-code` — và làm
+thế sẽ **hạ `reviewedVersion` đã commit từ `2.1.228` xuống `2.1.222`**, tức vứt một bản rà của
+đội để làm xanh một mục trên máy mình. Từ đó `2.1.223`–`228` đọc thành *"chưa ai rà"* trong khi
+bản ghi của chúng vẫn nằm ngay trong `history`.
+
+Đó đúng là `L0008`: *một tín hiệu TỚI HẠN phải TẮT ĐƯỢC bằng hành động nó đề nghị* — ở đây
+hành động nó đề nghị gây thiệt hại.
+
+### Ba sửa
+
+1. **`versionCmp()` lên `lib` và được EXPORT.** Phép so này vốn khoá bên trong `releaseTagGap()`.
+   Hai bản chép của cùng một phép so sẽ trôi khỏi nhau — đúng điều `codeScanDesync` và
+   `handledGroups` tồn tại để chặn. Nó trả **`null`** khi không so được, không phải `0`: *"không
+   đọc được dạng số"* và *"hai version bằng nhau"* là hai câu khác hẳn.
+2. **Nghi thức phân biệt ba chiều.** Tiến ⇒ `due` (như cũ). Lùi ⇒ `ok`, kèm câu **cản** người
+   chạy lệnh rà. Không so được ⇒ `?`, không im lặng coi như bằng nhau.
+3. **`mergeBaseline()` coi `reviewedVersion` là một ĐỈNH**, không phải "lần gần nhất". Rà một
+   bản cũ hơn thì mốc giữ nguyên và `history` vẫn nhận bản ghi — việc đã làm không mất.
+   `reviewedAt` đi **cùng** `reviewedVersion`: giữ version cũ mà nhận ngày mới là khai một bản
+   rà chưa từng xảy ra.
+
+### Bằng chứng
+
+Sàn **273 → 276**. Suite `276/276 exit 0`, doctor exit 0.
+
+Chiều ① của bản vá là chiều **ồn** (dòng chữ sai, ai cũng đọc thấy); chiều ③ là chiều **lặng**
+— một con số âm thầm tụt lại, không triệu chứng. `L0007` nói đúng chỗ này, nên **cả hai chiều
+đều có ca và cả hai đều đã mutation-test**:
+
+| mutant | ca bị giết |
+|---|---|
+| `drift` quay về `!==` | 3 ca `claude-code-drift` (lùi ×2 + không-so-được) |
+| `keepPrev = false` | 2 ca `mergeBaseline` (hạ mốc · cặp version↔ngày nói dối) |
+
+Và ca chiều ngược cũng có, để bản vá không thành *"không bao giờ cập nhật"*: bản mới hơn vẫn
+nâng được mốc, và một `reviewedVersion` là chuỗi rác không khoá được mốc mãi.
+
+---
+
 ## 2.72.0 — 2026-08-13
 
 **minor.** `fixlog.mjs` thôi mất dữ liệu im lặng — **hai đường**, cả hai đều tìm được bằng
