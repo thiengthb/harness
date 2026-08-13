@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution, verdictLine, emitVerdict, codeScanDesync, frictionReading, slotCounters, backtickEvalHazardIn, contextLossPending, selfPraiseClaims, promoteDeclined } from './lib/harness.mjs';
+import { repoPath, report, exists, git, run, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution, verdictLine, emitVerdict, codeScanDesync, frictionReading, slotCounters, backtickEvalHazardIn, contextLossPending, selfPraiseClaims, promoteDeclined } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -5377,6 +5377,51 @@ if (repoRole() === 'template') {
   }
 }
 
+// ─── `run()`: CÙNG LỚP LỖI, TẦNG DƯỚI — và ở đây đo được bằng HÀNH VI ────────
+//
+// `runConfigured` ở trên gác bằng phép quét nguồn, vì nó cần một project đã cấu hình mới chạy
+// thật được. `run()` thì không: nó là nguyên thuỷ mà `git()` và 60+ nơi khác đi qua, spawn
+// được ngay trong test. Ca hành vi mạnh hơn ca quét nguồn — nó không mục khi ai đó đổi cách
+// viết, và nó bắt được cả những chế độ hỏng chưa ai nghĩ tới tên.
+//
+// Bug: `run()` KHÔNG khai `maxBuffer` mà mặc định `capture: true` ⇒ `stdio: 'pipe'`. Tái hiện
+// 2026-08-13: 500 KiB ra `status 0`; 2 MiB ra `status 1` với 1 059 776 byte — tiến trình con
+// exit 0 ở CẢ HAI ca. Ngòi nổ hiện thực là `git status --porcelain` (~45 byte/dòng ⇒ vỡ ở
+// ~23 300 file bẩn; `node_modules` thật trên máy đo: 57 737 và 35 709 file).
+{
+  const badRun = [];
+  const MIB = 1024 * 1024;
+
+  // ① Trên trần cũ 1 MiB: phải nhận ĐỦ và exit 0. Đây là ca bug, và nó cần > 1 MiB mới chạy
+  //    vào nhánh hỏng — số nhỏ hơn thì mutant "bỏ maxBuffer" sống sót.
+  const big = run(process.execPath, ['-e', `process.stdout.write("x".repeat(2*${MIB}))`]);
+  if (big.status !== 0) badRun.push(`output 2 MiB ⇒ status=${big.status}, phải là 0 — Node GIẾT tiến trình con ở trần 1 MiB, và lệnh này exit 0`);
+  if (big.stdout.length !== 2 * MIB) badRun.push(`output 2 MiB bị cắt còn ${big.stdout.length} byte — cắt cụt IM LẶNG là chế độ tệ hơn cả báo lỗi`);
+
+  // ② Tiến trình BỊ GIẾT ≠ lệnh trả mã lỗi. Fail-đóng (`status` vẫn khác 0) nhưng phải có tên.
+  const killed = run(process.execPath, ['-e', 'process.kill(process.pid, "SIGKILL")']);
+  if (killed.status === 0) badRun.push('tiến trình bị giết mà `status` = 0 — một lần chạy hỏng đọc thành thành công');
+  if (!killed.signal) badRun.push('tiến trình bị giết mà không nêu `signal` — bên gọi không phân biệt được với mã lỗi');
+  if (!/KHÔNG PHẢI lệnh trả mã lỗi/.test(killed.detail || '')) badRun.push('bị giết mà `detail` không nói đó KHÔNG phải mã lỗi — người đọc đi tìm bug ở chỗ không có gì sai');
+
+  // ③ CHIỀU NGƯỢC, để bản vá không thành "cái gì cũng là sự cố hạ tầng": mã lỗi THẬT phải đi
+  //    qua nguyên vẹn, và `detail` phải im. Không có ca này thì một mutant trả `status: 1` cho
+  //    mọi thứ vẫn xanh.
+  const real = run(process.execPath, ['-e', 'process.exit(3)']);
+  if (real.status !== 3) badRun.push(`lệnh exit 3 ⇒ status=${real.status}, mã lỗi thật bị nuốt`);
+  if (real.detail) badRun.push('lệnh trả mã lỗi bình thường mà vẫn gắn `detail` sự-cố-hạ-tầng — mọi lần đỏ sẽ đọc như hạ tầng hỏng');
+
+  // ④ MỘT định nghĩa cho ngưỡng. Tới v2.75.0 nó đã có ba bản chép rời nhau; bản trôi chậm nhất
+  //    luôn là bản không ai nhớ là nó tồn tại.
+  const copies = ['tooling/lib/harness.mjs', 'evals/run.mjs', 'tooling/gates.mjs']
+    .filter(f => exists(repoPath(...f.split('/'))))
+    .flatMap(f => (readFileSync(repoPath(...f.split('/')), 'utf8').match(/maxBuffer\s*:\s*\d[\d\s*_]*/g) || []).map(m => `${f}: ${m.trim()}`));
+  if (copies.length) badRun.push(`ngưỡng maxBuffer viết bằng SỐ ở ${copies.length} chỗ (${copies.join(' · ')}) — phải dùng \`MAX_BUFFER\``);
+
+  if (badRun.length) fail.push(`run()${' '.repeat(27)} ${badRun.length} ca sai: ${badRun.join(' | ')}`);
+  else ok.push(`run()${' '.repeat(27)} 2 MiB qua được và ĐỦ · tiến trình bị giết có tên riêng · mã lỗi thật đi qua nguyên vẹn · ngưỡng khai MỘT chỗ`);
+}
+
 // Sàn là thứ DUY NHẤT ở đây thấy được một case biến mất — nâng nó khi thêm case.
 //
 // Sàn tính CẢ `skipped`. Bản 2.8.0 không tính, và nó đỏ ở CẢ BA repo tiêu thụ ngay trong lần
@@ -5388,7 +5433,7 @@ if (repoRole() === 'template') {
 // SÀN TỪNG TỤT LẠI SAU TỔNG THẬT, và đó là một chế độ hỏng riêng đáng ghi ra: 2026-08-08 đo
 // được `195/195 pass, sàn 185` — 10 ca thêm vào mà không ai nâng sàn, tức 10 ca có thể NGỪNG
 // CHẠY mà thứ duy nhất nhìn thấy điều đó vẫn xanh. Sàn không bám tổng thật là sàn đã nghỉ việc.
-const RATCHET = 283;   // +2 runConfigured (maxBuffer + status===null) · +5 nghi thức số-khớp-câu (knowledge-promote ×4 + promoteDeclined; handoff/slotCounters gộp vào ca sẵn có) · +3 drift hai chiều (claude-code-drift ×2 + mergeBaseline không hạ mốc) · +1 cờ-lạ-không-phải-nội-dung (fixlog ⑩) · +1 trần --top không giấu việc (fixlog ⑪) · +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
+const RATCHET = 284;   // +1 run() maxBuffer + status===null (ca HÀNH VI, spawn thật) · +2 runConfigured (maxBuffer + status===null) · +5 nghi thức số-khớp-câu (knowledge-promote ×4 + promoteDeclined; handoff/slotCounters gộp vào ca sẵn có) · +3 drift hai chiều (claude-code-drift ×2 + mergeBaseline không hạ mốc) · +1 cờ-lạ-không-phải-nội-dung (fixlog ⑩) · +1 trần --top không giấu việc (fixlog ⑪) · +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa
