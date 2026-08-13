@@ -11,6 +11,40 @@
 
 ---
 
+## 2.75.1 — 2026-08-13
+
+**patch.** Một ca trong `test-hooks.mjs` khẳng định thứ **chỉ đúng ở repo template**, nên nó đỏ
+vĩnh viễn ở mọi project đã áp template. Đo được 2026-08-13, khi một repo tiêu thụ bắt kịp từ
+2.13.0 lên 2.75.0 và suite đỏ ở đúng ca đó.
+
+## Ca ②
+
+```js
+[null, { HARNESS_CONFIG: UNCONF(), CI: '1' }, OK, 'TEMPLATE + phiên không người → CHO QUA', /REPO TEMPLATE/]
+```
+
+`root: null` nghĩa là **chính repo đang chạy suite**, nên VAI của nó là biến chứ không phải hằng.
+Ở repo tiêu thụ, `gates.mjs` fail-đóng (exit 2) — **đúng như thiết kế**, và ca ④ ngay bên dưới
+khẳng định chính điều đó. Nên ca ② không phát hiện lỗi gì; nó chỉ ghi lại giả định "suite này
+luôn chạy trong template".
+
+Đây là `knowledge/lessons/0003` — self-test của template khẳng định thứ chỉ đúng trong template —
+và trớ trêu là nó nằm cùng file với dòng RATCHET đang trích dẫn chính bài học đó.
+
+**Cửa ra:** ca ② chỉ vào danh sách khi `repoRole() === 'template'`; ngược lại cộng vào `skipped`,
+để một ca bỏ qua CÓ CHỦ Ý không đọc giống một ca NGỪNG CHẠY. Sàn giữ nguyên 283 ở cả hai vai.
+
+Ba ca `root: null` còn lại không đụng tới, và lý do được ghi tại chỗ kẻo lần sau có người dọn cho
+đồng bộ: ① và ③ mong đợi OK ở **cả hai** vai, ⑥ mong đợi BLOCK ở cả hai. Chỉ ② phân biệt vai.
+
+## Một cái bẫy đo được trong chính bản vá
+
+Bản đầu cộng thẳng vào `skipped`, biến được `let` ở gần cuối file ⇒ **ReferenceError** (temporal
+dead zone). Nó KHÔNG nổ ở template, vì ở đó nhánh này không chạy — chỉ nổ ở repo tiêu thụ, đúng
+lớp lỗi mà bản vá đang sửa, chỉ ngược chiều. Nay đếm qua `gateCaseSkipped` khai ở module scope
+trước chỗ dùng, và đã chốt bằng cách chạy suite ở một repo tiêu thụ thật: `278/279 · 4 n/a`.
+
+
 ## 2.75.0 — 2026-08-13
 
 **minor.** Một gate có thể đỏ vì **lượng log nó in ra**, không vì kết quả nó đo. Cơ chế đã nằm
