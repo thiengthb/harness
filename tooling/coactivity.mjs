@@ -13,7 +13,9 @@
  *   - ~41,7% nếu trộn nhiều vendor agent  ← đây là lý do chuẩn hoá MỘT agent/repo
  * Nghĩa là ~4/5 cặp song song KHÔNG conflict. Đừng serialize mọi thứ vì sợ 20%.
  */
-import { run, report, repoPath, writeJson } from './lib/harness.mjs';
+import { run, report, repoPath, writeJson, guardFlags } from './lib/harness.mjs';
+
+guardFlags(process.argv.slice(2), { valued: ['--days', '--limit'] }, { name: 'coactivity.mjs' });
 
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > -1 ? Number(process.argv[i + 1]) : d; };
 const DAYS = arg('--days', 30);

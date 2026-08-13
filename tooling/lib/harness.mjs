@@ -3297,6 +3297,77 @@ export function harnessStripped() {
  * ĐIỀU KIỆN THOÁT: khi công cụ chạy lệnh báo được exit code của TỪNG chặng trong ống
  * dẫn (hoặc bật sẵn `pipefail`), dòng này thành thừa.
  */
+/**
+ * Tách argv thành `{ unknown, help }` — **THUẦN**, không in, không thoát.
+ *
+ * ── VÌ SAO CÓ HÀM NÀY
+ *
+ * Mọi CLI trong `tooling/` đọc cờ theo kiểu *"tìm cái tôi biết"*: `argv.indexOf('--days')`,
+ * `argv.includes('--apply')`. Cách đó không có chỗ nào để một cờ LẠ hạ cánh — nó rơi thẳng vào
+ * nhánh mặc định, im lặng. Đo 2026-08-13 trên `capo-report`:
+ *
+ *     node tooling/capo-report.mjs --help     →  chạy với mặc định `--days 7`  VÀ GHI SỔ
+ *
+ * Rồi kỳ đo thật ngay sau đó in `WARN … kỳ trước đo trên cửa sổ 7 ngày, kỳ này 30 — KHÔNG so
+ * được`. Một lần gõ nhầm đổi cửa sổ đo, ghi một mục vào sổ mà nghi thức đọc, và làm mất một kỳ
+ * dữ liệu xu hướng. Không triệu chứng nào ở lúc gõ.
+ *
+ * Đây là `fixlog` #198 (v2.72.0) ở CLI khác — nhưng nặng hơn một bậc: ở đó cờ lạ ghi một dòng
+ * SAI vào sổ; ở đây nó ghi một dòng ĐÚNG THỂ THỨC về một phép đo người dùng KHÔNG yêu cầu, nên
+ * không có gì trông sai để mà nghi.
+ *
+ * ── VÌ SAO KHÔNG DÙNG CHUNG VỚI `fixlog.mjs`
+ *
+ * Cố ý, và ghi ra kẻo có người "gom cho gọn": argv của `fixlog` là **NỘI DUNG** (văn bản tự do),
+ * nên luật ở đó chỉ hỏi `args[0]`, và `fixlog ghi chú về --force` phải đi lọt. Quét MỌI token
+ * như dưới đây sẽ chặn đúng ca hợp lệ đó. Hai ngữ nghĩa khác nhau thì hai luật khác nhau.
+ *
+ * ── LUẬT
+ *
+ *   · `--` chấm dứt phép quét (POSIX). Sau nó là literal.
+ *   · token ngay sau một cờ CÓ GIÁ TRỊ được bỏ qua — `--usd -5` là giá trị, không phải cờ lạ.
+ *   · `--days=7` bị coi là LẠ, và đó là cải thiện: không CLI nào ở đây đọc dạng `=`, nên hôm nay
+ *     nó im lặng rơi về mặc định. Kêu to hơn là đúng chiều.
+ *   · `--help` / `-h` tách riêng, không tính là lạ.
+ */
+export function parseFlags(argv = [], { bool = [], valued = [] } = {}) {
+  const known = new Set([...bool, ...valued]);
+  const takesValue = new Set(valued);
+  const unknown = [];
+  let help = false;
+  for (let i = 0; i < argv.length; i++) {
+    const t = String(argv[i]);
+    if (t === '--') break;
+    if (t === '--help' || t === '-h') { help = true; continue; }
+    if (!t.startsWith('-')) continue;
+    if (known.has(t)) { if (takesValue.has(t)) i += 1; continue; }
+    unknown.push(t);
+  }
+  return { unknown, help };
+}
+
+/**
+ * Lớp mỏng quanh `parseFlags` cho CLI: in rồi thoát. Đặt **trước mọi lần ghi** — cả câu
+ * *"KHÔNG làm gì cả"* lẫn giá trị của guard nằm ở vị trí đó.
+ *
+ * `exit` tiêm được để test gọi thẳng mà không giết tiến trình; mặc định là `process.exit`.
+ */
+export function guardFlags(argv, spec = {}, { name = 'lệnh', exit = process.exit, out = console.log, err = console.error } = {}) {
+  const usage = (w) => {
+    const list = [...(spec.bool ?? []), ...(spec.valued ?? [])];
+    w(`  ${name} — cờ nhận được: ${list.length ? list.join(' · ') : '(không có cờ nào)'}`);
+    if (spec.valued?.length) w(`  cờ cần giá trị đi kèm: ${spec.valued.join(' · ')}`);
+  };
+  const { unknown, help } = parseFlags(argv, spec);
+  if (unknown.length) {
+    err(`✗ cờ không nhận ra: ${unknown.join(' ')} — KHÔNG chạy, KHÔNG ghi gì.`);
+    usage(err);
+    return exit(1);
+  }
+  if (help) { usage(out); return exit(0); }
+  return null;
+}
+
 export function verdictLine(title, { fail = 0, unknown = 0, code = null } = {}) {
   const f = Math.max(0, Number(fail) || 0);
   const u = Math.max(0, Number(unknown) || 0);

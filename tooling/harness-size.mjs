@@ -18,7 +18,9 @@
  */
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, extname } from 'node:path';
-import { repoPath, readJson, writeJson, report, exists, worktreeInfo, limit, REPO_ROOT } from './lib/harness.mjs';
+import { repoPath, readJson, writeJson, report, exists, worktreeInfo, limit, REPO_ROOT, guardFlags } from './lib/harness.mjs';
+
+guardFlags(process.argv.slice(2), { bool: ['--baseline'] }, { name: 'harness-size.mjs' });
 
 function walk(dir, filter = () => true) {
   if (!existsSync(dir)) return [];

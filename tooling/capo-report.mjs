@@ -15,7 +15,10 @@
  * Đọc kèm: nếu CAPO ĐI LÊN trong khi bạn "cải thiện harness" → harness của bạn
  * đang phình, không đang tốt lên.
  */
-import { git, report, readJson, writeJson, repoPath, stateDir, config, budgetPlan, rateLimitHitsIn, telemetryDir } from './lib/harness.mjs';
+import { git, report, readJson, writeJson, repoPath, stateDir, config, budgetPlan, rateLimitHitsIn, telemetryDir, guardFlags } from './lib/harness.mjs';
+
+// TRƯỚC mọi phép đo và mọi lần ghi: `--help` từng chạy với mặc định `--days 7` VÀ ghi sổ.
+guardFlags(process.argv.slice(2), { valued: ['--days', '--usd'] }, { name: 'capo-report.mjs' });
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 

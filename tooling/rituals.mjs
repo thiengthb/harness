@@ -41,7 +41,7 @@
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, groupStillClosed, groupTracked, groupMarks, handledGroups, FIXLOG_CLOSED_FILE, FIXLOG_TRACKED_FILE, readJson, writeJson, readPacks, packPending, budgetSnapshot, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue, recordRitualStates, contextLossPending, stateDir, versionCmp, promoteDeclined } from './lib/harness.mjs';
+import { guardFlags, repoPath, git, config, limit, report, telemetryDir, exists, fixlogKey, fixlogGroupRules, groupStillClosed, groupTracked, groupMarks, handledGroups, FIXLOG_CLOSED_FILE, FIXLOG_TRACKED_FILE, readJson, writeJson, readPacks, packPending, budgetSnapshot, repoRole, openTelemetryEntries, closeTelemetry, telemetryEntries, inferIssue, recordRitualStates, contextLossPending, stateDir, versionCmp, promoteDeclined } from './lib/harness.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHẦN THUẦN — không đọc đĩa, không gọi git. Test khẳng định trực tiếp vào đây.
@@ -1085,6 +1085,13 @@ function fixlogState() {
 // So ĐƯỜNG DẪN ĐÃ RESOLVE, không so hậu tố tên file: `test-hooks.mjs` IMPORT module này để
 // khẳng định `evaluate()`, và một guard so tên sẽ chạy luôn cả CLI trong lúc test.
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  // Trong khối main, vì `test-hooks.mjs` import module này để khẳng định `evaluate()` — argv
+  // của SUITE không phải argv của CLI này.
+  guardFlags(process.argv.slice(2), {
+    bool: ['--all', '--json', '--slots'],
+    valued: ['--close', '--reviewed-claude-code', '--slot'],
+  }, { name: 'rituals.mjs' });
+
   const ALL = process.argv.includes('--all');
   const JSONOUT = process.argv.includes('--json');
 
