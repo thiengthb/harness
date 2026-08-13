@@ -5319,6 +5319,41 @@ if (repoRole() === 'template') {
   else ok.push(`hợp đồng verdict${' '.repeat(14)} ${hit.length} entrypoint exit≠0, tất cả có đường ra stderr — không còn cách nào hỏng im lặng qua ống dẫn`);
 }
 
+// ─── runConfigured: hai dòng phân biệt "test đỏ" với "tiến trình bị giết" ────
+// Test CẤU TRÚC, cùng lý do như ca SECRET_PATTERNS ở trên: chế độ hỏng ở đây không phải
+// "logic sai" mà là "một đợt nâng cấp/refactor bỏ mất hai dòng". Hành vi thì không dựng
+// được rẻ — `config()` cache module-level và đọc `harness.config.json` ở REPO_ROOT, nên
+// muốn chạy thật phải sửa config của chính repo đang test.
+//
+// Vì sao đáng một case riêng: cả hai dòng đều VÔ HÌNH khi mọi thứ chạy tốt, và cái giá chỉ
+// hiện ra ở đúng lúc tệ nhất. Không có `maxBuffer`, một lệnh in hơn 1 MiB bị Node GIẾT
+// (SIGTERM + ENOBUFS) — gate đỏ trong khi bộ test bên trong xanh, và đỏ KHÔNG TẤT ĐỊNH vì
+// nó phụ thuộc lượng log. Không có nhánh `status === null`, sự cố đó bị báo cáo y hệt một
+// test đỏ, nên người đọc CI đi tìm bug ở chỗ không có gì sai.
+{
+  const src = codeOnly(readFileSync(repoPath('tooling', 'lib', 'harness.mjs'), 'utf8'));
+  const at = src.indexOf('export function runConfigured');
+  // Cắt tới dấu `}` ở CỘT 0 — hết thân hàm. Một cửa sổ đếm-ký-tự thì tràn sang hàm kế tiếp,
+  // nơi `r.status ?? 1` vẫn hoàn toàn hợp lệ (nó không nhận `stdio:'pipe'`), và test sẽ ĐỎ vì
+  // đọc nhầm hàm. Đã đo đúng lỗi đó khi viết case này.
+  const end = at < 0 ? -1 : src.indexOf('\n}', at);
+  const body = at < 0 ? '' : src.slice(at, end < 0 ? src.length : end);
+
+  if (at < 0) {
+    fail.push(`runConfigured${' '.repeat(19)} KHÔNG tìm thấy khai báo — test này đang gác một hàm không còn tên đó`);
+  } else if (!/maxBuffer\s*:/.test(body)) {
+    fail.push(`runConfigured${' '.repeat(19)} KHÔNG truyền \`maxBuffer\` — với stdio:'pipe', Node GIẾT tiến trình con ở 1 MiB, nên gate đỏ theo LƯỢNG LOG chứ không theo kết quả`);
+  } else {
+    ok.push(`runConfigured${' '.repeat(19)} truyền \`maxBuffer\` — lệnh in nhiều không còn bị giết ở ngưỡng 1 MiB`);
+  }
+
+  if (at >= 0 && (/status\s*\?\?\s*1/.test(body) || !/status\s*===\s*null/.test(body))) {
+    fail.push(`runConfigured${' '.repeat(19)} gộp tiến trình BỊ GIẾT vào mã lỗi — sự cố hạ tầng bị báo y như test đỏ; phải nói ra \`signal\`/\`error\``);
+  } else if (at >= 0) {
+    ok.push(`runConfigured${' '.repeat(19)} phân biệt tiến trình bị giết với lệnh trả mã lỗi — sự cố hạ tầng có tên riêng`);
+  }
+}
+
 // Sàn là thứ DUY NHẤT ở đây thấy được một case biến mất — nâng nó khi thêm case.
 //
 // Sàn tính CẢ `skipped`. Bản 2.8.0 không tính, và nó đỏ ở CẢ BA repo tiêu thụ ngay trong lần
@@ -5330,7 +5365,7 @@ if (repoRole() === 'template') {
 // SÀN TỪNG TỤT LẠI SAU TỔNG THẬT, và đó là một chế độ hỏng riêng đáng ghi ra: 2026-08-08 đo
 // được `195/195 pass, sàn 185` — 10 ca thêm vào mà không ai nâng sàn, tức 10 ca có thể NGỪNG
 // CHẠY mà thứ duy nhất nhìn thấy điều đó vẫn xanh. Sàn không bám tổng thật là sàn đã nghỉ việc.
-const RATCHET = 281;   // +5 nghi thức số-khớp-câu (knowledge-promote ×4 + promoteDeclined; handoff/slotCounters gộp vào ca sẵn có) · +3 drift hai chiều (claude-code-drift ×2 + mergeBaseline không hạ mốc) · +1 cờ-lạ-không-phải-nội-dung (fixlog ⑩) · +1 trần --top không giấu việc (fixlog ⑪) · +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
+const RATCHET = 283;   // +2 runConfigured (maxBuffer + status===null) · +5 nghi thức số-khớp-câu (knowledge-promote ×4 + promoteDeclined; handoff/slotCounters gộp vào ca sẵn có) · +3 drift hai chiều (claude-code-drift ×2 + mergeBaseline không hạ mốc) · +1 cờ-lạ-không-phải-nội-dung (fixlog ⑩) · +1 trần --top không giấu việc (fixlog ⑪) · +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa
