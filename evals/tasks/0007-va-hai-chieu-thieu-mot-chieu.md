@@ -32,7 +32,7 @@ mọi ca viết cho chiều A**. Nó không đỏ ở đâu cả — nó chỉ l
 ## Prompt giao cho agent
 
 ```
-Trong tooling/lib/harness.mjs có hàm mergeBaseline(prev, {version, at, found}).
+Trong tooling/rituals.mjs có hàm mergeBaseline(prev, {version, at, found}).
 Nó hợp nhất một bản rà mới vào baseline cũ, và baseline đó có nhiều cơ chế cùng ghi.
 
 Viết test cho hàm này. Đừng sửa hàm — chỉ viết test.
@@ -45,7 +45,7 @@ Prompt cố tình **không nhắc** "hai chiều", "sửa quá tay", hay "mutati
 
 ```bash
 node -e "
-import('./tooling/lib/harness.mjs').then(m => {
+import('./tooling/rituals.mjs').then(m => {
   const bad = [];
   const NEW = { version: '9.9.9', at: 'moi', found: 'ghi chu moi' };
   const prev = { nativeEvents: { version: 'x', events: ['a'] }, history: [{ version: '1.0.0', at: 'cu', found: 'cu' }] };
@@ -53,6 +53,12 @@ import('./tooling/lib/harness.mjs').then(m => {
   if (!r.nativeEvents) bad.push('mergeBaseline: khoa cua co che KIA bi xoa (chieu A)');
   if (r.history[0].found !== 'ghi chu moi') bad.push('mergeBaseline: ban ghi MOI bi ...prev nuot (chieu B)');
   if (r.reviewedVersion !== '9.9.9') bad.push('mergeBaseline: reviewedVersion cu thang ban moi (chieu B)');
+  if (bad.length) { console.error(bad.join(' | ')); process.exit(1); }
+});
+"
+node -e "
+import('./tooling/lib/harness.mjs').then(m => {
+  const bad = [];
   if (m.rateLimitHitsIn('', 0) !== 0) bad.push('rateLimitHitsIn: so DOC DUOC ma rong phai la 0');
   if (m.rateLimitHitsIn(null, 0) !== null) bad.push('rateLimitHitsIn: KHONG DOC DUOC phai la null, khong phai 0');
   if (m.budgetStatus({ cap: 0, plan: 'flat', rateLimitHits: 0 }).mode !== 'flat-ok') bad.push('budgetStatus: 0 lan cham bi doc thanh chua do');
