@@ -11,6 +11,51 @@
 
 ---
 
+## 2.78.0 — 2026-08-13
+
+**minor.** Mọi CLI trong repo đọc cờ theo kiểu *"tìm cái tôi biết"* — `argv.indexOf('--days')`,
+`argv.includes('--apply')`. Cách đó **không có chỗ nào để một cờ lạ hạ cánh**: nó rơi thẳng vào
+nhánh mặc định, im lặng.
+
+### Thiệt hại, tự chứng minh trong lúc đo
+
+```
+node tooling/capo-report.mjs --help    →  chạy với mặc định --days 7  VÀ GHI SỔ
+node tooling/capo-report.mjs --days 30 →  WARN: kỳ trước đo trên cửa sổ 7 ngày, kỳ này 30 — KHÔNG so được
+```
+
+Một lần gõ nhầm đổi cửa sổ đo, ghi một mục vào sổ mà **nghi thức đọc**, và làm mất một kỳ dữ
+liệu xu hướng. Không triệu chứng nào ở lúc gõ. Đây là `fixlog` #198 ở CLI khác — nhưng nặng hơn
+một bậc: ở đó cờ lạ ghi một dòng SAI; ở đây nó ghi một dòng **đúng thể thức** về một phép đo
+người dùng không yêu cầu, nên không có gì trông sai để mà nghi.
+
+### Một định nghĩa: `parseFlags` (thuần) + `guardFlags` (lớp mỏng)
+
+- `--` chấm dứt phép quét (POSIX) · token sau cờ-có-giá-trị được bỏ qua (`--usd -5` là giá trị)
+- `--days=30` bị coi là **lạ** — không CLI nào ở đây đọc dạng `=`, nên hôm nay nó im lặng rơi về
+  mặc định. Kêu to hơn là đúng chiều.
+- `--help`/`-h` ⇒ liệt kê cờ, exit 0. Cờ lạ đi kèm `--help` ⇒ vẫn exit 1 (lỗi kêu to hơn).
+- `fixlog.mjs` **không** dùng chung, có chủ ý: argv của nó là NỘI DUNG tự do, nên
+  `fixlog ghi chú về --force` phải đi lọt.
+
+### Con số: 8 → 16 → **29**
+
+Đếm tay ba lần, sai hai lần. Lần đầu quét `tooling/*.mjs` ⇒ "8". Quét rộng hơn ⇒ 16, và cái bỏ
+sót nặng nhất là `evals/run.mjs` — ngoài `tooling/`, có ghi state, CI chạy nó. Phép quét trong
+suite ⇒ **29**, thêm 9 cái nữa (`apply-to`, `cli`, `upgrade`, bốn `knowledge/*`…).
+
+Nên phép kiểm là **phép quét, không phải danh sách**: mọi file đọc `process.argv` phải gọi
+`guardFlags`, và 6 ngoại lệ đều phải KHAI LÝ DO tại chỗ.
+
+Hai tầng, và cần cả hai: tĩnh bắt *"chưa cắm"*; hành vi (4 CLI đại diện, spawn thật) bắt
+*"cắm rồi nhưng spec sai"* và *"guard đặt SAU lần ghi đầu"* — thứ tĩnh không thấy.
+
+BREAKING: không, với lệnh gõ đúng. **Hành vi ĐỔI** với lệnh gõ sai: cờ không nhận ra nay exit 1
+thay vì chạy im. Hai lệnh trong tài liệu của chính repo này lộ ra là cờ MA —
+`wt-clean.mjs --one` và `upgrade.mjs --from` — chưa bao giờ tồn tại.
+
+---
+
 ## 2.77.0 — 2026-08-13
 
 **minor.** Hai field ngân sách đi cùng một đường xuống consumer (`apply-to.mjs:48` chép
