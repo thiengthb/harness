@@ -3368,6 +3368,41 @@ export function guardFlags(argv, spec = {}, { name = 'lệnh', exit = process.ex
   return null;
 }
 
+/**
+ * Đếm dòng **MỚI** trong một `git diff --unified=0` — **THUẦN**, nhận text, trả số.
+ *
+ * Gác kích thước PR trước đây đo `thêm + xoá`. Với một phép CHUYỂN code giữa hai file, mỗi dòng
+ * bị đếm HAI LẦN, và ngưỡng fail biến một refactor thuần thành *"PR quá lớn"*.
+ *
+ * Đo 2026-08-14 (lô tách `test-lib.mjs`): chuyển 1 558 dòng ⇒ **3 249** theo phép đếm cũ,
+ * **124** theo phép này. Và nó KHÔNG chẻ nhỏ được như lời khuyên của chính thông báo lỗi: chia
+ * đôi vẫn ra ~1 600 dòng mỗi PR, vẫn vượt 1 500. Muốn qua phải chẻ làm BỐN — tức gác ép một quy
+ * trình TỆ HƠN, đúng chiều `knowledge/lessons/0002`.
+ *
+ * ĐA TẬP, không phải tập hợp: một dòng lặp 3 lần ở bên thêm mà chỉ 1 lần ở bên xoá thì còn
+ * **2** dòng mới. Dùng `Set` ở đây sẽ nuốt mất hai dòng đó — và nuốt theo chiều DỄ CHỊU, tức
+ * một PR to đọc thành nhỏ rồi đi lọt (`L0005`).
+ *
+ * `trim()` trước khi so: một khối code chuyển sang file khác thường đổi mức thụt đầu dòng, và
+ * đổi thụt đầu dòng không phải thứ cần đọc lại.
+ */
+export function netNewLines(diff) {
+  const del = new Map(), add = [];
+  for (const l of String(diff ?? '').split('\n')) {
+    if (l.startsWith('+++') || l.startsWith('---')) continue;
+    const t = l.slice(1).trim();
+    if (!t) continue;
+    if (l[0] === '-') del.set(t, (del.get(t) || 0) + 1);
+    else if (l[0] === '+') add.push(t);
+  }
+  let net = 0;
+  for (const t of add) {
+    const n = del.get(t) || 0;
+    if (n > 0) del.set(t, n - 1); else net += 1;
+  }
+  return net;
+}
+
 export function verdictLine(title, { fail = 0, unknown = 0, code = null } = {}) {
   const f = Math.max(0, Number(fail) || 0);
   const u = Math.max(0, Number(unknown) || 0);
