@@ -2414,7 +2414,18 @@ export const MECHANISM_PATHS = [
  * `tooling/test-migrations.mjs` VẪN ship: nó đã tự khai `n/a — không có migration nào để
  * test` khi thư mục vắng, nên nó không biến thành một dấu xanh rỗng.
  */
-export const NOT_FOR_CONSUMER = ['HARNESS-CHANGELOG.md', 'harness-migrations'];
+/*
+ * `tooling/test-lib.mjs` (v2.80.0) vào nhóm này vì cùng một lý do, ở dạng rõ hơn: nó kiểm HÀM
+ * THUẦN của `lib/harness.mjs` — code mà repo con **không bao giờ sửa** (nó đến từ template, và
+ * CI của template kiểm nó trên cả ba OS). Trước khi tách, `test-hooks.mjs` là 5 654 dòng =
+ * **19 % toàn bộ dấu chân harness** ở project đích; 1 558 dòng trong đó là test cho code người
+ * ta không đụng tới.
+ *
+ * `test-hooks.mjs` thì Ở LẠI, và giữ nguyên TÊN: nó kiểm bản sao GÁC CỦA HỌ (họ sửa được
+ * `settings.json`), và bốn eval task đang ship khẳng định `node tooling/test-hooks.mjs` chạy
+ * xanh — đổi tên nó là làm đỏ bộ eval của mọi consumer.
+ */
+export const NOT_FOR_CONSUMER = ['HARNESS-CHANGELOG.md', 'harness-migrations', 'tooling/test-lib.mjs'];
 
 /**
  * Dòng nào trong `required` chưa có trong `text`. So khớp sau khi trim, theo DÒNG
