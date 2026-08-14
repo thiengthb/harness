@@ -24,7 +24,12 @@ import { mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync } from 'nod
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { repoPath, report, exists, emitVerdict } from './lib/harness.mjs';
+import { repoPath, report, exists, emitVerdict, guardFlags } from './lib/harness.mjs';
+
+// Suite này KHÔNG có cờ nào của riêng nó. Khai rỗng là một lời khai, không phải bỏ sót:
+// `node tooling/test-evals.mjs --bare` từng chạy nguyên suite rồi báo xanh, trong khi người gõ
+// tưởng mình vừa chạy một chiều khác.
+guardFlags(process.argv.slice(2), {}, { name: 'test-evals.mjs' });
 
 const ok = [], fail = [], warn = [];
 const WORK = join(tmpdir(), `harness-eval-test-${process.pid}`);

@@ -13,7 +13,9 @@
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { join, extname, basename, relative, sep } from 'node:path';
 import { parseFrontmatter } from './lib/frontmatter.mjs';
-import { repoPath, config, limit, report, git, matchAny, pathsFor, readJson, stateDir, repoRole } from './lib/harness.mjs';
+import { repoPath, config, limit, report, git, matchAny, pathsFor, readJson, stateDir, repoRole, guardFlags } from './lib/harness.mjs';
+
+guardFlags(process.argv.slice(2), { bool: ['--verify', '--ready'], valued: ['--stage', '--why'] }, { name: 'entropy-scan.mjs' });
 
 const ROLE = repoRole();
 const ok = [], warn = [], fail = [];

@@ -11,7 +11,9 @@
  */
 import { readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, git, readJson, report, exists, selfPraiseClaims } from './lib/harness.mjs';
+import { repoPath, git, readJson, report, exists, selfPraiseClaims, guardFlags } from './lib/harness.mjs';
+
+guardFlags(process.argv.slice(2), {}, { name: 'check-feature-integrity.mjs' });
 
 const base = process.argv[2] || 'origin/main';
 const dir = repoPath('features');

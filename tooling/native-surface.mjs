@@ -39,7 +39,7 @@
 import { readSync, openSync, closeSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoPath, readJson, writeJson, report, exists } from './lib/harness.mjs';
+import { repoPath, readJson, writeJson, report, exists, guardFlags } from './lib/harness.mjs';
 import { claudeCodeVersionMeasured, nativeSlotState } from './rituals.mjs';
 
 const RECORD = process.argv.includes('--record');
@@ -168,6 +168,9 @@ function wiredEvents() {
 // mà không chạy ca nào. Đúng lớp lỗi mà mục ghi chú của #87 vừa kể (đặt trùng tên const ⇒ suite
 // im ⇒ suýt đọc "im" thành "xanh"), lặp lại ở một cơ chế khác trong cùng file, một ngày sau.
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  // TRONG khối này, không ở đầu file: `test-hooks` và `rituals` IMPORT module này, và argv của
+  // CHÚNG không phải argv của CLI này.
+  guardFlags(process.argv.slice(2), { bool: ['--record'] }, { name: 'native-surface.mjs' });
   runCli();
 }
 

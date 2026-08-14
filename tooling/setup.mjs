@@ -41,11 +41,13 @@
 import { readFileSync, existsSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { REPO_ROOT, repoPath, readJson, writeJson, report, exists, repoRole, commitAuthors } from './lib/harness.mjs';
+import { REPO_ROOT, repoPath, readJson, writeJson, report, exists, repoRole, commitAuthors, guardFlags } from './lib/harness.mjs';
 
 const argv = process.argv.slice(2);
 const has = (f) => argv.includes(f);
 const arg = (f) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : null; };
+guardFlags(argv, { bool: ['--apply', '--detect', '--allow-empty-verify'], valued: ['--answers'] }, { name: 'setup.mjs' });
+
 const APPLY = has('--apply');
 const DETECT_ONLY = has('--detect');
 const ANSWERS_FILE = arg('--answers');

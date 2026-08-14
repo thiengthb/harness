@@ -22,7 +22,9 @@
 import { readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { repoPath, readJson, writeJson, report, repoRole } from '../lib/harness.mjs';
+import { repoPath, readJson, writeJson, report, repoRole, guardFlags } from '../lib/harness.mjs';
+
+guardFlags(process.argv.slice(2), { bool: ['--record'] }, { name: 'knowledge/consumers.mjs' });
 
 const RECORD = process.argv.includes('--record');
 const REG = repoPath('knowledge', 'consumers.json');

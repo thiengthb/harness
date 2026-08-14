@@ -11,7 +11,9 @@
 import { readdirSync, readFileSync, mkdirSync, cpSync, writeFileSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { parseFrontmatter } from '../lib/frontmatter.mjs';
-import { repoPath, config, writeJson, report, exists, git } from '../lib/harness.mjs';
+import { repoPath, config, writeJson, report, exists, git, guardFlags } from '../lib/harness.mjs';
+
+guardFlags(process.argv.slice(2), { valued: ['--out', '--scopes'] }, { name: 'knowledge/export.mjs' });
 
 const args = process.argv.slice(2);
 const argVal = (name, def) => {

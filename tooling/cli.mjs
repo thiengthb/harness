@@ -22,6 +22,13 @@ import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
+// Điểm vào này KHÔNG có logic riêng (xem đầu file), nhưng nó vẫn có một nhánh mặc định —
+// `rest.find(a => !a.startsWith('--'))` bỏ qua mọi cờ trong im lặng. `guardFlags` là hàm thuần
+// trong lib của chính repo này, không phải phụ thuộc ngoài, và `apply-to.mjs` mà file này gọi
+// đã import lib rồi — nên chuỗi phụ thuộc không dài thêm.
+import { guardFlags } from './lib/harness.mjs';
+
+guardFlags(process.argv.slice(2), {}, { name: 'cli.mjs' });
 
 const HERE = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const [cmd, ...rest] = process.argv.slice(2);

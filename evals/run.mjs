@@ -19,7 +19,9 @@ import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { parseFrontmatter } from '../tooling/lib/frontmatter.mjs';
-import { repoPath, readJson, writeJson, report, git, config, spill, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, stateDir, MAX_BUFFER } from '../tooling/lib/harness.mjs';
+import { repoPath, readJson, writeJson, report, git, config, spill, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, stateDir, MAX_BUFFER, guardFlags } from '../tooling/lib/harness.mjs';
+
+guardFlags(process.argv.slice(2), { bool: ['--bare', '--dry', '--denominators', '--baseline'], valued: ['--task'] }, { name: 'evals/run.mjs' });
 
 const argv = process.argv.slice(2);
 const has = f => argv.includes(f);

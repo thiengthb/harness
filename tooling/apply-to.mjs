@@ -13,7 +13,9 @@
 import { readdirSync, statSync, mkdirSync, cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, resolve, relative, sep } from 'node:path';
-import { REPO_ROOT, report, run, REQUIRED_IGNORE, REQUIRED_ATTRIBUTES, REQUIRED_UNIGNORE, missingLines, CI_ESCAPE_HATCH, MECHANISM_PATHS, NOT_FOR_CONSUMER, repoRole } from './lib/harness.mjs';
+import { REPO_ROOT, report, run, REQUIRED_IGNORE, REQUIRED_ATTRIBUTES, REQUIRED_UNIGNORE, missingLines, CI_ESCAPE_HATCH, MECHANISM_PATHS, NOT_FOR_CONSUMER, repoRole, guardFlags } from './lib/harness.mjs';
+
+guardFlags(process.argv.slice(2), { bool: ['--apply', '--update', '--audit'] }, { name: 'apply-to.mjs' });
 
 const args = process.argv.slice(2);
 const target = args.find(a => !a.startsWith('--'));

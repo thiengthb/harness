@@ -31,7 +31,9 @@
 import { readdirSync, readFileSync, writeFileSync, appendFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { parseFrontmatter, stringifyFrontmatter } from '../lib/frontmatter.mjs';
-import { repoPath, report, exists, config, run, readPacks, packPending, packMaterial } from '../lib/harness.mjs';
+import { repoPath, report, exists, config, run, readPacks, packPending, packMaterial, guardFlags } from '../lib/harness.mjs';
+
+guardFlags(process.argv.slice(2), { bool: ['--list'], valued: ['--merge', '--reject', '--reviewed'] }, { name: 'knowledge/accept.mjs' });
 
 const args = process.argv.slice(2);
 const LIST = args.includes('--list');
