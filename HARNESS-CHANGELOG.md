@@ -11,6 +11,43 @@
 
 ---
 
+## 2.80.0 — 2026-08-14
+
+**minor.** Đợt 2 của kế hoạch cô đặc. `test-hooks.mjs` là **5 654 dòng — 19 % toàn bộ dấu chân
+harness** ở project đích. Hai nửa của nó phục vụ hai người khác nhau.
+
+### Ranh giới, và nó không tuỳ tiện
+
+| | ai cần | quyết định |
+|---|---|---|
+| hành vi của GÁC (hook chặn đúng chưa · gác hỏng có fail-đóng không · `dcg ↔ permissions.deny`) | repo tiêu thụ — đó là bản sao **của họ**, và họ sửa được `settings.json` | **ship**, giữ nguyên tên `test-hooks.mjs` |
+| HÀM THUẦN của lib (`budgetStatus`, `parseFlags`, `stuckRituals`, …) | không ai ở phía consumer — `lib` đến từ template và CI template kiểm nó trên 3 OS | **ở lại**, `tooling/test-lib.mjs` |
+
+**Giữ nguyên tên `test-hooks.mjs` là bắt buộc, không phải tiện tay:** bốn eval task **đang ship**
+khẳng định `node tooling/test-hooks.mjs` chạy xanh. Đổi tên nó là làm đỏ bộ eval của mọi
+consumer — tức làm hỏng chính cơ chế mang tri thức sang repo khác.
+
+### 291 = 230 + 61
+
+Tổng khẳng định **không đổi**. Sàn tách làm hai, mỗi suite một sàn.
+
+| | trước | sau |
+|---|---|---|
+| `tooling/test-hooks.mjs` | 5 654 dòng · sàn 291 | **4 149 dòng · sàn 231** |
+| `tooling/test-lib.mjs` | — | **1 637 dòng · sàn 61** (không ship) |
+| dấu chân repo tiêu thụ | 29 908 | **27 572** (−2 336 so với đầu phiên, −7,8 %) |
+
+### Khe giữa hai suite, và ca đóng nó
+
+Sàn tụt 291 → 230 **đúng bằng** phép chuyển. Nên nếu `test-lib.mjs` biến mất khỏi template thì
+**không gì đỏ**: sàn 230 vẫn đạt, và 61 ca kia đơn giản không chạy ở đâu nữa. Đó đúng là chế độ
+hỏng mà cả hai cái sàn sinh ra để chặn — chỉ là nó rơi vào **khe giữa** chúng.
+
+`test-hooks` nay có một ca (chỉ chạy khi `repoRole() === 'template'`) khẳng định file kia **có
+mặt** và **được khai `NOT_FOR_CONSUMER`**. Ca đó là thứ làm cho điều kiện `if [ -f … ]` trong CI
+an toàn thay vì thành một cửa thoát im lặng.
+
+BREAKING: không. `node tooling/test-hooks.mjs` vẫn là lệnh cũ, vẫn xanh, ở cả hai vai repo.
 ## 2.79.1 — 2026-08-14
 
 **patch.** Gác kích thước PR đo `thêm + xoá`, nên một phép **CHUYỂN** code giữa hai file bị đếm
