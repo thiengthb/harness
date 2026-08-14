@@ -1,8 +1,13 @@
 {
-  "$comment": "Bản rà Claude Code gần nhất. Nghi thức `claude-code-drift` so `reviewedVersion` với version đang chạy. Đừng sửa tay — dùng `node tooling/rituals.mjs --reviewed-claude-code \"<thấy gì>\"`.",
-  "reviewedVersion": "2.1.228",
-  "reviewedAt": "2026-08-12T00:13:33.551Z",
+  "$comment": "Bản rà Claude Code gần nhất. Nghi thức `claude-code-drift` so `reviewedVersion` với version đang chạy. `reviewedVersion` là ĐỈNH đã rà, không phải lần gần nhất — rà một bản CŨ hơn không hạ nó xuống. Đừng sửa tay — dùng `node tooling/rituals.mjs --reviewed-claude-code \"<thấy gì>\"`.",
+  "reviewedVersion": "2.1.231",
+  "reviewedAt": "2026-08-14T10:39:58.602Z",
   "history": [
+    {
+      "version": "2.1.231",
+      "at": "2026-08-14T10:39:58.602Z",
+      "found": "2.1.229-231: MOT muc cham, va no chi ra mot LO HONG CUA HARNESS chu khong thay the co che nao.\n\nPHAN DO DUOC BANG MAY: tap su kien hook KHONG doi — 31 su kien o 2.1.231, y het lan ghi 2.1.228 (native-surface.mjs tren binary DANG CHAY). 17 o dang cam, 14 o da xet va bac.\n\n2.1.230 khong co muc nao trong CHANGELOG. 2.1.231 co dung MOT muc (MCP OAuth redirect URI cho server dung pre-registered client, vi du Slack) — khong cham.\n\nMUC CHAM, 2.1.229: \"Changed /commit-push-pr so git/gh commands with dangerous flags (--force, --amend, --no-verify, etc.) are no longer auto-approved\". Vendor siet dung lop ma dcg.mjs tu lam tay. No KHONG thay the duoc dcg — pham vi cua no la slash-command /commit-push-pr cua vendor, va DO chu khong doan: rg \"commit-push-pr\" tren .claude/ + docs/ ra 0, repo nay khong dung lenh do. Nhung cau hoi NGUOC LAI moi dang gia: harness co phu ba co ay khong?\n\nDO TUNG CO:\n  force      → tang MOT co (Bash(git push --force:*) + Bash(git push -f:*)); tang HAI co 6 cho trong dcg.mjs. PHU.\n  amend      → khong tang nao. CHAP NHAN DUOC, va ly do phai ghi ra: thiet hai cua amend chi hien thuc hoa khi force-push, ma force-push bi chan o tang MOT. Chan amend blanket la guard ban nham (L0002) — amend tren commit chua day la 95% viec that.\n  no-verify  → KHONG TANG NAO. Day la lo hong that.\n\nCHUOI HONG, do duoc:\n  core.hooksPath = .githooks\n  .githooks/pre-commit  →  node tooling/check-reservations.mjs  +  node tooling/precommit-scan.mjs\nNghia la mot lan commit voi co bo-qua-hook tat CA lop quet secret LAN lop kiem dat cho. 11 entry permissions.deny va 13 rule dcg.mjs deu khong nhac den no. danger-zones.md muc 2 (Secret) noi \"khong ghi, khong log .env*, *.pem, key, token\" — nhung thu CUONG CHE dieu do la precommit-scan, va mot co tat duoc no.\n\nLO HONG SAU HON, va day moi la phan dang promote: phep kiem hien co trong test-hooks doi chieu tang HAI voi tang MOT (\"dcg ↔ permissions.deny\", ratchet 8 dieu cam chi co dcg dung sau). Thu vang mat o CA HAI thi THEO DINH NGHIA no khong thay duoc. Day la ca dau tien do duoc cua lop do, va no do CHANGELOG CUA VENDOR chi ra chu khong phai harness tu tim.\n\nDA GHI /harness-propose (.claude/learnings/2026-W33-thiengthb.md) + issue label harness. KHONG tu ap dung: .claude/settings.json va .claude/hooks/ la vung cam.\n\nHAI MUC THEO DOI trong 2.1.229, khong sinh viec ngay:\n(1) \"Improved workflow fan-outs to stagger same-prefix sibling agents so subsequent agents read the cached prompt prefix\" — lop kinh te. Khong thay the capo-report, nhung no la mot BIEN GAY NHIEU cho CAPO-TRAN: chi phi fan-out giam vi VENDOR thi xu huong dep len trong khi ky luat cua ta khong doi. Doc con so do cung voi so version, dung doc mot minh.\n(2) \"Fixed dynamic workflows inside CPU-limited containers using the host machine core count instead of the container CPU limit\" — AGENTS.md dat tran 5s cho gate SubagentStop voi ly do \"nhan voi toi da 16 agent song song\". Trong container, he so nhan gio la CPU limit cua container. Luat khong doi; con so 16 la TRAN TREN, khong phai so thuc te.\n\nMUC THEO DOI CU VAN MO: gateway spend-limit (2.1.225) chua duoc mo rong cho moi tai khoan — 2.1.229-231 khong dong toi. Goi phang van chi dem duoc LAN CHAM TRAN, khong doc duoc cap/reset that.\n\nCHUA RA, CO Y: 2.1.232 CO tren dia nhung CHUA CHAY (dang chay 2.1.231). Doc luot cho thay no di SAU vao dung khong gian ma harness tu xay: ten phien duy nhat tren mot may, @ mention phien khac, /config row cho tin nhan lien phien, SendMessage giao thang theo ten. Khi no chay, ra lai — muc 8 cua session-start (ghi su co mat cua phien) co the thanh thua, va co-che-co-mat cua harness dang co mot bug da ghi so (ghi mot lan luc SessionStart roi khong cap nhat)."
+    },
     {
       "version": "2.1.228",
       "at": "2026-08-12T00:13:33.551Z",
@@ -45,8 +50,8 @@
     }
   ],
   "nativeEvents": {
-    "version": "2.1.228",
-    "at": "2026-08-12T00:13:41.213Z",
+    "version": "2.1.231",
+    "at": "2026-08-14T10:40:11.384Z",
     "events": [
       "PreToolUse",
       "PostToolUse",
