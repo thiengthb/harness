@@ -174,6 +174,12 @@ if (AUDIT) {
     // `harnessStripped()` ở đây: hậu tố này không bao giờ hợp lệ trong một repo thật.
     /\.bare-disabled(\/|$)/,
     /^\.claude\/(telemetry|state)\//, /^\.vscode\//,
+    // Lưu trữ thông báo của TEMPLATE. `whats-new.md` thì ship (SEED) vì `session-start` in nó;
+    // phần lưu trữ thì KHÔNG, và đó là toàn bộ lý do nó tồn tại. Đo 2026-08-14 (v2.79.0): file
+    // chính đã lên 78 mục · 1 081 dòng trong 11 ngày, trong khi cơ chế chỉ in `.slice(0, 700)`
+    // ký tự — chừng HAI mục. Chuyển 68 mục còn lại sang đây cắt 828 dòng khỏi MỌI repo tiêu thụ
+    // mà không xoá một dòng hồ sơ nào.
+    /^\.claude\/whats-new-archive\.md$/,
     /^README\.md$/,                                   // README của chính template
     // `package.json` của TEMPLATE tồn tại chỉ để `npx github:...` chạy được. Project đích
     // nào cũng có package.json của riêng nó (hoặc cố ý không có, nếu là Python/Go) — copy

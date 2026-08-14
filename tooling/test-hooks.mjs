@@ -5627,7 +5627,59 @@ if (repoRole() === 'template') {
   else ok.push(`cờ lạ · hành vi${' '.repeat(7)} ${CLIS.length} CLI đại diện chặn cờ lạ (exit 1 + nói ở stderr) · ${ranHappy} đường thường vẫn exit 0 — tầng này bắt thứ tầng tĩnh không bắt: spec sai, hoặc guard đặt SAU lần ghi đầu`);
 }
 
-const RATCHET = 290;   // +1 thiệt hại đo được của plan thừa kế (tiền đề của gác template-plan) · +1 MODES bóc-từ-nguồn + sàn 13 · +1 run() maxBuffer + status===null (ca HÀNH VI, spawn thật) · +2 runConfigured (maxBuffer + status===null) · +5 nghi thức số-khớp-câu (knowledge-promote ×4 + promoteDeclined; handoff/slotCounters gộp vào ca sẵn có) · +3 drift hai chiều (claude-code-drift ×2 + mergeBaseline không hạ mốc) · +1 cờ-lạ-không-phải-nội-dung (fixlog ⑩) · +1 trần --top không giấu việc (fixlog ⑪) · +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
+// ── TRẦN CỦA `whats-new.md`, VÀ VÌ SAO NÓ LÀ MỘT CON SỐ ─────────────────────
+//
+// `session-start.mjs` in `.slice(0, 700)` ký tự của file này — đo được: chừng HAI mục. Mọi mục
+// sau đó KHÔNG có đường nào tới người đọc, mà vẫn theo `apply-to.mjs` (SEED) xuống MỌI repo
+// tiêu thụ. Đo 2026-08-14: **78 mục · 1 081 dòng**, tích trong 11 ngày (~100 dòng/ngày) — tức
+// dấu chân này tăng tuyến tính theo thời gian mà giá trị đọc được thì đứng yên ở 700 ký tự.
+//
+// Trần là phép kiểm chứ không phải lời dặn, vì lời dặn ĐÃ CÓ và đã trôi: skill nói "giữ ngắn"
+// từ đầu, và file vẫn lên 1 081 dòng. `.claude/rules/README.md` xếp lời dặn ở bậc rẻ nhất và
+// mục nhanh nhất của thang biểu diễn — đây là lúc đẩy nó xuống bậc `test`.
+//
+// Hai chiều, và chiều thứ hai mới là chiều im lặng:
+//   ① file chính vượt trần        ⇒ cần xoay vòng
+//   ② lưu trữ LỌT vào SEED        ⇒ vừa dời 900 dòng sang chỗ khác rồi ship y nguyên
+{
+  const WN = repoPath('.claude', 'whats-new.md');
+  const WN_ARC = repoPath('.claude', 'whats-new-archive.md');
+  const CAP = 220;
+  const badWn = [];
+
+  if (!exists(WN)) badWn.push('.claude/whats-new.md không tồn tại — cơ chế thông báo đã mất');
+  else {
+    const body = readFileSync(WN, 'utf8');
+    const n = body.split('\n').length;
+    if (n > CAP) badWn.push(`whats-new.md ${n} dòng > trần ${CAP} — chuyển mục cũ sang .claude/whats-new-archive.md (ĐỪNG nới trần: session-start chỉ in 700 ký tự)`);
+    // Cơ chế đọc version bằng regex. Xoay vòng làm hỏng dòng đó thì thông báo im LẶNG.
+    if (!/<!--\s*version:\s*[^\s>]+\s*-->/.test(body)) badWn.push('whats-new.md mất dòng `<!-- version: … -->` — session-start sẽ không bao giờ in nữa');
+    if (!/^## /m.test(body)) badWn.push('whats-new.md không còn mục `## ` nào');
+  }
+
+  // Chiều ②: lưu trữ KHÔNG được nằm trong SEED. Đối chiếu bằng MÃ NGUỒN của `apply-to.mjs`,
+  // vì SEED là một mảng literal ở đó — không có API nào để hỏi.
+  const applySrc = readFileSync(repoPath('tooling', 'apply-to.mjs'), 'utf8');
+  const seedBlock = applySrc.slice(applySrc.indexOf('const SEED = ['), applySrc.indexOf('const MERGE = ['));
+  if (!seedBlock) badWn.push('không định vị được SEED trong apply-to.mjs — mốc cắt đã trôi');
+  else if (seedBlock.includes('whats-new-archive')) badWn.push('whats-new-archive.md NẰM TRONG SEED — nó sẽ ship xuống consumer, tức việc xoay vòng không giảm được dấu chân nào');
+  // BÓC RỒI CHẠY THẬT cái regex, không so chuỗi trên cả file. Bản đầu của tôi so chuỗi, và
+  // mutant "bỏ (-archive)? khỏi HISTORICAL" SỐNG — vì chính đoạn comment tôi vừa viết ở
+  // harness-doctor có chứa chữ `whats-new-archive`. Neo rộng hơn thứ nó khoá, đúng `L0006`.
+  if (exists(WN_ARC)) {
+    const docSrc = readFileSync(repoPath('tooling', 'harness-doctor.mjs'), 'utf8');
+    const m = docSrc.match(/^const HISTORICAL = \/(.+)\/;$/m);
+    if (!m) badWn.push('không bóc được `HISTORICAL` từ harness-doctor.mjs — mốc đã trôi');
+    else if (!new RegExp(m[1]).test('.claude/whats-new-archive.md')) {
+      badWn.push('`HISTORICAL` ở harness-doctor KHÔNG khớp .claude/whats-new-archive.md — phép quét tham chiếu chết sẽ bắt cả một hồ sơ lịch sử');
+    }
+  }
+
+  if (badWn.length) fail.push(`whats-new trần${' '.repeat(9)} ${badWn.length} lỗi: ${badWn.join(' | ')}`);
+  else ok.push(`whats-new trần${' '.repeat(9)} file chính ≤ ${CAP} dòng · còn dòng version · lưu trữ KHÔNG trong SEED và ĐƯỢC xếp vào HISTORICAL`);
+}
+
+const RATCHET = 291;   // +1 thiệt hại đo được của plan thừa kế (tiền đề của gác template-plan) · +1 MODES bóc-từ-nguồn + sàn 13 · +1 run() maxBuffer + status===null (ca HÀNH VI, spawn thật) · +2 runConfigured (maxBuffer + status===null) · +5 nghi thức số-khớp-câu (knowledge-promote ×4 + promoteDeclined; handoff/slotCounters gộp vào ca sẵn có) · +3 drift hai chiều (claude-code-drift ×2 + mergeBaseline không hạ mốc) · +1 cờ-lạ-không-phải-nội-dung (fixlog ⑩) · +1 trần --top không giấu việc (fixlog ⑪) · +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa
