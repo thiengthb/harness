@@ -293,7 +293,7 @@ if (touched.length) {
   };
 
   const HISTORY = (r) => r.includes('HARNESS-CHANGELOG') || r.startsWith('.claude/learnings/')
-    || r.startsWith('docs/progress/') || r === '.claude/whats-new.md'
+    || r.startsWith('docs/progress/') || r.startsWith('.claude/whats-new')
     // `evals/tasks/**` MÔ TẢ thứ agent phải TẠO RA khi chạy task — cùng lý do bỏ qua fixture.
     // Một task nói "assert `features/eval-probe.json` tồn tại" đang làm đúng việc của nó;
     // file đó không tồn tại LÚC NÀY chính là điều kiện ban đầu của phép đo.

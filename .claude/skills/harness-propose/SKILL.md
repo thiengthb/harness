@@ -96,7 +96,16 @@ thông báo thay đổi phải rẻ, nếu không sẽ không ai làm.
    với `.claude/state/whats-new-seen.json` và **in nội dung một lần** cho mỗi người.
 2. Thêm mục mới **lên trên cùng**, tối đa ~5 dòng: *cái gì đổi* · *người dùng phải làm gì
    khác đi* · *bị chặn sai thì nhắn ai*.
-3. Xoá mục cũ hơn 1 tháng. File phải **ngắn** để người ta thật sự đọc.
+3. **KHÔNG xoá mục cũ — chuyển sang `.claude/whats-new-archive.md`** (dán lên đầu). File chính
+   phải **ngắn**, và đó là con số chứ không phải cảm tính: `session-start.mjs` in
+   `.slice(0, 700)` ký tự, tức chừng **hai mục**. Mọi mục sau đó không có đường nào tới người
+   đọc, mà vẫn theo `apply-to` xuống MỌI repo tiêu thụ — đo 2026-08-14: 78 mục, 1 081 dòng.
+   Trần **220 dòng**, `test-hooks` cưỡng chế. Lưu trữ KHÔNG nằm trong `SEED` nên nó không ship.
+
+   > Bản trước của dòng này viết *"xoá mục cũ hơn 1 tháng"*, trong khi `harness-doctor.mjs`
+   > (`HISTORICAL`) và `entropy-scan.mjs` xếp `whats-new.md` vào nhóm **hồ sơ lịch sử,
+   > append-only**. Hai chỉ thị ngược nhau về cùng một file, và `.claude/rules/README.md` nói
+   > rõ chỉ thị xung đột làm model kém đi. Chuyển-vào-lưu-trữ giữ được cả hai tính chất.
 
 **Bỏ bước này = nửa team hành xử theo rule cũ, nửa theo rule mới, và không ai biết tại
 sao agent hôm nay lạ.** Đây là loại conflict tệ nhất vì không công cụ nào báo —

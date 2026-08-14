@@ -949,7 +949,10 @@ const NATIVE_OR_NOT_A_SKILL = new Set([
 // đó còn xếp nó vào bảng "BÀI HỌC ĐẮT NHẤT CỦA PHIÊN" như một trong BA lần output của harness
 // suýt làm hỏng một cơ chế đang chạy. Một cảnh báo vĩnh viễn về việc không được làm là đúng
 // lớp lỗi #56 — và nó dạy người đọc bỏ qua mục advice, tức làm hỏng cả những mục đúng.
-const HISTORICAL = /^(HARNESS-CHANGELOG\.md|\.claude\/whats-new\.md|docs\/adr\/|\.claude\/learnings\/|docs\/progress\/)/;
+// `whats-new-archive.md` đi CÙNG NHÓM với `whats-new.md`, không phải ngoại lệ mới: nó là chính
+// những mục đó, chuyển sang một file KHÔNG ship (v2.79.0). Quên nó ở đây thì phép quét tham
+// chiếu chết sẽ bắt cả một hồ sơ lịch sử — đúng cái lỗi đoạn comment trên vừa giải thích.
+const HISTORICAL = /^(HARNESS-CHANGELOG\.md|\.claude\/whats-new(-archive)?\.md|docs\/adr\/|\.claude\/learnings\/|docs\/progress\/)/;
 const deadRefs = new Map();
 for (const f of git(['ls-files']).stdout.split('\n').filter(Boolean)) {
   if (!/\.(md|mjs)$/.test(f) || HISTORICAL.test(f)) continue;
