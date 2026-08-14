@@ -63,6 +63,18 @@ jobs:
       - name: Hook chạy được không cần dependency
         run: node tooling/test-hooks.mjs
 
+      # `test-lib.mjs` kiểm HÀM THUẦN của lib và Ở LẠI TEMPLATE (`NOT_FOR_CONSUMER`) — repo con
+      # không sửa `lib`, nên nó không mang theo 1 558 dòng test cho code đó. Điều kiện dưới đây
+      # KHÔNG phải "bỏ qua cho lành": ở template file luôn có, và `test-hooks` có một ca ĐỎ nếu
+      # nó biến mất. Ở repo con, vắng mặt là ĐÚNG THIẾT KẾ.
+      - name: Lib (hàm thuần) — chỉ ở repo template
+        run: |
+          if [ -f tooling/test-lib.mjs ]; then
+            node tooling/test-lib.mjs
+          else
+            echo "tooling/test-lib.mjs không có — repo tiêu thụ, đúng thiết kế (NOT_FOR_CONSUMER)"
+          fi
+
       # Migration ghi vào config của repo KHÁC, và nó chạy trên máy của họ — tức là
       # trên cả ba OS. Đúng chỗ để bắt lớp lỗi chỉ-đỏ-trên-Windows: `git rm` trong
       # migration, đường dẫn có khoảng trắng, CRLF trong file config.
