@@ -11,6 +11,47 @@
 
 ---
 
+## 2.79.0 — 2026-08-14
+
+**minor.** Đợt 1 của kế hoạch cô đặc harness. Một cắt, và nó tự chứng minh bằng số của chính
+cơ chế.
+
+### Cơ chế in được 700 ký tự; file thì 1 081 dòng
+
+`session-start.mjs` in `.slice(0, 700)` ký tự của `.claude/whats-new.md` — đo được: **chừng HAI
+mục**. File có **78 mục · 1 081 dòng**, tích trong **11 ngày** (~100 dòng/ngày). Nghĩa là ~1 000
+dòng **không có đường nào tới người đọc**, mà vẫn theo `apply-to.mjs` (SEED) xuống **mọi repo
+tiêu thụ**, và tăng tuyến tính theo thời gian.
+
+Chuyển 68 mục cũ sang `.claude/whats-new-archive.md` — **không xoá dòng nào**. Lưu trữ nằm trong
+`IGNORE` của `apply-to`, nên nó không ship.
+
+| | trước | sau |
+|---|---|---|
+| `.claude/whats-new.md` | 1 081 dòng | **188 dòng** |
+| dấu chân ở repo tiêu thụ | 29 908 dòng | **29 080 dòng** (−828, −2,8 %) |
+
+### Hoà giải hai chỉ thị ngược nhau về cùng một file
+
+| nguồn | nói gì |
+|---|---|
+| `harness-doctor.mjs` (`HISTORICAL`) · `entropy-scan.mjs` | hồ sơ lịch sử, **append-only** |
+| `skills/harness-propose/SKILL.md` §6 | *"xoá mục cũ hơn 1 tháng"* |
+
+`.claude/rules/README.md` nói rõ chỉ thị xung đột làm model kém đi. Chuyển-vào-lưu-trữ giữ được
+cả hai tính chất, nên đó là cách hoà giải chứ không phải chọn phe. Skill đã sửa; `HISTORICAL` và
+`entropy-scan` nay phủ cả file lưu trữ.
+
+### Trần thành phép kiểm, không còn là lời dặn
+
+Lời dặn *"giữ ngắn"* đã có từ đầu và đã trôi — file vẫn lên 1 081 dòng. Nay `test-hooks` cưỡng
+chế **220 dòng**, kèm ba khẳng định nữa: còn dòng `<!-- version: … -->` (mất nó là thông báo im
+lặng vĩnh viễn), lưu trữ **không** lọt vào SEED, và `HISTORICAL` **thật sự khớp** file lưu trữ.
+
+BREAKING: không. Cơ chế thông báo không đổi hành vi — cùng dòng version, cùng 700 ký tự.
+
+---
+
 ## 2.78.0 — 2026-08-13
 
 **minor.** Mọi CLI trong repo đọc cờ theo kiểu *"tìm cái tôi biết"* — `argv.indexOf('--days')`,

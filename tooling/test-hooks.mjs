@@ -5663,8 +5663,16 @@ if (repoRole() === 'template') {
   const seedBlock = applySrc.slice(applySrc.indexOf('const SEED = ['), applySrc.indexOf('const MERGE = ['));
   if (!seedBlock) badWn.push('không định vị được SEED trong apply-to.mjs — mốc cắt đã trôi');
   else if (seedBlock.includes('whats-new-archive')) badWn.push('whats-new-archive.md NẰM TRONG SEED — nó sẽ ship xuống consumer, tức việc xoay vòng không giảm được dấu chân nào');
-  if (exists(WN_ARC) && !/whats-new\(-archive\)\?|whats-new-archive/.test(readFileSync(repoPath('tooling', 'harness-doctor.mjs'), 'utf8'))) {
-    badWn.push('có whats-new-archive.md nhưng `HISTORICAL` ở harness-doctor KHÔNG phủ nó — phép quét tham chiếu chết sẽ bắt cả một hồ sơ lịch sử');
+  // BÓC RỒI CHẠY THẬT cái regex, không so chuỗi trên cả file. Bản đầu của tôi so chuỗi, và
+  // mutant "bỏ (-archive)? khỏi HISTORICAL" SỐNG — vì chính đoạn comment tôi vừa viết ở
+  // harness-doctor có chứa chữ `whats-new-archive`. Neo rộng hơn thứ nó khoá, đúng `L0006`.
+  if (exists(WN_ARC)) {
+    const docSrc = readFileSync(repoPath('tooling', 'harness-doctor.mjs'), 'utf8');
+    const m = docSrc.match(/^const HISTORICAL = \/(.+)\/;$/m);
+    if (!m) badWn.push('không bóc được `HISTORICAL` từ harness-doctor.mjs — mốc đã trôi');
+    else if (!new RegExp(m[1]).test('.claude/whats-new-archive.md')) {
+      badWn.push('`HISTORICAL` ở harness-doctor KHÔNG khớp .claude/whats-new-archive.md — phép quét tham chiếu chết sẽ bắt cả một hồ sơ lịch sử');
+    }
   }
 
   if (badWn.length) fail.push(`whats-new trần${' '.repeat(9)} ${badWn.length} lỗi: ${badWn.join(' | ')}`);
