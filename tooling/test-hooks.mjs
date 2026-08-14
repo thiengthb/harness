@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, run, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution, verdictLine, emitVerdict, codeScanDesync, frictionReading, slotCounters, backtickEvalHazardIn, contextLossPending, selfPraiseClaims, promoteDeclined, parseFlags, guardFlags } from './lib/harness.mjs';
+import { repoPath, report, exists, git, run, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution, verdictLine, emitVerdict, codeScanDesync, frictionReading, slotCounters, backtickEvalHazardIn, contextLossPending, selfPraiseClaims, promoteDeclined, parseFlags, guardFlags, netNewLines } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -5679,7 +5679,54 @@ if (repoRole() === 'template') {
   else ok.push(`whats-new trần${' '.repeat(9)} file chính ≤ ${CAP} dòng · còn dòng version · lưu trữ KHÔNG trong SEED và ĐƯỢC xếp vào HISTORICAL`);
 }
 
-const RATCHET = 291;   // +1 thiệt hại đo được của plan thừa kế (tiền đề của gác template-plan) · +1 MODES bóc-từ-nguồn + sàn 13 · +1 run() maxBuffer + status===null (ca HÀNH VI, spawn thật) · +2 runConfigured (maxBuffer + status===null) · +5 nghi thức số-khớp-câu (knowledge-promote ×4 + promoteDeclined; handoff/slotCounters gộp vào ca sẵn có) · +3 drift hai chiều (claude-code-drift ×2 + mergeBaseline không hạ mốc) · +1 cờ-lạ-không-phải-nội-dung (fixlog ⑩) · +1 trần --top không giấu việc (fixlog ⑪) · +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
+// ── GÁC KÍCH THƯỚC PR ĐO "DÒNG MỚI", KHÔNG ĐO "THÊM + XOÁ" ─────────────────
+//
+// Ca này ở suite SHIP (không phải `test-lib`) có lý do: `netNewLines` đỡ một gác trong
+// `.github/workflows/ci.yml`, mà file đó nằm trong SEED — nó chạy ở CI của MỌI repo tiêu thụ.
+// Hàm sai ⇒ gác của họ sai, và họ không sửa được `lib`.
+//
+// Chiều nguy hiểm là chiều ĐẾM THIẾU: một PR to đọc thành nhỏ và đi lọt. Nên ca đa tập
+// (`dup`) là ca phải khoá chặt nhất — dùng `Set` thay vì đếm sẽ nuốt đúng những dòng đó.
+{
+  const D = (...ls) => ls.join('\n');
+  const badNN = [];
+  const NN = [
+    ['rỗng',                         D(''),                                              0],
+    ['chỉ header diff',              D('+++ b/a.mjs', '--- a/a.mjs'),                     0],
+    ['thêm thuần',                   D('+alpha', '+beta'),                                2],
+    ['xoá thuần',                    D('-alpha', '-beta'),                                0],
+    ['CHUYỂN nguyên vẹn ⇒ 0 mới',    D('-alpha', '-beta', '+alpha', '+beta'),             0],
+    ['chuyển + đổi thụt đầu dòng',   D('-alpha', '+  alpha'),                             0],
+    ['chuyển kèm 1 dòng thật mới',   D('-alpha', '+alpha', '+gamma'),                     1],
+    ['đa tập: xoá 1, thêm 3',        D('-alpha', '+alpha', '+alpha', '+alpha'),           2],
+    ['đa tập: xoá 3, thêm 1',        D('-alpha', '-alpha', '-alpha', '+alpha'),           0],
+    ['dòng trắng không tính',        D('+', '+   ', '-'),                                 0],
+    ['null/undefined không ném',     null,                                                0],
+  ];
+  for (const [label, diff, want] of NN) {
+    let got;
+    try { got = netNewLines(diff); } catch (e) { got = `ném ${e.message}`; }
+    if (got !== want) badNN.push(`${label} → ${got}, cần ${want}`);
+  }
+  if (badNN.length) fail.push(`netNewLines${' '.repeat(12)} ${badNN.length}/${NN.length} ca sai: ${badNN.join(' | ')}`);
+  else ok.push(`netNewLines${' '.repeat(12)} ${NN.length} ca — chuyển nguyên vẹn ⇒ 0 dòng mới, và phép so là ĐA TẬP (xoá 1 + thêm 3 ⇒ 2, không phải 0)`);
+
+  // Gác chỉ có giá trị nếu ci.yml THẬT SỰ gọi hàm này. Neo vào lời gọi, không vào chữ
+  // `netNewLines` ở đâu đó trong file — chính comment ở trên đã chứa chữ đó.
+  const ci = readFileSync(repoPath('.github', 'workflows', 'ci.yml'), 'utf8');
+  if (!/m\.netNewLines\(d\)/.test(ci)) {
+    fail.push(`netNewLines ↔ ci${' '.repeat(9)} ci.yml KHÔNG gọi \`m.netNewLines(d)\` — gác kích thước đang đo lại "thêm + xoá", và một phép CHUYỂN sẽ bị đếm hai lần`);
+  // Neo vào ĐÚNG DÒNG so sánh, không phải "có chữ NEWLINES ở đâu đó rồi có -gt ở đâu đó":
+  // regex `/s` quét cả file thì nó vẫn khớp sau khi ai đó đổi ngưỡng về \$LINES — mutant sống,
+  // và đó là lần thứ ba của lớp lỗi này trong cùng một phiên.
+  } else if (!/if \[ "\$NEWLINES" -gt "\$FAIL" \]/.test(ci)) {
+    fail.push(`netNewLines ↔ ci${' '.repeat(9)} ci.yml tính \`NEWLINES\` nhưng ngưỡng fail KHÔNG so với nó`);
+  } else {
+    ok.push(`netNewLines ↔ ci${' '.repeat(9)} ci.yml gọi hàm thật và ngưỡng fail so trên dòng MỚI`);
+  }
+}
+
+const RATCHET = 293;   // +1 thiệt hại đo được của plan thừa kế (tiền đề của gác template-plan) · +1 MODES bóc-từ-nguồn + sàn 13 · +1 run() maxBuffer + status===null (ca HÀNH VI, spawn thật) · +2 runConfigured (maxBuffer + status===null) · +5 nghi thức số-khớp-câu (knowledge-promote ×4 + promoteDeclined; handoff/slotCounters gộp vào ca sẵn có) · +3 drift hai chiều (claude-code-drift ×2 + mergeBaseline không hạ mốc) · +1 cờ-lạ-không-phải-nội-dung (fixlog ⑩) · +1 trần --top không giấu việc (fixlog ⑪) · +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa

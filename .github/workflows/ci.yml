@@ -72,14 +72,33 @@ jobs:
           # Đếm bằng awk, không `grep -c`: `grep -c` thoát 1 khi đếm ra 0, và bước này chạy
           # dưới `bash -e` nên một PR không chạm file nào sẽ làm CI ĐỎ vì đúng cái nó đo được.
           FILES=$(echo "$NUMSTAT" | awk 'NF{n++} END {print n+0}')
+          # ── DÒNG MỚI, KHÔNG PHẢI DÒNG ĐỔI ─────────────────────────────────────
+          #
+          # `$LINES` = thêm + xoá. Với một phép CHUYỂN code giữa hai file, mỗi dòng bị đếm HAI
+          # LẦN, và ngưỡng fail biến một refactor thuần thành "PR quá lớn".
+          #
+          # Đo 2026-08-14 (lô tách `test-lib.mjs`): chuyển 1 558 dòng ⇒ `$LINES` = 3 249, trong
+          # khi chỉ 124 dòng là thật sự MỚI. Và nó KHÔNG chẻ nhỏ được như lời khuyên của chính
+          # thông báo lỗi: chia đôi vẫn ra ~1 600 dòng mỗi PR, vẫn vượt 1 500. Muốn qua phải chẻ
+          # làm BỐN — tức gác đang ép một quy trình TỆ HƠN (`knowledge/lessons/0002`).
+          #
+          # Phép đếm là `netNewLines()` ở `lib` — hàm THUẦN, có bảng 11 ca trong suite. Nhúng
+          # logic phán đoán trần vào YAML là đặt nó ở chỗ không test được, và gác này bảo vệ
+          # đúng thứ khó sửa nhất khi nó sai: quy trình review của người.
+          NEWLINES=$(git diff origin/${{ github.base_ref }}...HEAD --unified=0 \
+            -- . ':(exclude)**/*.gen.*' ':(exclude)**/*lock*' ':(exclude)**/generated/**' \
+                 ':(exclude)docs/**' ':(exclude)HARNESS-CHANGELOG.md' ':(exclude)README.md' \
+                 ':(exclude).claude/whats-new.md' ':(exclude).claude/learnings/**' \
+                 ':(exclude)knowledge/README.md' \
+            | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>import("./tooling/lib/harness.mjs").then(m=>process.stdout.write(String(m.netNewLines(d)))))')
           echo "(đã loại generated/lockfile và tài liệu; AGENTS.md vẫn tính)"
-          echo "Thay đổi $LINES dòng · $FILES file (cảnh báo $WARN dòng / $WARN_FILES file · fail $FAIL dòng)"
-          if [ "$LINES" -gt "$FAIL" ]; then
-            echo "::error::PR quá lớn ($LINES dòng). Chẻ nhỏ. Một PR = một mục đích."
+          echo "Thay đổi $LINES dòng (thêm+xoá) · $NEWLINES dòng MỚI · $FILES file (cảnh báo $WARN · fail $FAIL, đo trên dòng MỚI)"
+          if [ "$NEWLINES" -gt "$FAIL" ]; then
+            echo "::error::PR quá lớn ($NEWLINES dòng MỚI). Chẻ nhỏ. Một PR = một mục đích."
             exit 1
           fi
-          if [ "$LINES" -gt "$WARN" ]; then
-            echo "::warning::PR lớn ($LINES dòng) — nêu lý do trong mô tả PR."
+          if [ "$NEWLINES" -gt "$WARN" ]; then
+            echo "::warning::PR lớn ($NEWLINES dòng MỚI) — nêu lý do trong mô tả PR."
           fi
           # HAI CẢNH BÁO ĐỘC LẬP, không phải `elif`: dòng và file đo hai thứ khác nhau. Một PR
           # 200 dòng rải trên 40 file là "đang gộp nhiều mục đích"; một PR 1200 dòng trong 3
