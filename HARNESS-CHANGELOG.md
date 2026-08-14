@@ -11,6 +11,22 @@
 
 ---
 
+## 2.79.1 — 2026-08-14
+
+**patch.** Gác kích thước PR đo `thêm + xoá`, nên một phép **CHUYỂN** code giữa hai file bị đếm
+HAI LẦN. Đo trên lô tách `test-lib.mjs`: chuyển 1 558 dòng ⇒ **3 249** theo phép cũ, **124** là
+số dòng thật sự mới.
+
+Và nó không chẻ nhỏ được như lời khuyên của chính thông báo lỗi: chia đôi vẫn ra ~1 600 dòng mỗi
+PR, vẫn vượt trần 1 500. Muốn qua phải chẻ làm **bốn** — tức gác ép một quy trình tệ hơn, đúng
+chiều `lessons/0002`.
+
+Nay ngưỡng đo trên `netNewLines()` — hàm thuần ở `lib`, 11 ca test, trong đó ca khoá chặt nhất
+là **đa tập** (xoá 1 + thêm 3 ⇒ **2** dòng mới, không phải 0). Dùng `Set` ở đó sẽ nuốt hai dòng
+theo chiều dễ chịu: một PR to đọc thành nhỏ rồi đi lọt. `$LINES` vẫn in ra cạnh `$NEWLINES`.
+
+---
+
 ## 2.79.0 — 2026-08-14
 
 **minor.** Đợt 1 của kế hoạch cô đặc harness. Một cắt, và nó tự chứng minh bằng số của chính
