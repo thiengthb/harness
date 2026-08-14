@@ -869,7 +869,7 @@ Kiểm 5 giây:
 node -e "console.log(Object.keys(require('./.claude/settings.json').hooks).join(' '))"
 ```
 
-Thấy đúng 4 tên → chạy `node tooling/upgrade.mjs --from <template>`. Migration 008 cắm chúng
+Thấy đúng 4 tên → chạy `node tooling/upgrade.mjs <template> --apply`. Migration 008 cắm chúng
 vào, **chỉ thêm khoá thiếu** — không chạm `permissions`, `worktree`, hay entry bạn đã sửa.
 
 Vì sao nó thiếu: `settings.json` là lớp SEED, `upgrade.mjs` **không bao giờ ghi đè** nó (đúng —

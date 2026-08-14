@@ -31,7 +31,9 @@ import { readdirSync, readFileSync, writeFileSync, mkdirSync, cpSync, rmSync, st
 import { join, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { parseFrontmatter } from '../lib/frontmatter.mjs';
-import { repoPath, config, report, exists, git, readJson, stateDir } from '../lib/harness.mjs';
+import { repoPath, config, report, exists, git, readJson, stateDir, guardFlags } from '../lib/harness.mjs';
+
+guardFlags(process.argv.slice(2), { bool: ['--apply'], valued: ['--ref'] }, { name: 'knowledge/upstream.mjs' });
 
 const args = process.argv.slice(2);
 const APPLY = args.includes('--apply');

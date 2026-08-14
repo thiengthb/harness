@@ -16,7 +16,9 @@ import { readdirSync, readFileSync, writeFileSync, mkdirSync, cpSync, rmSync } f
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parseFrontmatter } from '../lib/frontmatter.mjs';
-import { repoPath, readJson, report, exists, run, config } from '../lib/harness.mjs';
+import { repoPath, readJson, report, exists, run, config, guardFlags } from '../lib/harness.mjs';
+
+guardFlags(process.argv.slice(2), { valued: ['--ref'] }, { name: 'knowledge/import.mjs' });
 
 const args = process.argv.slice(2);
 const source = args.find(a => !a.startsWith('--'));

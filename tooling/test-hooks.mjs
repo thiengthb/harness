@@ -5548,16 +5548,66 @@ if (repoRole() === 'template') {
   //
   // Mỗi CLI được gọi hai lần: một cờ gõ nhầm (phải exit 1, phải nói ở stderr) và đường thường
   // (phải KHÔNG bị bản vá chặn quá tay). Ca thứ hai bắt đúng chiều mà `L0002` cảnh báo.
+  // ── TẦNG HAI-A: TĨNH — MỌI CLI đọc argv phải GỌI `guardFlags` ──────────────
+  //
+  // Con số đầu tiên của tôi SAI: quét `tooling/*.mjs` rồi báo "8 CLI". Quét lại toàn repo ra
+  // **16** — cái bị bỏ sót nặng nhất là `evals/run.mjs`: ngoài `tooling/`, có GHI state, và CI
+  // chạy nó. Vá nửa lớp thì lần sau có người rơi vào nửa kia.
+  //
+  // Phép kiểm này TĨNH có chủ ý. Bản đầu của tôi spawn cả 16 CLI × 2 chiều, và suite đi từ ~25s
+  // lên **quá 500s** — tức bản vá chống-harness-cản-việc tự biến thành harness cản việc, đúng
+  // thứ `AGENTS.md` §Verification đặt ngân sách để chặn. Câu hỏi *"file này có gọi guardFlags
+  // không"* là câu hỏi TĨNH; trả nó bằng 30 lần spawn là chọn sai tầng.
+  const argvUsers = [];
+  const missing = [];
+  const SKIP = new Map([
+    ['tooling/lib/harness.mjs', 'chính nơi ĐỊNH NGHĨA guardFlags'],
+    ['tooling/test-hooks.mjs', 'suite này không đọc argv của chính nó — hai lần khớp là chuỗi đi SCAN mã nguồn'],
+    ['tooling/fixtures/make-fixture-2.14.0.mjs', 'sinh fixture một lần, không phải CLI người gõ'],
+    ['evals/fixtures/fake-agent.mjs', 'giả lập AGENT: argv của nó là hợp đồng với runner, không phải cờ người gõ'],
+    ['tooling/fixlog.mjs', 'argv của nó là NỘI DUNG tự do (#198): `fixlog ghi chú về --force` phải đi lọt, nên luật ở đó chỉ hỏi args[0]'],
+    ['tooling/doctor.mjs', 'alias 2.x chuyển tiếp NGUYÊN argv sang harness-doctor.mjs — nơi ĐÓ đã có guard; thêm ở đây là hai spec phải giữ đồng bộ, và cái thứ hai sẽ lệch'],
+  ]);
+  for (const rel of ['evals/run.mjs', 'evals/fixtures/fake-agent.mjs', 'tooling/lib/harness.mjs',
+    'tooling/fixtures/make-fixture-2.14.0.mjs', 'tooling/test-hooks.mjs',
+    ...readdirSync(repoPath('tooling')).filter(f => f.endsWith('.mjs')).map(f => `tooling/${f}`),
+    ...readdirSync(repoPath('tooling', 'knowledge')).filter(f => f.endsWith('.mjs')).map(f => `tooling/knowledge/${f}`)]) {
+    const abs = repoPath(...rel.split('/'));
+    if (!exists(abs)) continue;
+    const src = readFileSync(abs, 'utf8');
+    if (!/process\.argv/.test(src)) continue;
+    if (argvUsers.includes(rel)) continue;
+    argvUsers.push(rel);
+    if (SKIP.has(rel) || /guardFlags\(/.test(src)) continue;
+    missing.push(rel);
+  }
+  const USERS_FLOOR = 24;
+  if (missing.length) {
+    fail.push(`cờ lạ · tĩnh${' '.repeat(9)} ${missing.length} CLI đọc argv mà KHÔNG gọi \`guardFlags\` — cờ gõ nhầm ở đó rơi thẳng `
+      + `vào nhánh mặc định, im lặng: ${missing.join(' · ')}`);
+  } else if (argvUsers.length < USERS_FLOOR) {
+    fail.push(`cờ lạ · tĩnh${' '.repeat(9)} chỉ thấy ${argvUsers.length} CLI đọc argv (sàn ${USERS_FLOOR}) — phép quét đã trôi, `
+      + 'và danh sách rỗng làm case này xanh mà không kiểm gì cả');
+  } else {
+    ok.push(`cờ lạ · tĩnh${' '.repeat(9)} ${argvUsers.length} CLI đọc argv, tất cả gọi \`guardFlags\` (${SKIP.size} miễn CÓ KHAI LÝ DO, sàn ${USERS_FLOOR})`);
+  }
+
+  // ── TẦNG HAI-B: HÀNH VI — mẫu nhỏ, spawn THẬT ─────────────────────────────
+  //
+  // Tầng tĩnh bắt "chưa cắm"; nó KHÔNG bắt được "cắm rồi nhưng spec sai" hay "guard đặt SAU
+  // lần ghi đầu tiên". Bốn CLI đại diện, mỗi cái vì một lý do khác nhau — không phải mẫu ngẫu
+  // nhiên:
+  //
+  //   capo-report  — CLI có thiệt hại ĐO ĐƯỢC (ghi sổ nghi thức đọc)
+  //   rituals      — guard nằm TRONG khối main (module này bị import ở nơi khác)
+  //   setup        — cái duy nhất ghi `harness.config.json`
+  //   evals/run    — ngoài `tooling/`, và là cái tôi bỏ sót ở lần đếm đầu
   const CLIS = [
-    //  file                  cờ gõ nhầm          đường thường
-    ['capo-report.mjs',      ['--dyas', '30'],   ['--days', '30']],
-    ['coactivity.mjs',       ['--limitt', '5'],  null],
-    ['entropy-scan.mjs',     ['--verifyy'],      []],
-    ['harness-size.mjs',     ['--baselien'],     []],
-    ['native-surface.mjs',   ['--recrod'],       []],
-    ['rituals.mjs',          ['--alll'],         ['--all']],
-    ['setup.mjs',            ['--aply'],         ['--detect']],
-    ['test-evals.mjs',       ['--bare'],         null],
+    //  file                   cờ gõ nhầm             đường thường
+    ['capo-report.mjs',       ['--dyas', '30'],      ['--days', '30']],
+    ['rituals.mjs',           ['--alll'],            ['--all']],
+    ['setup.mjs',             ['--aply'],            ['--detect']],
+    ['../evals/run.mjs',      ['--dryy'],            ['--dry']],
   ];
   const badCli = [];
   let ranHappy = 0;
@@ -5573,11 +5623,11 @@ if (repoRole() === 'template') {
       else ranHappy += 1;
     }
   }
-  if (badCli.length) fail.push(`cờ lạ ↔ CLI${' '.repeat(8)} ${badCli.length} ca sai: ${badCli.join(' | ')}`);
-  else ok.push(`cờ lạ ↔ CLI${' '.repeat(8)} ${CLIS.length} CLI chặn cờ lạ (exit 1 + nói ở stderr) · ${ranHappy} đường thường vẫn exit 0 · 2 CLI cần mạng nên bỏ qua CÓ KHAI`);
+  if (badCli.length) fail.push(`cờ lạ · hành vi${' '.repeat(7)} ${badCli.length} ca sai: ${badCli.join(' | ')}`);
+  else ok.push(`cờ lạ · hành vi${' '.repeat(7)} ${CLIS.length} CLI đại diện chặn cờ lạ (exit 1 + nói ở stderr) · ${ranHappy} đường thường vẫn exit 0 — tầng này bắt thứ tầng tĩnh không bắt: spec sai, hoặc guard đặt SAU lần ghi đầu`);
 }
 
-const RATCHET = 289;   // +1 thiệt hại đo được của plan thừa kế (tiền đề của gác template-plan) · +1 MODES bóc-từ-nguồn + sàn 13 · +1 run() maxBuffer + status===null (ca HÀNH VI, spawn thật) · +2 runConfigured (maxBuffer + status===null) · +5 nghi thức số-khớp-câu (knowledge-promote ×4 + promoteDeclined; handoff/slotCounters gộp vào ca sẵn có) · +3 drift hai chiều (claude-code-drift ×2 + mergeBaseline không hạ mốc) · +1 cờ-lạ-không-phải-nội-dung (fixlog ⑩) · +1 trần --top không giấu việc (fixlog ⑪) · +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
+const RATCHET = 290;   // +1 thiệt hại đo được của plan thừa kế (tiền đề của gác template-plan) · +1 MODES bóc-từ-nguồn + sàn 13 · +1 run() maxBuffer + status===null (ca HÀNH VI, spawn thật) · +2 runConfigured (maxBuffer + status===null) · +5 nghi thức số-khớp-câu (knowledge-promote ×4 + promoteDeclined; handoff/slotCounters gộp vào ca sẵn có) · +3 drift hai chiều (claude-code-drift ×2 + mergeBaseline không hạ mốc) · +1 cờ-lạ-không-phải-nội-dung (fixlog ⑩) · +1 trần --top không giấu việc (fixlog ⑪) · +3 v2.38.1 (#88) · +2 v2.39.0 (#95, sàn chưa nâng lúc đó) · +1 v2.39.2 (#93) · +2 v2.39.3 (#94) · +10 bắt kịp tổng thật + 6 v2.42.1 (#100) · +1 v2.42.2 (#96) · +1 v2.42.3 (#114) · +2 v2.42.4 (#111) · +1 mergeBaseline-đĩa · +52 = 29 bắt kịp tổng thật (sàn tụt lại từ trước lô này: main có 235 ca, sàn 206) + 23 ca mới (verdict 10 · codeOnly/codeScanDesync 11 · verdict:false 2) · +4 #132 (đo sau rebase lên main có #194+#195) · +4 #135/#136/#137 (đo sau rebase lên main có #194+#195) · +3 #130 (đo sau rebase lên main có #194+#195) · +2 #131 (đo sau rebase lên main có #194+#195)
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa

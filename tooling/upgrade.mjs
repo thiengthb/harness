@@ -25,7 +25,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve, sep, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { REPO_ROOT, repoPath, readJson, writeJson, report, run, MECHANISM_PATHS } from './lib/harness.mjs';
+import { REPO_ROOT, repoPath, readJson, writeJson, report, run, MECHANISM_PATHS, guardFlags } from './lib/harness.mjs';
+
+guardFlags(process.argv.slice(2), { bool: ['--apply', '--force-overwrite', '--allow-unpinned'], valued: ['--ref'] }, { name: 'upgrade.mjs' });
 
 const args = process.argv.slice(2);
 const argOf = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : null; };

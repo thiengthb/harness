@@ -10,7 +10,9 @@
  *
  * KHÔNG BAO GIỜ xoá worktree có thay đổi chưa commit — kể cả với --apply.
  */
-import { git, run, report, limit, repoPath, mergeState } from './lib/harness.mjs';
+import { git, run, report, limit, repoPath, mergeState, guardFlags } from './lib/harness.mjs';
+
+guardFlags(process.argv.slice(2), { bool: ['--apply'] }, { name: 'wt-clean.mjs' });
 
 const APPLY = process.argv.includes('--apply');
 const ok = [], warn = [], fail = [], unknown = [];

@@ -30,7 +30,9 @@
  */
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { config, runConfigured, git, spill, telemetry, report, unattended, exists, repoPath, matchAny, pathsFor, repoRole, declaredCommands, TEST_TELEMETRY_DIR } from './lib/harness.mjs';
+import { config, runConfigured, git, spill, telemetry, report, unattended, exists, repoPath, matchAny, pathsFor, repoRole, declaredCommands, TEST_TELEMETRY_DIR, guardFlags } from './lib/harness.mjs';
+
+guardFlags(process.argv.slice(2), { bool: ['--list', '--timing'], valued: ['--stage'] }, { name: 'gates.mjs' });
 
 const argv = process.argv.slice(2);
 const arg = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };

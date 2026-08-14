@@ -32,7 +32,9 @@
  */
 import { readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoPath, git, run, readJson, matchGlob, matchAny, pathsFor, config, report, toRepoRel, isSolo, teamSize } from './lib/harness.mjs';
+import { repoPath, git, run, readJson, matchGlob, matchAny, pathsFor, config, report, toRepoRel, isSolo, teamSize, guardFlags } from './lib/harness.mjs';
+
+guardFlags(process.argv.slice(2), { bool: ['--json'] }, { name: 'overlap-scan.mjs' });
 
 // ── SOLO KHÔNG PHẢI "KHÔNG CÓ CHỒNG LẤN" ─────────────────────────────────────
 //

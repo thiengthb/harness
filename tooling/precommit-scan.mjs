@@ -19,7 +19,9 @@
  * không đọc được lịch sử git. Nó là **tầng rẻ nhất chạy được ở mọi repo không cần cài gì**.
  */
 import { readFileSync, existsSync } from 'node:fs';
-import { git, repoPath, toRepoRel, matchAny, pathsFor, report, SECRET_PATTERNS, isSolo } from './lib/harness.mjs';
+import { git, repoPath, toRepoRel, matchAny, pathsFor, report, SECRET_PATTERNS, isSolo, guardFlags } from './lib/harness.mjs';
+
+guardFlags(process.argv.slice(2), { bool: ['--all'] }, { name: 'precommit-scan.mjs' });
 
 const ALL = process.argv.includes('--all');
 const staged = ALL
