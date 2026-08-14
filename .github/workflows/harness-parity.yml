@@ -68,6 +68,10 @@ jobs:
       # KHÔNG phải "bỏ qua cho lành": ở template file luôn có, và `test-hooks` có một ca ĐỎ nếu
       # nó biến mất. Ở repo con, vắng mặt là ĐÚNG THIẾT KẾ.
       - name: Lib (hàm thuần) — chỉ ở repo template
+        # `shell: bash` BẮT BUỘC: windows-latest mặc định là PowerShell, và `if [ -f … ]` ở đó
+        # là ParserError chứ không phải "điều kiện sai" — job đỏ mà không nói gì về harness.
+        # Cùng khai báo với bước `Mọi .mjs parse được` ở trên, cùng lý do.
+        shell: bash
         run: |
           if [ -f tooling/test-lib.mjs ]; then
             node tooling/test-lib.mjs
