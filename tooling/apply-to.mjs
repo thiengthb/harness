@@ -13,7 +13,7 @@
 import { readdirSync, statSync, mkdirSync, cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, resolve, relative, sep } from 'node:path';
-import { REPO_ROOT, report, run, REQUIRED_IGNORE, REQUIRED_ATTRIBUTES, REQUIRED_UNIGNORE, missingLines, CI_ESCAPE_HATCH, MECHANISM_PATHS, NOT_FOR_CONSUMER, repoRole, guardFlags } from './lib/harness.mjs';
+import { REPO_ROOT, report, run, REQUIRED_IGNORE, REQUIRED_ATTRIBUTES, REQUIRED_UNIGNORE, missingLines, CI_ESCAPE_HATCH, MECHANISM_PATHS, NOT_FOR_CONSUMER, repoRole, guardFlags, unshippedRefs } from './lib/harness.mjs';
 
 guardFlags(process.argv.slice(2), { bool: ['--apply', '--update', '--audit'] }, { name: 'apply-to.mjs' });
 
@@ -67,13 +67,17 @@ const SEED = [
   'docs/DOR-DOD.md', 'docs/onboarding.md', 'docs/ROADMAP-30D.md',
   'docs/ANTI-PATTERNS.md', 'docs/ARCHITECTURE.md', 'docs/ECONOMICS.md',
   'docs/MULTI-PROJECT.md', 'docs/RECOVERY.md', 'docs/TEAM.md', 'docs/DESIGN.md',
-  // ADR của TEMPLATE ở `docs/adr/harness/`, KHÔNG ở `docs/adr/`. Trước 2.5.0 chúng hạ
-  // cánh thành `docs/adr/0001-*` và `0002-*` ở project đích, tức là lớp harness CHIẾM số
-  // 0001 và 0002 của SẢN PHẨM: ADR đầu tiên của đội buộc phải là 0003, và quyết định đầu
+  // Chỉ KHUÔN ADR đi xuống. ADR của lớp harness ở namespace con `adr/harness/` và **thôi ship từ
+  // 2.81.0** — chúng là sổ quyết định của TEMPLATE, cùng nhóm với `HARNESS-CHANGELOG.md`;
+  // lý do đầy đủ ở `NOT_FOR_CONSUMER` trong lib/harness.mjs.
+  //
+  // Namespace `harness/` thì GIỮ, và lý do nó ra đời vẫn còn nguyên: trước 2.5.0 hai ADR đó
+  // hạ cánh thành `docs/adr/0001-*` và `0002-*` ở project đích, tức lớp harness CHIẾM số
+  // 0001 và 0002 của SẢN PHẨM — ADR đầu tiên của đội buộc phải là 0003, và quyết định đầu
   // tiên của product được đánh số như thể nó là quyết định thứ ba. Cùng lý do với
   // `docs/progress/<issue>.md`: đánh số dùng chung là một vùng conflict, và ở đây nó
   // conflict giữa HAI SẢN PHẨM khác nhau.
-  'docs/adr/_TEMPLATE.md', 'docs/adr/harness',
+  'docs/adr/_TEMPLATE.md',
   'docs/progress/_TEMPLATE.md', 'docs/progress/_TEAM.md',
   'docs/rubrics/_TEMPLATE.md', 'docs/specs/_TEMPLATE.md', 'docs/runbooks/README.md',
   'tooling/generators/README.md',
@@ -185,7 +189,7 @@ if (AUDIT) {
     // nào cũng có package.json của riêng nó (hoặc cố ý không có, nếu là Python/Go) — copy
     // đè lên nó là phá dự án, và tạo mới một cái rỗng trong repo Go là để lại rác gây nhầm.
     /^package\.json$/,
-    // `tooling/cli.mjs` cũng vậy: nó là điểm vào của TEMPLATE (`npx ... init`). Ở project
+    // `cli.mjs` trong thư mục này cũng vậy: nó là điểm vào của TEMPLATE (`npx ... init`). Ở project
     // đích nó không có việc gì làm — apply-to ở đó đã là bản copy rồi.
     /^tooling\/cli\.mjs$/,
     /^knowledge\/index\.json$/,                       // sinh tự động
@@ -236,7 +240,29 @@ if (AUDIT) {
     console.error('\nThêm vào danh sách trong tooling/apply-to.mjs, hoặc vào IGNORE nếu cố ý không mang đi.\n');
     process.exit(1);
   }
-  console.log(`\n✓ AUDIT: ${covered.size} file được phủ, không bỏ sót.\n`);
+
+  // ── Chiều NGƯỢC LẠI: file SHIP trỏ vào thứ KHÔNG ship ─────────────────────
+  //
+  // `entropy-scan` §9b đã kiểm đường dẫn chết — nhưng nó kiểm **trong cây nó đang đứng**, và
+  // ở template mọi thứ đều tồn tại. Nên một backtick trỏ vào một file template-only xanh ở
+  // đây và ĐỎ ở mọi repo tiêu thụ: đúng `knowledge/lessons/0003` (self-test giả định repo
+  // của chính nó). Đây là chỗ DUY NHẤT biết cả hai tập, nên nó là chỗ đúng để hỏi.
+  //
+  // Logic ở `unshippedRefs` trong lib — hàm thuần, có ca đơn vị ở `test-lib.mjs`, và
+  // `test-hooks` gọi CÙNG hàm đó trên cùng tập ship. Một sự thật, hai chỗ gọi.
+  const shippedDocs = [...covered].filter(f => /\.(md|mjs)$/.test(f)).sort()
+    .map(f => { try { return { file: f, text: readFileSync(join(REPO_ROOT, f), 'utf8') }; } catch { return null; } })
+    .filter(Boolean);
+  const dangling = unshippedRefs(shippedDocs, covered, run('git', ['ls-files']).stdout.split('\n').filter(Boolean));
+  if (dangling.length) {
+    console.error(`\n⛔ ${dangling.length} đường dẫn được file SHIP trỏ tới, nhưng CHÍNH NÓ không ship —`
+      + ` ở repo tiêu thụ đó là con trỏ chết, và không cơ chế nào bên đó thấy:\n`);
+    for (const d of dangling) console.error(`   ${d.path}\n      ← ${d.where.join(', ')}`);
+    console.error('\nSửa lời nhắc (bỏ dạng đường dẫn, hoặc nói rõ "ở repo template"), hoặc cho nó ship.\n');
+    process.exit(1);
+  }
+
+  console.log(`\n✓ AUDIT: ${covered.size} file được phủ, không bỏ sót; ${shippedDocs.length} file ship không trích đường dẫn nào rơi ra ngoài.\n`);
   process.exit(0);
 }
 

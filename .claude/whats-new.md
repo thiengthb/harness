@@ -1,4 +1,4 @@
-<!-- version: 2026-08-12-h -->
+<!-- version: 2026-08-14-c -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -6,12 +6,24 @@
 
   Đổi harness mà không thông báo = nửa team hành xử theo rule cũ.
   Mỗi lần merge thay đổi vào .claude/, cập nhật version + viết 3 dòng ở đây.
-  Giữ file NGẮN — nhưng KHÔNG xoá: chuyển mục cũ sang `.claude/whats-new-archive.md`.
+  Giữ file NGẮN — nhưng KHÔNG xoá: chuyển mục cũ sang `whats-new-archive.md` cạnh nó
+  (file lưu trữ chỉ tồn tại ở repo template, cố ý không ship).
   Vì sao ngắn, đo được: session-start chỉ in `.slice(0, 700)` ký tự — chừng HAI mục. Mọi
   mục sau đó không có đường nào tới người đọc, mà vẫn theo `apply-to` xuống MỌI consumer.
   Trần cứng: 220 dòng (test-hooks cưỡng chế). Vượt là dấu hiệu cần xoay vòng, không phải
   dấu hiệu nới trần.
 -->
+
+## 2026-08-14 — sổ quyết định của TEMPLATE thôi ship, và con trỏ chết có phép kiểm (v2.81.0)
+
+Thư mục ADR của lớp harness (374 dòng, dưới docs/adr ở repo template) là sổ của TEMPLATE,
+cùng nhóm với changelog. Nó **thôi ship**; `upgrade` xoá nó khỏi repo đã áp — chỉ khi bạn
+chưa sửa. Chính sách còn sống trong đó — **ba bậc vendor** (managed settings · `permissions` ·
+sandbox), **bài test bốn câu**, phân loại observer/gate/**provisioner** — chuyển lên
+`/harness-propose` §2, tức chỗ bạn thật sự cần nó.
+
+Mới: `apply-to --audit` bắt **file ship trỏ vào thứ không ship**. Đo lúc viết: **8 con trỏ
+chết đang ship sẵn** — ở repo bạn chúng trỏ vào chỗ trống, và không gì bên đó nói ra.
 
 ## 2026-08-12 — gate "tự khen" đã cắm, CHƯA lên đạn (v2.71.0)
 
@@ -184,5 +196,5 @@ vứt cột thời gian nên không thể thấy tái phát dù có muốn.
 
 ---
 
-Mục cũ hơn: **[.claude/whats-new-archive.md](whats-new-archive.md)** — hồ sơ đầy đủ, không ship
-xuống repo tiêu thụ.
+Mục cũ hơn: **whats-new-archive.md** cạnh file này — hồ sơ đầy đủ. Nó **không ship**, nên ở
+repo tiêu thụ file đó không tồn tại và không có gì để mở.

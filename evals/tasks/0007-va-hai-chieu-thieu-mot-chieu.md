@@ -15,7 +15,7 @@ origin: "Gate cho knowledge/lessons/0007-va-hai-chieu-thieu-mot-chieu.md — 4 l
 > cảnh báo kêu ở mọi lượt và sẽ bị tắt.
 >
 > Trần cũ `20 lượt / 12 phút` là số đoán từ ngày dựng task, và **cả hai đều bó**:
-> xem #144 · `docs/progress/144.md`.
+> xem #144 (nhật ký ở repo template — `docs/progress/**` không ship).
 
 
 Task nhóm **past-failure**. Mọi bản vá dạng *"đừng đếm cái này"* / *"giữ cái kia"* có

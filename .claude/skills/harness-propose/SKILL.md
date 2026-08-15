@@ -29,7 +29,43 @@ Chưa đủ 2 lần → ghi `fixlog` rồi thôi, quay lại sau.
 
 ## 2. Chọn dạng biểu diễn RẺ NHẤT khả thi
 
-Đây là quyết định quan trọng nhất của skill này. Đi từ trên xuống, dừng ở cái đầu tiên khả thi:
+Đây là quyết định quan trọng nhất của skill này. Đi từ trên xuống, dừng ở cái đầu tiên khả thi.
+
+### Trước cả dòng 1: ba bậc bạn KHÔNG viết
+
+**Claude Code sở hữu RUNTIME — harness sở hữu CHÍNH SÁCH.** Runtime = vòng lặp, tool,
+context, quyền, cách ly, sự kiện vòng đời. Chính sách = *"xong" nghĩa là gì ở repo này*,
+ai được quyết, cái gì phải có bằng chứng. Hệ quả: harness **không cạnh tranh được** với
+Claude Code — nó chỉ có thể LẤP hoặc TRÙNG các điểm mở rộng, và mọi chồng chập là dấu
+hiệu đang lấp một chỗ đã được lấp ở tầng thấp hơn.
+
+| ai cưỡng chế | phủ được gì mà bảng dưới không phủ |
+|---|---|
+| managed settings | người dùng **không override được** |
+| `permissions` deny/ask | phủ cả `Bash` đọc file; hợp nhất vào ranh giới sandbox |
+| sandbox OS | phủ cả **tiến trình con** |
+
+Bậc thấp hơn ⇒ cưỡng chế **trước** khi hook chạy. Xem `.claude/rules/danger-zones.md`
+§Cưỡng chế: 5/5 biến thể nguỵ trang bằng nháy đi lọt tầng hook và bị tầng `deny` bắt.
+
+**Bài test bốn câu — dừng ở câu đầu tiên trả lời "có":**
+
+```
+1. CC có bề mặt native làm đúng việc này chưa?  → có: DÙNG NATIVE, xoá bản tự viết
+2. Nó có cần CỬA THOÁT hoặc LOGIC ĐỘNG không?   → có: hook, và chỉ hook
+3. Nó có phải chính sách đặc thù repo/đội?      → có: GIỮ, đây là chỗ bất khả thay thế
+4. Nó có được MÁY đọc không?                    → không: thuế context, không phải harness
+```
+
+> **Một điểm mở rộng native không mặc định là chỗ để QUAN SÁT.** Có ba loại: *observer*
+> (`InstructionsLoaded`), *gate* (`SubagentStop`), và **provisioner** (`WorktreeCreate` /
+> `WorktreeRemove`) — nơi stdout và exit code **LÀ hợp đồng**. Cắm một script advisory vào
+> một provisioner không hỏng ở hook: nó hỏng ở cơ chế mà hook vừa giành mất quyền sở hữu,
+> và triệu chứng hiện ra vài ngày sau. Nguồn mạnh nhất cho hợp đồng của một sự kiện là
+> **schema nhúng trong binary CLI đang chạy**, không phải tài liệu — tài liệu nói đúng về
+> *tên* sự kiện và không nói đủ về *hợp đồng*.
+
+### Rồi mới tới bảng
 
 | # | Dạng | Ví dụ |
 |---|---|---|
@@ -96,7 +132,8 @@ thông báo thay đổi phải rẻ, nếu không sẽ không ai làm.
    với `.claude/state/whats-new-seen.json` và **in nội dung một lần** cho mỗi người.
 2. Thêm mục mới **lên trên cùng**, tối đa ~5 dòng: *cái gì đổi* · *người dùng phải làm gì
    khác đi* · *bị chặn sai thì nhắn ai*.
-3. **KHÔNG xoá mục cũ — chuyển sang `.claude/whats-new-archive.md`** (dán lên đầu). File chính
+3. **KHÔNG xoá mục cũ — chuyển sang `whats-new-archive.md`** cạnh nó (dán lên đầu; file lưu
+   trữ chỉ có ở repo template, cố ý không ship). File chính
    phải **ngắn**, và đó là con số chứ không phải cảm tính: `session-start.mjs` in
    `.slice(0, 700)` ký tự, tức chừng **hai mục**. Mọi mục sau đó không có đường nào tới người
    đọc, mà vẫn theo `apply-to` xuống MỌI repo tiêu thụ — đo 2026-08-14: 78 mục, 1 081 dòng.

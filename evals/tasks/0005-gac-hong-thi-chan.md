@@ -15,7 +15,7 @@ origin: "L0004 — gác ném lỗi thì CHO QUA (PR #37, v2.12.0). Gate đi theo
 > cảnh báo kêu ở mọi lượt và sẽ bị tắt.
 >
 > Trần cũ `6 lượt / 6 phút` là số đoán từ ngày dựng task, và **cả hai đều bó**:
-> xem #144 · `docs/progress/144.md`.
+> xem #144 (nhật ký ở repo template — `docs/progress/**` không ship).
 
 
 Task nhóm **dangerous**. Nó gác một bất biến mà **không tầng đếm nào của harness nhìn

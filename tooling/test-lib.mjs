@@ -26,7 +26,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, run, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution, verdictLine, emitVerdict, codeScanDesync, frictionReading, slotCounters, backtickEvalHazardIn, contextLossPending, selfPraiseClaims, promoteDeclined, parseFlags, guardFlags } from './lib/harness.mjs';
+import { repoPath, report, exists, git, run, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution, verdictLine, emitVerdict, codeScanDesync, frictionReading, slotCounters, backtickEvalHazardIn, contextLossPending, selfPraiseClaims, promoteDeclined, parseFlags, guardFlags, unshippedRefs, CONSUMER_WRITES } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const TEST_ENV = {
@@ -1616,10 +1616,64 @@ const declareNa = (count, msg) => naEntries.push({ count, msg });
   else ok.push(`cờ lạ · hành vi${' '.repeat(7)} ${CLIS.length} CLI đại diện chặn cờ lạ (exit 1 + nói ở stderr) · ${ranHappy} đường thường vẫn exit 0 — tầng này bắt thứ tầng tĩnh không bắt: spec sai, hoặc guard đặt SAU lần ghi đầu`);
 }
 
+// ─── unshippedRefs: file SHIP trỏ vào thứ KHÔNG ship ────────────────────────
+//
+// Lớp lỗi chỉ hiện ra SAU KHI phân phối, nên bảng này phải khoá cả hai chiều: bắt đúng cái
+// chết, và KHÔNG bắt bốn nhóm hợp lệ. Bỏ chiều thứ hai thì hàm đúng nhưng không ai dùng nổi —
+// đúng `knowledge/lessons/0002` (guard bắn nhầm).
+{
+  const L = ' '.repeat(9);
+  const SHIP = ['docs/A.md', 'docs/adr/_TEMPLATE.md', 'knowledge/lessons/0001.md'];
+  const TRACK = [...SHIP, 'docs/adr/harness/0002.md', 'docs/progress/144.md', 'tooling/cli.mjs'];
+  const one = (text, ship = SHIP, track = TRACK, cw = CONSUMER_WRITES) =>
+    unshippedRefs([{ file: 'docs/A.md', text }], ship, track, cw);
+  const CASES = [
+    ['trỏ vào file được track mà KHÔNG ship ⇒ bắt',
+      one('xem `docs/progress/144.md`'), ['docs/progress/144.md']],
+    ['trỏ vào THƯ MỤC không ship ⇒ bắt (tiền tố khớp file được track)',
+      one('xem `docs/adr/harness`'), ['docs/adr/harness']],
+    ['trỏ vào file CÓ ship ⇒ im',
+      one('xem `docs/adr/_TEMPLATE.md`'), []],
+    ['trỏ vào thư mục CÓ ship ⇒ im (tiền tố khớp file được ship)',
+      one('xem `knowledge/lessons`'), []],
+    // Thứ repo con TỰ SINH lúc chạy không được track — đây là cái phân biệt, không phải danh sách.
+    ['trỏ vào thứ KHÔNG được track (repo con tự sinh) ⇒ im',
+      one('xem `.claude/state/ritual-states.json`'), []],
+    ['CONSUMER_WRITES: được track, không ship, nhưng tooling của họ ghi ra ⇒ im',
+      one('xem `knowledge/index.json`', SHIP, [...TRACK, 'knowledge/index.json']), []],
+    ['CONSUMER_WRITES rỗng ⇒ chính đường dẫn đó bị bắt (chứng minh miễn trừ là do DANH SÁCH)',
+      one('xem `knowledge/index.json`', SHIP, [...TRACK, 'knowledge/index.json'], []), ['knowledge/index.json']],
+    // Văn xuôi và tên trần: cùng khuôn PROSE với §9b của entropy-scan.
+    ['glob/placeholder ⇒ im', one('xem `docs/progress/<issue>.md` và `docs/**`'), []],
+    ['URL ⇒ im', one('xem `https://example.com/docs/progress/144.md`'), []],
+    ['tên KHÔNG có `/` ⇒ im (không phải đường dẫn)', one('xem `cli.mjs`'), []],
+    ['neo `#` và `:` bị cắt trước khi so', one('xem `docs/progress/144.md#phan-2`'), ['docs/progress/144.md']],
+    ['dấu `/` cuối bị cắt', one('xem `docs/adr/harness/`'), ['docs/adr/harness']],
+    // Gộp theo ĐƯỜNG DẪN, không theo lần xuất hiện — nếu không, một đường dẫn bị nhắc 9 lần
+    // đọc thành "9 chỗ hỏng" và con số mất nghĩa.
+    ['một đường dẫn nhắc 2 lần ⇒ MỘT mục', one('`docs/progress/144.md` và `docs/progress/144.md`'), ['docs/progress/144.md']],
+    ['text rỗng/undefined không ném', unshippedRefs([{ file: 'x.md', text: undefined }], SHIP, TRACK), []],
+  ];
+  const badU = [];
+  for (const [name, got, want] of CASES) {
+    const paths = got.map(g => g.path);
+    if (JSON.stringify(paths) !== JSON.stringify(want)) badU.push(`${name}: ${JSON.stringify(paths)} ≠ ${JSON.stringify(want)}`);
+  }
+  // `where` phải nói ra AI trích — không có nó thì thông báo lỗi không dẫn tới chỗ sửa.
+  const two = unshippedRefs(
+    [{ file: 'docs/A.md', text: '`docs/progress/144.md`' }, { file: 'docs/B.md', text: '`docs/progress/144.md`' }],
+    SHIP, TRACK);
+  if (JSON.stringify(two[0]?.where) !== JSON.stringify(['docs/A.md', 'docs/B.md'])) {
+    badU.push(`where gộp 2 file: ${JSON.stringify(two[0]?.where)} ≠ ["docs/A.md","docs/B.md"]`);
+  }
+  if (badU.length) fail.push(`unshippedRefs${L} ${badU.length} ca sai: ${badU.slice(0, 3).join(' | ')}`);
+  else ok.push(`unshippedRefs${L} ${CASES.length + 1} ca — bắt đúng thứ được TRACK-mà-không-ship, im với thứ repo con tự sinh (không track), im với văn xuôi, và gộp theo đường dẫn kèm danh sách file trích`);
+}
+
 // Sàn của riêng suite này. Con số ban đầu = tổng ĐO ĐƯỢC lúc tách (v2.80.0), không phải số
 // ước lượng: sàn đặt thấp hơn tổng thật là sàn đã nghỉ việc (xem chú thích cùng chỗ ở
 // `test-hooks.mjs`).
-const RATCHET = 61;   // = tổng ĐO ĐƯỢC lúc tách (v2.80.0). 230 (test-hooks) + 61 = 291 = tổng TRƯỚC khi tách — không mất khẳng định nào.
+const RATCHET = 62;   // v2.81.0: +1 ca `unshippedRefs` (15 khẳng định trong một ca). 61 = tổng ĐO ĐƯỢC lúc tách (v2.80.0). 230 (test-hooks) + 61 = 291 = tổng TRƯỚC khi tách — không mất khẳng định nào.
 const ran = ok.length + fail.length;
 const naCount = naEntries.reduce((s, e) => s + e.count, 0);
 const total = ran + naCount;

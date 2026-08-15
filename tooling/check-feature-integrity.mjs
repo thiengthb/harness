@@ -33,7 +33,7 @@ const ok = [], warn = [], fail = [];
 // Vì sao thêm (2026-08-07): phần dưới cố ý bỏ qua file `_`-prefix, nên khi `features/` chỉ có
 // `_index.json` + `_TEMPLATE.json` thì báo cáo in "(không có gì để báo cáo)" và exit 0 — đọc như một
 // cổng đang canh, thực ra là một cổng không canh gì. Trong khi chính `_index.json` đang liệt một entry
-// `example-feature` trỏ tới `features/example-feature.json` KHÔNG TỒN TẠI. Danh sách feature là thứ
+// `example-feature` trỏ tới file `example-feature.json` KHÔNG TỒN TẠI. Danh sách feature là thứ
 // AGENTS.md §Verification dựa vào; một danh sách nói dối được mà không ai kiểm thì luật "Default-FAIL"
 // chỉ còn là câu văn.
 //

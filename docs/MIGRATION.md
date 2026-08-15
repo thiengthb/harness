@@ -10,7 +10,7 @@
 | Lớp | Ví dụ | Khi nâng cấp |
 |---|---|---|
 | **CƠ CHẾ** — của template | `.claude/hooks/**` · `tooling/**` · `.claude/skills/**` · `.githooks/` · `evals/run.mjs` · `harness-migrations/` | **Tự động cập nhật** (nếu bạn chưa sửa) |
-| **NỘI DUNG** — của project | `harness.config.json` · `AGENTS.md §Gotchas` · `features/**` · `knowledge/lessons/**` · `docs/progress/**` · `docs/adr/**` | **Không bao giờ bị đụng** |
+| **NỘI DUNG** — của project | `harness.config.json` · `AGENTS.md §Gotchas` · `features/**` · `knowledge/lessons/**` · `docs/progress/**` · ADR của bạn (`docs/adr/NNNN-*.md`) | **Không bao giờ bị đụng** |
 | **THAM CHIẾU** — template cải thiện, bạn có thể đã sửa | `docs/CONFLICTS.md` · `docs/ARCHITECTURE.md` · CI workflow · PR template | **Chỉ BÁO có bản mới**, bạn tự quyết |
 
 Ranh giới này là lý do migration dễ. Nếu bạn nhét logic riêng của project vào một
@@ -46,7 +46,8 @@ Nếu không có chúng, một đổi tên field làm hook đọc `undefined` v�
 
 `upgrade.mjs` tự chạy script trong `harness-migrations/` có `version` nằm trong
 khoảng `(version của bạn, version của template]`, theo thứ tự.
-Xem `harness-migrations/README.md`.
+Xem README trong thư mục `harness-migrations` của repo TEMPLATE (thư mục đó không ship —
+`upgrade.mjs` luôn đọc migration từ bản template bạn trỏ tới bằng `--from`).
 
 ## Quy trình khuyến nghị
 

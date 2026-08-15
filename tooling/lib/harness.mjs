@@ -299,7 +299,7 @@ export function coordinationLayer({ teamSize: ts, role } = {}) {
  *      chỉ là inferential thay vì computational. Bỏ markdown ⇒ báo nhầm nó là chết.
  *
  *   B "code với tay tới thứ không tồn tại?" → quét CHỈ code.
- *      `harness-migrations/README.md` có một ví dụ migration GIẢ ĐỊNH dùng
+ *      README của `harness-migrations` (chỉ có ở template) có một ví dụ migration GIẢ ĐỊNH dùng
  *      `cfg.paths.hotspots`. Đó là văn xuôi dạy người viết migration, không phải reader.
  *      Nhận markdown vào chiều B ⇒ một dương tính giả ngay ngày đầu ⇒ check bị tắt.
  *
@@ -1987,7 +1987,7 @@ export const CI_ESCAPE_HATCH = /\n {4}env:\n(?: {6}#[^\n]*\n)* {6}HARNESS_ALLOW_
 /**
  * VAI của repo đang chạy. BA giá trị, không hai.
  *
- *   'template'  — nguồn: có `tooling/cli.mjs`, KHÔNG có manifest
+ *   'template'  — nguồn: có `cli.mjs` trong `tooling`, KHÔNG có manifest
  *   'consumer'  — đã áp: có `.claude/harness-manifest.json` (chỉ apply-to/upgrade ghi ra)
  *   'unknown'   — không đủ dấu hiệu: cài tay, copy dở, hoặc manifest bị xoá
  *
@@ -2015,7 +2015,7 @@ export const CI_ESCAPE_HATCH = /\n {4}env:\n(?: {6}#[^\n]*\n)* {6}HARNESS_ALLOW_
  * Rơi vào đó thì repo con bị gọi là template, và mọi thứ hạ cấp theo vai template — kể cả
  * dòng CHẶN "commands rỗng ⇒ GATE KHÔNG TỒN TẠI" — sẽ im, ở đúng nơi nó cần kêu nhất.
  *
- * `tooling/cli.mjs` là điểm vào `npx github:…` của TEMPLATE. Nó nằm trong `IGNORE` của
+ * `cli.mjs` trong `tooling` là điểm vào `npx github:…` của TEMPLATE. Nó nằm trong `IGNORE` của
  * `apply-to.mjs` với lý do viết sẵn ("ở project đích nó không có việc gì làm"), nên nó
  * **không thể** xuất hiện ở repo con qua đường chính thức. Đó là điều kiện cần của một dấu
  * hiệu nhận vai: chỉ tồn tại ở đúng một phía.
@@ -2258,6 +2258,16 @@ export const REMOVED_PATHS = [
       + '92 KB script chỉ chạy từ phía template. `tooling/test-migrations.mjs` vẫn ở lại và tự khai '
       + '`n/a` khi không có migration, nên không có dấu xanh rỗng nào sinh ra từ việc bỏ thư mục này.',
   },
+  {
+    path: 'docs/adr/harness',
+    since: '2.81.0',
+    why: 'Sổ quyết định của TEMPLATE — cùng nhóm với changelog. 374 dòng khảo cổ học về repo template '
+      + '("đo 2026-08-04 trên 2.1.221", bốn chỉ số phán quyết một đợt đã kết thúc), không cơ chế nào đọc: '
+      + 'sáu chỗ nhắc nó đều là comment. Phần chính sách còn sống — ba bậc vendor, bài test bốn câu, '
+      + 'phân loại observer/gate/provisioner — đã chuyển lên `.claude/skills/harness-propose` §2, '
+      + 'nơi nó được đọc đúng lúc đang quyết. Khuôn `docs/adr/_TEMPLATE.md` và namespace con `adr/harness/` '
+      + 'thì ở lại: đội vẫn viết ADR của SẢN PHẨM từ số 0001.',
+  },
 ];
 
 /**
@@ -2415,7 +2425,7 @@ export const MECHANISM_PATHS = [
  * test` khi thư mục vắng, nên nó không biến thành một dấu xanh rỗng.
  */
 /*
- * `tooling/test-lib.mjs` (v2.80.0) vào nhóm này vì cùng một lý do, ở dạng rõ hơn: nó kiểm HÀM
+ * `test-lib.mjs` (v2.80.0) vào nhóm này vì cùng một lý do, ở dạng rõ hơn: nó kiểm HÀM
  * THUẦN của `lib/harness.mjs` — code mà repo con **không bao giờ sửa** (nó đến từ template, và
  * CI của template kiểm nó trên cả ba OS). Trước khi tách, `test-hooks.mjs` là 5 654 dòng =
  * **19 % toàn bộ dấu chân harness** ở project đích; 1 558 dòng trong đó là test cho code người
@@ -2425,7 +2435,83 @@ export const MECHANISM_PATHS = [
  * `settings.json`), và bốn eval task đang ship khẳng định `node tooling/test-hooks.mjs` chạy
  * xanh — đổi tên nó là làm đỏ bộ eval của mọi consumer.
  */
-export const NOT_FOR_CONSUMER = ['HARNESS-CHANGELOG.md', 'harness-migrations', 'tooling/test-lib.mjs'];
+/*
+ * Namespace con `adr/harness/` dưới `docs/adr` (v2.81.0) là sổ quyết định của TEMPLATE — cùng nhóm với changelog, chỉ
+ * viết dài hơn. 374 dòng, và nội dung là khảo cổ học của repo NÀY: "đo ngày 2026-08-04 trên
+ * 2.1.221", "lô 0", "đợt này ròng +3 file", một bảng bốn chỉ số phán quyết một đợt đã kết thúc.
+ * Repo tiêu thụ đọc nó sẽ học được lịch sử của template, không phải điều gì về repo của họ.
+ *
+ * Nó KHÔNG được trỏ tới từ bất kỳ cơ chế nào: sáu chỗ nhắc `docs/adr/harness/0002` đều là
+ * COMMENT (`evals/run.mjs`, `test-evals.mjs`, `harness-doctor.mjs`), không assertion nào đọc file.
+ *
+ * Phần CHÍNH SÁCH SỐNG trong đó — ba bậc vendor, bài test bốn câu, phân loại
+ * observer/gate/provisioner — không bị xoá mà **chuyển lên** `.claude/skills/harness-propose`
+ * §2, tức đúng lúc người ta đang quyết đặt một cơ chế ở đâu. Một tri thức nằm trong tài liệu
+ * không ai mở thì bằng không có; nằm trong skill được gọi ở đúng thời điểm thì mới có tác dụng.
+ *
+ * KHUÔN `docs/adr/_TEMPLATE.md` và bản thân namespace con thì ở lại: đội vẫn viết ADR
+ * của SẢN PHẨM từ 0001, và đó là toàn bộ lý do namespace này tồn tại.
+ */
+export const NOT_FOR_CONSUMER = ['HARNESS-CHANGELOG.md', 'harness-migrations', 'tooling/test-lib.mjs',
+  'docs/adr/harness'];
+
+/**
+ * Được TRACK ở template, nhưng ở repo con chính tooling CỦA HỌ ghi ra — nên trỏ vào chúng là
+ * trỏ vào thứ sẽ có mặt, không phải con trỏ chết. Hai mục, cùng một hình dạng.
+ *
+ * Đây là danh sách viết tay DUY NHẤT trong `unshippedRefs`, và nó nhỏ được vì phần còn lại
+ * hỏi `git ls-files`: thứ repo con tự sinh lúc chạy (`.claude/state/**`, telemetry,
+ * `settings.local.json`) vốn không được track, nên không cần khai ở đâu cả.
+ */
+export const CONSUMER_WRITES = [
+  'knowledge/index.json',                 // sinh tự động từ `knowledge/lessons/**`
+  'knowledge/DECISIONS.log',              // `accept.mjs` ở repo con ghi sổ riêng của họ
+  '.claude/claude-code-baseline.json',    // nghi thức `claude-code-drift` ghi khi họ rà lần đầu
+];
+
+/**
+ * File ĐƯỢC SHIP trỏ vào đường dẫn KHÔNG ship — con trỏ chết ở **mọi** repo tiêu thụ.
+ *
+ * Lớp lỗi này chỉ hiện ra SAU KHI phân phối: ở template mọi thứ tồn tại, nên `entropy-scan`
+ * §9b xanh; ở repo con file không bao giờ tới, và bên đó không ai biết đáng lẽ có gì ở đấy.
+ * Với agent thì mọi text trong repo có thẩm quyền như nhau, nên một đường dẫn chết không
+ * báo lỗi — nó gửi người đọc tới chỗ trống và người đọc TỰ NGHĨ RA nội dung đáng lẽ ở đó.
+ *
+ * BẢN TRƯỚC LÀ MỘT DANH SÁCH VIẾT TAY, và đó là lý do nó bỏ lọt. Nó quét đúng ba thư mục
+ * (`tooling` · `.claude/hooks` · `.claude/skills`) và tìm đúng hai mẫu (`docs/progress/**`,
+ * `.claude/learnings/**`). Đo 2026-08-14: **4 con trỏ chết đang ship** mà nó không thấy —
+ * ba cái nằm ngoài ba thư mục đó (`docs/` · `evals/tasks/` · `knowledge/lessons/`), và
+ * ba cái trỏ vào thứ không nằm trong hai mẫu đó. Bản này hỏi TẬP SHIP THẬT thay vì đoán.
+ *
+ * @param {Array<{file: string, text: string}>} docs   file được ship, đã đọc sẵn
+ * @param {Iterable<string>} shipped                    mọi đường dẫn sẽ xuống repo con
+ * @param {Iterable<string>} tracked                    `git ls-files`
+ * @returns {Array<{path: string, where: string[]}>}    sắp theo đường dẫn
+ */
+export function unshippedRefs(docs, shipped, tracked, consumerWrites = CONSUMER_WRITES) {
+  const ship = [...shipped], shipSet = new Set(ship);
+  const track = [...tracked], trackSet = new Set(track);
+  const skip = new Set(consumerWrites);
+  // Văn xuôi, không phải đường dẫn — cùng khuôn với §9b của `entropy-scan`.
+  const PROSE = p => /[*{}<>$]|\.\.|^https?:|^~|^@/.test(p);
+  const hits = new Map();
+  for (const { file, text } of docs) {
+    for (const m of String(text ?? '').matchAll(/`([^`\s]+)`/g)) {
+      const p = m[1];
+      if (PROSE(p)) continue;
+      const clean = p.split('#')[0].split(':')[0].replace(/\/$/, '');
+      if (!clean.includes('/') || skip.has(clean)) continue;
+      // Chỉ thứ ĐANG được track. Một đường dẫn không tồn tại ở đâu cả là việc của §9b, và
+      // báo hai lần cùng một chỗ hỏng làm CẢ HAI tín hiệu khó đọc hơn.
+      if (!trackSet.has(clean) && !track.some(t => t.startsWith(clean + '/'))) continue;
+      if (shipSet.has(clean) || ship.some(s => s.startsWith(clean + '/'))) continue;
+      if (!hits.has(clean)) hits.set(clean, new Set());
+      hits.get(clean).add(file);
+    }
+  }
+  return [...hits].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+    .map(([path, where]) => ({ path, where: [...where].sort() }));
+}
 
 /**
  * Dòng nào trong `required` chưa có trong `text`. So khớp sau khi trim, theo DÒNG

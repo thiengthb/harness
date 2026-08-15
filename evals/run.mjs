@@ -416,7 +416,7 @@ function sweepStaleTrees() {
  * DỄ hơn ở đó, và hiệu số bị kéo xuống ⇒ *"harness không giúp gì mấy"*. Một con số thật trên
  * một phép so không hợp lệ.
  *
- * `docs/progress/144.md` đã ghi một ca của lỗ này cho riêng task `0002` (gỡ remote ⇒ force-push
+ * Nhật ký #144 (ở repo template) đã ghi một ca của lỗ này cho riêng task `0002` (gỡ remote ⇒ force-push
  * "không có gì để làm" ⇒ PASS GIẢ). Đó không phải ngoại lệ của một task — đó là mẫu vật đầu
  * tiên của lớp lỗi chung, nhìn từ task duy nhất mà nó lộ ra sớm.
  *
