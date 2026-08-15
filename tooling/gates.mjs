@@ -28,9 +28,9 @@
  * Gate chưa khai báo lệnh bị BỎ QUA và NÓI RA. Nó không phải pass, không phải fail:
  * nó là "harness không chạy". Một gate xanh mà một nửa bị bỏ qua thì KHÔNG phải xanh.
  */
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { config, runConfigured, git, spill, telemetry, report, unattended, exists, repoPath, matchAny, pathsFor, repoRole, declaredCommands, TEST_TELEMETRY_DIR, guardFlags } from './lib/harness.mjs';
+import { config, runConfigured, git, spill, telemetry, report, unattended, exists, repoPath, matchAny, pathsFor, repoRole, declaredCommands, readJson, TEST_TELEMETRY_DIR, guardFlags } from './lib/harness.mjs';
 
 guardFlags(process.argv.slice(2), { bool: ['--list', '--timing'], valued: ['--stage'] }, { name: 'gates.mjs' });
 
@@ -131,6 +131,92 @@ function floorMs(stage) {
   return t.sort((x, y) => x - y)[2];
 }
 
+/**
+ * ĐỘ TRỄ CỦA `PreToolUse` — khoảng mù mà `--timing` KHÔNG nhìn cho tới 2.82.0.
+ *
+ * Ngân sách ở đầu file chỉ nói về `Stop` và `SubagentStop`. Nhưng `PreToolUse` là ô kích
+ * hoạt DÀY nhất: 7 hook khớp `Write|Edit|NotebookEdit`, mỗi hook một tiến trình Node, và
+ * chúng chạy lại ở MỌI lần sửa file. Không có phép đo nào cho nó, nên "harness đang cản bao
+ * nhiêu" vẫn là câu chưa trả lời được — đúng câu mà `--timing` sinh ra để trả lời.
+ *
+ * HAI CON SỐ, VÀ CHỈ MỘT TRONG HAI LÀ THỨ NGƯỜI DÙNG TRẢ.
+ *
+ * Đo 2026-08-15 trên repo này (Linux, 7 hook của `Write|Edit|NotebookEdit`):
+ *
+ *     nối tiếp (tổng)      ~170ms     ← KHÔNG phải cái người dùng trả
+ *     song song (tường)     ~43ms     ← cái người dùng trả
+ *
+ * Vendor chạy các hook khớp cùng một ô SONG SONG. Bằng chứng không phải suy luận, nó nằm
+ * trong `.claude/telemetry/hook-runs.log`: hai hook của CÙNG một lần Edit ghi sổ cách nhau
+ * **1ms**, trong khi mỗi hook chạy một mình tốn 22–29ms. Nối tiếp thì con số đó không thể
+ * dưới 22ms.
+ *
+ * VÌ SAO PHẢI IN CẢ HAI: kế hoạch cô đặc từng có một mục "gộp 7 guard thành một dispatcher
+ * để bớt độ trễ, −27ms". Ước lượng đó đọc tổng NỐI TIẾP và tưởng đấy là chi phí thật. Số
+ * thật nói phép gộp mua được ~20ms tường (43 → ~23), và bán đi 7 chế độ hỏng ĐỘC LẬP: một
+ * lỗi trong dispatcher chung làm tắt CẢ BẢY lớp gác cùng lúc (`knowledge/lessons/0004`).
+ * In một mình con số nối tiếp là mời người sau lặp lại đúng phép đổi đó.
+ *
+ * Telemetry chuyển hướng sang thư mục test — cùng lý do với `floorMs`.
+ */
+const HOOK_PAYLOAD = {
+  // Ô nào cũng chỉ có hai hình dạng payload đáng kể: lệnh shell, hoặc sửa file.
+  Bash: () => JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'ls' } }),
+  Write: () => JSON.stringify({ tool_name: 'Edit', tool_input: { file_path: repoPath('README.md'), old_string: 'a', new_string: 'b' } }),
+};
+const HOOK_ENV = () => ({ ...process.env, HARNESS_TELEMETRY_DIR: TEST_TELEMETRY_DIR });
+const runHook = (cmd, kind) => new Promise(res => {
+  const a = Date.now();
+  const argvv = cmd.split(/\s+/);
+  const ch = spawn(argvv[0], argvv.slice(1), { stdio: ['pipe', 'ignore', 'ignore'], env: HOOK_ENV() });
+  ch.on('close', () => res(Date.now() - a));
+  ch.on('error', () => res(Date.now() - a));
+  ch.stdin.on('error', () => {});      // hook có quyền thoát sớm mà không đọc hết stdin
+  ch.stdin.end(HOOK_PAYLOAD[kind]());
+});
+
+async function hookTiming() {
+  const settings = readJson(repoPath('.claude', 'settings.json')) ?? {};
+  const out = [];
+  for (const g of (settings.hooks?.PreToolUse ?? [])) {
+    const matcher = String(g.matcher ?? '*');
+    const kind = /Bash|PowerShell/.test(matcher) ? 'Bash' : 'Write';
+    const cmds = (g.hooks ?? []).map(h => h.command).filter(Boolean);
+    if (!cmds.length) continue;
+
+    // ① một lượt NỐI TIẾP: giá của từng hook khi nó chạy một mình. Đây là số để tìm hook đắt.
+    const per = [];
+    for (const cmd of cmds) per.push({ cmd: cmd.replace(/^.*hooks[/\\]/, ''), ms: await runHook(cmd, kind) });
+
+    // ② ba lượt SONG SONG, lấy trung vị: giá người dùng THẬT SỰ trả.
+    //
+    //    `max(per)` KHÔNG dùng được ở đây, dù nó là câu trả lời "đúng lý thuyết" cho song song.
+    //    N tiến trình Node tranh CPU với nhau. Bản đầu của chính hàm này dùng `max(per)` và
+    //    cho 26ms trong khi tường thật là 43ms — **báo thấp hơn 40%**, và sai số đó LỚN DẦN
+    //    theo số hook, tức nó tệ nhất đúng lúc cần nó nhất. Một bộ đếm đo về phía dễ chịu là
+    //    `knowledge/lessons/0005`, và ở đây nó dễ chịu đúng chiều nguy hiểm: ngân sách báo
+    //    còn dư trong khi nó đã hết.
+    const rounds = [];
+    for (let i = 0; i < 3; i++) {
+      const a = Date.now();
+      await Promise.all(cmds.map(c => runHook(c, kind)));
+      rounds.push(Date.now() - a);
+    }
+    out.push({
+      matcher, per,
+      serial: per.reduce((s, p) => s + p.ms, 0),
+      wall: rounds.sort((x, y) => x - y)[1],
+    });
+  }
+  return out;
+}
+
+// Ngân sách TƯỜNG-ĐỒNG-HỒ cho `PreToolUse`. Không phải con số tròn tuỳ tiện: một lượt tool
+// call của agent tốn hàng trăm ms tới vài giây, nên tới ~250ms thì lớp gác bắt đầu chiếm một
+// phần THẤY ĐƯỢC của mỗi lượt — và nó chiếm ở mọi lượt, kể cả lượt không có gì để bắt.
+// Đo lúc đặt ngưỡng: 63ms, tức còn 4× dư địa. Ngưỡng này để bắt lúc ai đó THÊM một hook đắt.
+const PRETOOL_BUDGET_MS = 250;
+
 // ── --list : gate nào đang THẬT SỰ chạy ──────────────────────────────────────
 if (has('--list')) {
   const cfg = config().gates ?? {};
@@ -175,6 +261,20 @@ if (has('--list')) {
     }
   }
   if (!timing) unknown.push('độ trễ CHƯA ĐO — chạy `--list --timing`. Không có số này thì "harness có đang cản không" là câu chưa trả lời được.');
+  else {
+    // `PreToolUse` KHÔNG nằm trong `config().gates` — nó là ô của vendor, khai ở settings.json.
+    // Nên vòng lặp phía trên không bao giờ chạm tới nó, và đó chính là lý do nó mù suốt.
+    const groups = await hookTiming();
+    if (!groups.length) na.push('PreToolUse: KHÔNG hook nào đăng ký → không có gì để đo (không phải "nhanh")');
+    for (const g of groups) {
+      const detail = g.per.map(p => `${p.cmd} ${p.ms}ms`).join(' · ');
+      const line = `PreToolUse ${g.matcher}: tường ${g.wall}ms / ngân sách ${PRETOOL_BUDGET_MS}ms`
+        + ` — ${g.per.length} hook, nối tiếp ${g.serial}ms nhưng vendor chạy SONG SONG,`
+        + ` nên số phải đọc là ${g.wall}ms. [${detail}]`;
+      if (g.wall > PRETOOL_BUDGET_MS) warn.push(line + ' ← VƯỢT: bớt hook, hoặc đẩy phần đắt xuống CI. Gộp chúng lại KHÔNG phải câu trả lời — xem comment ở hookTiming().');
+      else ok.push(line);
+    }
+  }
   report('GATES', { ok, warn, na, unknown });
   process.exit(0);
 }

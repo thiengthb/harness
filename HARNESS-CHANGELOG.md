@@ -11,6 +11,57 @@
 
 ---
 
+## 2.82.0 — 2026-08-15
+
+**minor.** Đợt 4 của kế hoạch cô đặc có hai mục: ② đo độ trễ hook, rồi ① gộp 7 guard thành
+một dispatcher để bớt ~27ms. Làm ② xong thì ① **bị huỷ bởi chính phép đo**.
+
+### `--timing` có một khoảng mù đúng bằng ô kích hoạt dày nhất
+
+Ngân sách độ trễ của repo chỉ nói về `Stop` (<30s) và `SubagentStop` (<5s). Nhưng ô chạy
+NHIỀU nhất là `PreToolUse`: **7 hook** khớp `Write|Edit|NotebookEdit`, mỗi hook một tiến trình
+Node, chạy lại ở **mọi** lần sửa file. Nó không nằm trong `config().gates`, nên vòng lặp của
+`--timing` chưa bao giờ chạm tới nó.
+
+Cùng lớp khoảng-mù mà 2.81.0 vừa vá ở chỗ khác: một phép đo hiện hữu, đọc như thể nó phủ hết,
+mà bỏ trống đúng phần dày nhất.
+
+### Hai con số, và chỉ một trong hai là thứ người dùng trả
+
+```
+nối tiếp (tổng)   ~170ms     ← KHÔNG phải cái người dùng trả
+song song (tường)  ~43ms     ← cái người dùng trả
+```
+
+Vendor chạy các hook khớp cùng một ô **song song**. Bằng chứng không phải suy luận — nó nằm
+trong `.claude/telemetry/hook-runs.log`: hai hook của **cùng một lần Edit** ghi sổ cách nhau
+**1ms**, trong khi mỗi hook chạy một mình tốn 22–29ms. Nối tiếp thì không thể dưới 22ms.
+
+Nên phép gộp 7 → 1 mua được ~20ms tường, và bán đi **7 chế độ hỏng độc lập**: một lỗi trong
+dispatcher chung tắt cả bảy lớp gác cùng lúc (`lessons/0004`). Mục ① không được làm, và lý do
+nằm trong code chứ không nằm trong một ghi chú.
+
+### Bản đầu của chính phép đo này báo thấp hơn thực tế 40%
+
+Nó trả `max(per_hook)` — câu trả lời "đúng lý thuyết" cho song song. Nhưng N tiến trình Node
+tranh CPU: `max(per)` cho 26ms trong khi tường thật là 43ms, và **sai số lớn dần theo số
+hook** — tệ nhất đúng lúc cần nó nhất. Đó là `lessons/0005` (bộ đếm đổ về phía dễ chịu) ở
+chiều nguy hiểm: ngân sách báo còn dư trong khi nó đã hết. Bản đang chạy đo bằng một lượt
+`Promise.all` thật, trung vị 3 lần.
+
+### Ngân sách mới
+
+`PreToolUse` **< 250ms tường**. Đo lúc đặt ngưỡng: 43ms, còn 4× dư địa. Ngưỡng để bắt lúc ai
+đó THÊM một hook đắt, không phải để mô tả hiện trạng.
+
+Sàn `test-hooks`: 235 → **239** (+3 khẳng định +1 n/a). Ca quan trọng nhất trong ba: ngân sách
+phải so với **tường**, không phải tổng nối tiếp — so nhầm thì nó báo đỏ ở 170ms trong khi người
+dùng chỉ trả 43ms, và câu trả lời "hiển nhiên" cho màu đỏ đó chính là phép gộp vừa bị huỷ.
+
+BREAKING: không.
+
+---
+
 ## 2.81.0 — 2026-08-15
 
 **minor.** Đợt 3 của kế hoạch cô đặc. Lần này phép cắt tự tìm ra một lỗ thủng, và lỗ thủng
