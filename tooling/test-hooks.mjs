@@ -717,6 +717,81 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   }
 }
 
+// ─── gates --list --timing PHẢI đo cả `PreToolUse` ───────────────────────────
+// `PreToolUse` là ô kích hoạt DÀY nhất của harness (7 hook, mỗi lần sửa file), và nó KHÔNG
+// nằm trong `config().gates` — nên vòng lặp của `--timing` không bao giờ chạm tới nó. Đúng
+// lớp khoảng-mù mà v2.81.0 vừa vá ở chỗ khác: một phép đo hiện hữu, đọc như thể nó phủ hết,
+// mà thật ra bỏ trống đúng phần dày nhất.
+{
+  const settings = readJson(repoPath('.claude', 'settings.json')) ?? {};
+  const groups = (settings.hooks?.PreToolUse ?? []).filter(g => (g.hooks ?? []).some(h => h.command));
+  // `HARNESS_CONFIG: UNCONF()` là BẮT BUỘC, và một guard trong chính file này cưỡng chế nó:
+  // `--timing` chạy THẬT mọi gate của config, nên ở repo tiêu thụ nó dựng dev server + trình
+  // duyệt cho `e2e`. Phần ta cần đo — `PreToolUse` — đọc `settings.json`, không đọc config,
+  // nên nó vẫn được đo đầy đủ với config rỗng. (`lessons/0003`: self-test giả định repo của nó.)
+  const r = spawnSync(process.execPath, [repoPath('tooling', 'gates.mjs'), '--list', '--timing'],
+    { encoding: 'utf8', env: { ...process.env, ...TEST_ENV, HARNESS_CONFIG: UNCONF() } });
+  const out = (r.stdout || '') + (r.stderr || '');
+
+  // ① PHỦ: mọi ô đã đăng ký đều có một dòng. Một ô rơi ra là một lớp gác không ai đo.
+  const missing = groups.map(g => String(g.matcher ?? '*'))
+    .filter(m => !out.includes(`PreToolUse ${m}:`));
+  if (!groups.length) fail.push(`gates --timing${' '.repeat(14)} settings.json KHÔNG có hook PreToolUse nào — neo này không còn đo được gì, sửa neo`);
+  else if (missing.length) fail.push(`gates --timing${' '.repeat(14)} không đo ô ${missing.join(' · ')} — ${missing.length}/${groups.length} ô PreToolUse nằm ngoài phép đo`);
+  else ok.push(`gates --timing${' '.repeat(14)} đo đủ ${groups.length}/${groups.length} ô PreToolUse đã đăng ký`);
+
+  // ② SỐ ĐỌC ĐƯỢC: `tường` phải nằm giữa "hook đắt nhất" và "tổng nối tiếp".
+  //
+  //    CHỈ có nghĩa ở ô ≥2 hook. Ô một hook thì song song = nối tiếp = chính hook đó, nên ba
+  //    con số là BA LẦN ĐO CÙNG MỘT THỨ và chúng lệch nhau vài ms vì nhiễu — bản đầu của ca
+  //    này khẳng định `wall ≥ max(per)` cho mọi ô và đỏ ngay ở ô `Bash|PowerShell`
+  //    (tường 23ms < hook 25ms). Đó không phải bug của phép đo, đó là ca test đòi một bất
+  //    biến mà ở N=1 nó không có quyền đòi — và nới bằng một hằng số dung sai thì chỉ làm ca
+  //    test yếu đi ở CẢ N≥2. Nên: khoanh đúng chỗ nó có sức, và nói ra chỗ nó không có.
+  // `eligible` ĐẾM RIÊNG với `scored`. Gộp chúng làm một biến thì khi ca ② ĐỎ, dòng canh
+  // "không chấm được gì" cũng bắn kèm và nói *"KHÔNG ô nào có ≥2 hook"* — một câu SAI (ô đó
+  // có, nó chỉ vừa trượt). Một chẩn đoán sai đắt hơn không chẩn đoán: nó gửi người ta đi sửa
+  // cái neo trong khi thứ hỏng là phép đo. Cùng lý do khối `gen-clean` phải so DELTA.
+  let scored = 0, eligible = 0;
+  for (const m of out.split('\n').filter(l => l.includes('PreToolUse ') && l.includes('tường'))) {
+    const wall = Number(/tường (\d+)ms/.exec(m)?.[1]);
+    const serial = Number(/nối tiếp (\d+)ms/.exec(m)?.[1]);
+    const per = [...m.matchAll(/([\w-]+\.mjs) (\d+)ms/g)].map(x => Number(x[2]));
+    const label = /PreToolUse ([^:]+):/.exec(m)?.[1] ?? '?';
+    if (!per.length || !Number.isFinite(wall) || !Number.isFinite(serial)) {
+      fail.push(`gates --timing${' '.repeat(14)} ô ${label}: không đọc được tường/nối tiếp/chi tiết từ dòng in ra`);
+    } else if (per.length < 2) {
+      declareNa(1, `gates --timing: ô ${label} chỉ có 1 hook — song song = nối tiếp = chính hook đó, nên bất biến "tường ≥ hook đắt nhất" không có sức phân biệt ở đây`);
+    } else {
+      eligible++;                                    // ô này CÓ ≥2 hook — đếm nó dù nó pass hay fail
+      if (wall > serial) {
+        fail.push(`gates --timing${' '.repeat(14)} ô ${label}: tường ${wall}ms > nối tiếp ${serial}ms — không thể, song song không chậm hơn nối tiếp`);
+      } else if (wall < Math.max(...per)) {
+        fail.push(`gates --timing${' '.repeat(14)} ô ${label}: tường ${wall}ms < hook đắt nhất ${Math.max(...per)}ms — ${per.length} tiến trình Node không thể xong trước khi tiến trình chậm nhất xong`);
+      } else {
+        scored++;
+        ok.push(`gates --timing${' '.repeat(14)} ô ${label} (${per.length} hook): tường ${wall}ms nằm giữa hook đắt nhất ${Math.max(...per)}ms và tổng nối tiếp ${serial}ms`);
+      }
+    }
+  }
+  if (!eligible) fail.push(`gates --timing${' '.repeat(14)} KHÔNG ô PreToolUse nào có ≥2 hook — ca ② mất sức phân biệt hoàn toàn, sửa neo hoặc bỏ nó`);
+
+  // ③ ĐẤU NỐI: ngân sách phải so với `wall`, KHÔNG phải `serial`. Đây là ca quan trọng nhất
+  //    trong ba ca: nếu ngân sách so nhầm với tổng nối tiếp thì nó báo đỏ ở 170ms trong khi
+  //    người dùng chỉ trả 43ms — và câu trả lời "hiển nhiên" cho màu đỏ đó là gộp 7 guard
+  //    thành một dispatcher, tức bán 7 chế độ hỏng độc lập để mua một con số không có thật.
+  const src = readFileSync(repoPath('tooling', 'gates.mjs'), 'utf8');
+  const wallFromParallel = /rounds\.push[\s\S]{0,200}?wall: rounds/.test(src)
+    || /await Promise\.all\(cmds[\s\S]{0,300}?rounds\.push/.test(src);
+  if (!/g\.wall > PRETOOL_BUDGET_MS/.test(src)) {
+    fail.push(`gates --timing${' '.repeat(14)} ngân sách PreToolUse KHÔNG so với \`g.wall\` — so với tổng nối tiếp là đo một chi phí không ai trả`);
+  } else if (!wallFromParallel) {
+    fail.push(`gates --timing${' '.repeat(14)} \`wall\` không đến từ một lượt \`Promise.all\` — nó đang được TÍNH từ per-hook, và phép tính đó báo thấp hơn thực tế`);
+  } else {
+    ok.push(`gates --timing${' '.repeat(14)} ngân sách so với tường ĐO ĐƯỢC (Promise.all), không phải tổng nối tiếp`);
+  }
+}
+
 // ─── LỚP KINH TẾ: mẩu bánh mì StopFailure ────────────────────────────────────
 // Vendor BỎ QUA output và exit code của StopFailure, nên nhánh đó không thể assert
 // bằng bộ ba (stdout, stderr, exit). Thứ phải assert là HIỆU QUẢ của nó: cảnh báo về
@@ -4217,7 +4292,7 @@ if (repoRole() === 'template') {
   }
 }
 
-const RATCHET = 235;   // v2.81.0: +2 ca đối chiếu danh sách ship (SEED ↔ NOT_FOR_CONSUMER, REMOVED_PATHS ↔ NOT_FOR_CONSUMER). Ca `ship ↔ trích dẫn` KHÔNG mất — nó đổi từ regex viết tay sang kiểm đấu nối `unshippedRefs`, logic chuyển xuống lib và có 15 khẳng định đơn vị ở `test-lib.mjs`. v2.80.0: 291 → 230 KHÔNG phải 61 ca chết — 61 ca chuyển sang `test-lib.mjs` (test HÀM THUẦN của lib; repo con không sửa lib nên không mang theo). 230 + 61 = 291, đúng bằng tổng trước khi tách. +1 ca chống-mất-file (khe giữa hai suite) +2 ca `netNewLines` (v2.79.1) ⇒ 233. Lịch sử cộng dồn của con số cũ ở HARNESS-CHANGELOG 2.79.0 trở về trước.
+const RATCHET = 239;   // v2.82.0: +4 ca cho phép đo độ trễ `PreToolUse` (phủ đủ ô đã đăng ký · tường nằm giữa hook-đắt-nhất và tổng-nối-tiếp · ngân sách so với TƯỜNG chứ không phải tổng nối tiếp · +1 n/a cho ô 1-hook, nơi bất biến không có sức phân biệt). v2.81.0: +2 ca đối chiếu danh sách ship (SEED ↔ NOT_FOR_CONSUMER, REMOVED_PATHS ↔ NOT_FOR_CONSUMER). Ca `ship ↔ trích dẫn` KHÔNG mất — nó đổi từ regex viết tay sang kiểm đấu nối `unshippedRefs`, logic chuyển xuống lib và có 15 khẳng định đơn vị ở `test-lib.mjs`. v2.80.0: 291 → 230 KHÔNG phải 61 ca chết — 61 ca chuyển sang `test-lib.mjs` (test HÀM THUẦN của lib; repo con không sửa lib nên không mang theo). 230 + 61 = 291, đúng bằng tổng trước khi tách. +1 ca chống-mất-file (khe giữa hai suite) +2 ca `netNewLines` (v2.79.1) ⇒ 233. Lịch sử cộng dồn của con số cũ ở HARNESS-CHANGELOG 2.79.0 trở về trước.
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa
@@ -4230,7 +4305,7 @@ if (total < RATCHET) {
 }
 console.log(`\n=== HOOK TESTS (${ok.length}/${ran} pass`
   + `${skipped ? ` · ${skipped} n/a (chỉ chạy ở repo template)` : ''}`
-  + `${naCount ? ` · ${naCount} n/a (không dựng được ở hình dạng checkout này)` : ''}, sàn ${RATCHET}) ===`);
+  + `${naCount ? ` · ${naCount} n/a (không dựng được, hoặc không có sức phân biệt, ở hình dạng repo này)` : ''}, sàn ${RATCHET}) ===`);
 for (const m of ok) console.log('  PASS  ' + m);
 for (const e of naEntries) console.log('  n/a   ' + e.msg);
 for (const m of fail) console.log('  FAIL  ' + m);

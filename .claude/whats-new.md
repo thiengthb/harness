@@ -1,4 +1,4 @@
-<!-- version: 2026-08-14-c -->
+<!-- version: 2026-08-15-a -->
 <!--
   Thông báo thay đổi harness cho cả team.
   SessionStart hook so `version` ở trên với version người dùng đã xem
@@ -13,6 +13,15 @@
   Trần cứng: 220 dòng (test-hooks cưỡng chế). Vượt là dấu hiệu cần xoay vòng, không phải
   dấu hiệu nới trần.
 -->
+
+## 2026-08-15 — độ trễ của lớp gác: 43ms, không phải 170ms (v2.82.0)
+
+`gates.mjs --list --timing` nay đo cả ô `PreToolUse` — ô chạy DÀY nhất (7 hook, mỗi lần bạn
+sửa file) và là ô duy nhất chưa từng có ngân sách. Vendor chạy chúng **song song**: tổng nối
+tiếp ~170ms, nhưng bạn chỉ trả **~43ms**. Ngân sách mới: **250ms tường**.
+
+Con số này vừa **huỷ** một mục trong kế hoạch cô đặc ("gộp 7 guard thành một dispatcher").
+Phép gộp mua ~20ms và bán đi 7 chế độ hỏng độc lập — một lỗi tắt cả bảy lớp gác.
 
 ## 2026-08-14 — sổ quyết định của TEMPLATE thôi ship, và con trỏ chết có phép kiểm (v2.81.0)
 
