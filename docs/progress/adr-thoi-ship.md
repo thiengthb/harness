@@ -89,6 +89,22 @@ khác (`lessons/0007`, hai chiều).
 harness-size · entropy-scan · knowledge/lint · test-migrations · `apply-to --audit` ·
 gates preMerge · evals · rituals --all — **tất cả exit 0**.
 
+| mutant | ca bị giết |
+|---|---|
+| `docs/adr/harness` quay lại `SEED` | `vừa khai KHÔNG-ship vừa nằm trong SEED — SEED là cái thắng, nên nó vẫn ship` |
+| rơi khỏi `NOT_FOR_CONSUMER`, còn ở `REMOVED_PATHS` | `bị migration XOÁ ở repo con nhưng vẫn nằm trong danh sách ship — nâng cấp xong nó quay lại` |
+| `apply-to` bỏ `process.exit(1)` | `gọi unshippedRefs nhưng kết quả KHÔNG dẫn tới exit khác 0 — một phép đo không phán quyết gì` |
+| `apply-to` bỏ hẳn lời gọi | `KHÔNG gọi unshippedRefs — hàm đúng mà không ai chạy nó trên cây thật` |
+| `unshippedRefs` bỏ miễn trừ `CONSUMER_WRITES` | `CONSUMER_WRITES … ⇒ im: ["knowledge/index.json"] ≠ []` |
+
+Mutant của §9b phải đo **hai chiều**, vì bản vá chỉ thu hẹp một regex:
+
+```
+LOGBOOK rộng lại + đường dẫn chết trong docs/progress/_TEMPLATE.md  → exit 0   ← MÙ
+LOGBOOK có (?!_) + cùng đường dẫn đó                                → exit 1   ← thấy
+LOGBOOK có (?!_) + cây sạch                                          → exit 0   ← không bắn nhầm
+```
+
 Dấu chân repo tiêu thụ: **27 827 dòng / 166 file → 27 656 dòng / 164 file**.
 Cắt 374, thêm 203 dòng cơ chế ⇒ net −171. Đổi văn bản-đọc-một-lần lấy phép-kiểm-chạy-mọi-lần.
 
