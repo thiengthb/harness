@@ -292,8 +292,20 @@ if (touched.length) {
     dangling.get(clean).add(where);
   };
 
-  const HISTORY = (r) => r.includes('HARNESS-CHANGELOG') || r.startsWith('.claude/learnings/')
-    || r.startsWith('docs/progress/') || r.startsWith('.claude/whats-new')
+  // `docs/progress/` và `.claude/learnings/` chứa HAI loại file, và chỉ một loại là hồ sơ.
+  // Nhật ký thật thì append-only và PHẢI nhắc file đã đổi tên hoặc đã xoá — nhưng `_TEMPLATE.md`
+  // và `_TEAM.md` là KHUÔN, và chúng là những file DUY NHẤT trong hai thư mục đó SHIP xuống
+  // mọi repo tiêu thụ. Loại trừ cả thư mục là loại đúng thứ cần kiểm nhất: một con trỏ chết
+  // trong khuôn được COPY sang từng repo con, nơi không ai viết nó và không gì nhìn nó.
+  //
+  // Đo 2026-08-14: thêm MỘT đường dẫn không tồn tại vào `docs/progress/_TEAM.md` ⇒ check này
+  // vẫn không thấy gì. (Không trích đường dẫn đó ra đây — xem lời nhắc ở §comment cuối khối:
+  // một ví dụ viết bằng backtick TRONG file này tự nó thành con trỏ chết, và tôi đã bị bắt
+  // đúng như vậy khi viết chính đoạn này.) Cùng khuôn `(?!_)` với `IGNORE` trong `apply-to.mjs` —
+  // ranh giới này đã được vạch ở đó, chỉ chưa được dùng ở đây.
+  const LOGBOOK = /^(?:docs\/progress|\.claude\/learnings)\/(?!_)/;
+  const HISTORY = (r) => r.includes('HARNESS-CHANGELOG') || LOGBOOK.test(r)
+    || r.startsWith('.claude/whats-new')
     // `evals/tasks/**` MÔ TẢ thứ agent phải TẠO RA khi chạy task — cùng lý do bỏ qua fixture.
     // Một task nói "assert `features/eval-probe.json` tồn tại" đang làm đúng việc của nó;
     // file đó không tồn tại LÚC NÀY chính là điều kiện ban đầu của phép đo.

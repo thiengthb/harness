@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, appendFileSync, mkdtempSync, rmSync, readdirSync, cpSync, mkdirSync, unlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { repoPath, report, exists, git, run, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution, verdictLine, emitVerdict, codeScanDesync, frictionReading, slotCounters, backtickEvalHazardIn, contextLossPending, selfPraiseClaims, promoteDeclined, parseFlags, guardFlags, netNewLines } from './lib/harness.mjs';
+import { repoPath, report, exists, git, run, tmpdir, repoRole, readJson, TEST_TELEMETRY_DIR, TEST_STATE_DIR, TEST_RUN_ID, testRunPath, sweepStaleTestRuns, isRecordedRemoval, removedSkillNames, declaredCommands, tallyLines, inferIssue, devId, MECHANISM_PATHS, NOT_FOR_CONSUMER, fixlogKey, groupStillClosed, groupTracked, coordinationLayer, verificationCoverage, PACK_SCHEMA, packPending, packMaterial, budgetStatus, budgetPlan, dangerousCommand, infraFailure, budgetExhausted, agentEnvelope, envelopeBudget, mergeState, codeOnly, openTelemetryEntries, closeTelemetry, TELEMETRY_CLOSED, resolveSharedState, configCoverageOf, configCoverage, harnessStripped, flatCapoReading, releaseTagGap, handledGroups, mergeRitualStates, stuckRituals, GIT_DISCARD_WHOLE_TREE, backtickEvalHazard, backtickSubstitution, verdictLine, emitVerdict, codeScanDesync, frictionReading, slotCounters, backtickEvalHazardIn, contextLossPending, selfPraiseClaims, promoteDeclined, parseFlags, guardFlags, netNewLines, REMOVED_PATHS } from './lib/harness.mjs';
 import { pickEventArray, pickFrontmatterKeys, normKey, nativeHookEvents, SCAN } from './native-surface.mjs';
 
 const BLOCK = 2, OK = 0;
@@ -1858,6 +1858,33 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   if (contradiction.length) fail.push(`lib/harness.mjs${' '.repeat(13)} ${contradiction.join(' · ')} vừa ở NOT_FOR_CONSUMER vừa ở MECHANISM_PATHS — hai danh sách nói ngược nhau, và MECHANISM_PATHS là cái thắng`);
   else ok.push(`lib/harness.mjs${' '.repeat(13)} NOT_FOR_CONSUMER (${NOT_FOR_CONSUMER.length}) không mục nào lọt lại vào MECHANISM_PATHS`);
 
+  // ①d MECHANISM_PATHS không phải danh sách ship duy nhất — `SEED` ở `apply-to.mjs` là cái
+  //    kia, và nó là cái ĐÃ ship namespace ADR của harness suốt 76 version. Check ①c ở trên chỉ đối
+  //    chiếu với MECHANISM_PATHS, nên một mục vừa ở NOT_FOR_CONSUMER vừa ở SEED đi lọt cả hai.
+  //    Đọc SEED từ NGUỒN (không import được: apply-to.mjs chạy việc lúc nạp).
+  {
+    const src = readFileSync(repoPath('tooling', 'apply-to.mjs'), 'utf8');
+    const i = src.indexOf('const SEED = ['), j = src.indexOf('];', i);
+    const seed = i < 0 ? [] : [...src.slice(i, j).matchAll(/'([^']+)'/g)].map(m => m[1]);
+    const both = NOT_FOR_CONSUMER.filter(p => seed.includes(p));
+    if (!seed.length) fail.push(`apply-to ↔ NOT_FOR_CONSUMER  không đọc được SEED từ apply-to.mjs — neo của check này đã trôi, sửa neo thay vì bỏ check`);
+    else if (both.length) fail.push(`apply-to ↔ NOT_FOR_CONSUMER  ${both.join(' · ')} vừa khai KHÔNG-ship vừa nằm trong SEED — SEED là cái thắng, nên nó vẫn ship`);
+    else ok.push(`apply-to ↔ NOT_FOR_CONSUMER  ${seed.length} mục SEED, không mục nào trùng NOT_FOR_CONSUMER (${NOT_FOR_CONSUMER.length})`);
+  }
+
+  // ①e Thứ migration XOÁ ở repo con mà template VẪN CÒN, thì phải được khai không-ship.
+  //    Thiếu chiều này, `upgrade` xoá nó rồi `apply-to --update` chép lại ngay — người dùng
+  //    thấy một file trở về sau mỗi lần nâng cấp và không có cách nào đọc ra vì sao.
+  //    Chiều NGƯỢC LẠI cố ý KHÔNG khẳng định: `test-lib.mjs` ở NOT_FOR_CONSUMER mà
+  //    không ở REMOVED_PATHS là ĐÚNG — nó chưa bao giờ ship, nên không repo nào có gì để xoá.
+  {
+    const alive = REMOVED_PATHS.filter(r => exists(repoPath(...r.path.split('/'))));
+    const unsealed = alive.filter(r => !NOT_FOR_CONSUMER.includes(r.path));
+    if (!alive.length) fail.push(`REMOVED_PATHS${' '.repeat(16)} không mục nào còn tồn tại ở template — check này không còn đo được gì, sửa neo`);
+    else if (unsealed.length) fail.push(`REMOVED_PATHS${' '.repeat(16)} ${unsealed.map(r => r.path).join(' · ')} bị migration XOÁ ở repo con nhưng vẫn nằm trong danh sách ship — nâng cấp xong nó quay lại`);
+    else ok.push(`REMOVED_PATHS${' '.repeat(16)} ${alive.length}/${REMOVED_PATHS.length} mục còn ở template đều được khai NOT_FOR_CONSUMER — xoá rồi không chép lại`);
+  }
+
   // ② `isRecordedRemoval`: bia mộ được nhắc tên ở ĐÚNG nơi ghi việc xoá, và chỉ ở đó.
   //    Cả hai chiều đều là hồi quy: bỏ điều kiện "file" thì docs nhắc skill đã xoá cũng lọt
   //    (đúng ca check tham chiếu chết sinh ra để bắt); bỏ điều kiện "tên" thì migration nhắc
@@ -2349,7 +2376,7 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
 //      field. Ca `đọc qua chuỗi` ở dưới là ca DUY NHẤT phân biệt hai cờ đó.
 //   ⓶ Chiều A nhận MARKDOWN. Một skill bảo agent đọc `limits.reservationTtlHours` LÀ một
 //      người tiêu thụ — chỉ là inferential thay vì computational.
-//   ⓷ Chiều B KHÔNG nhận markdown. `harness-migrations/README.md` có một ví dụ migration
+//   ⓷ Chiều B KHÔNG nhận markdown. README của `harness-migrations` có một ví dụ migration
 //      GIẢ ĐỊNH dùng `cfg.paths.hotspots`; nhận nó vào chiều B là một dương tính giả ngay
 //      ngày đầu, và một cái gác đỏ ngày đầu là một cái gác sẽ bị tắt.
 //   ⓸ Ca đòi kết quả KHÔNG RỖNG. Không có nó, mutant `unread = []` sống sót — và đó là
@@ -2687,7 +2714,7 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
 // tên bắt đầu bằng chữ HOA" — tức nó mã hoá giả định *mọi nhật ký đều tên theo mã issue*.
 //
 // Một phiên NGHI THỨC không có issue (nhánh `chore/…`), nên nhật ký của nó tên theo nhánh,
-// chữ thường. Kết quả đo 2026-08-06: `--audit` đỏ với `docs/progress/vong-hoc-2026-W32.md`
+// chữ thường. Kết quả đo 2026-08-06: `--audit` đỏ với nhật ký vòng học tuần W32 (tên file chữ thường)
 // — đúng file mà `/claim` bước 6 bảo tạo. Một gate chặn chính artefact do nghi thức của nó
 // sinh ra thì người ta sẽ học cách đi vòng qua gate, không học cách bỏ artefact.
 //
@@ -3204,7 +3231,7 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
 // Hợp đồng hai đầu, cùng khuôn với `PACK_SCHEMA`: `apply-to.mjs` quyết cái gì xuống repo con,
 // và mọi file đi cùng phải tôn trọng quyết định đó.
 //
-// Đo 2026-08-07 ở `sakubun`: §9b báo `docs/progress/vong-hoc-2026-W32.md` là đường dẫn chết,
+// Đo 2026-08-07 ở `sakubun`: §9b báo nhật ký vòng học tuần W32 là đường dẫn chết,
 // bị `tooling/apply-to.mjs` và `tooling/harness-doctor.mjs` trỏ tới. Hai file đó ĐƯỢC ship;
 // nhật ký thì KHÔNG (`apply-to` IGNORE `^docs/progress/(?!_)`). Nên một comment trích dẫn
 // dạng đường dẫn ở đó thành con trỏ chết ở **mọi repo tiêu thụ**, mãi mãi — trong khi ở
@@ -3212,25 +3239,26 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
 //
 // Đây là ca không công cụ nào ở phía template thấy được: nó chỉ hiện ra SAU KHI phân phối.
 // Bắt nó ở đây rẻ hơn bắt nó ở repo người khác.
+//
+// ── v2.81.0: BẢN VIẾT TAY Ở ĐÂY ĐÃ BỊ THAY, và lý do là nó bỏ lọt ────────────
+// Bản cũ quét đúng ba thư mục (`tooling` · `.claude/hooks` · `.claude/skills`) và tìm đúng
+// hai mẫu viết tay (nhật ký, learnings). Đo 2026-08-14: **8 con trỏ chết đang ship** mà nó
+// không thấy — nằm ngoài ba thư mục đó (`docs/`, `evals/`, `knowledge/lessons/`), hoặc trỏ
+// vào thứ không nằm trong hai mẫu đó. Nó còn tự loại `tooling/test-*`, tức bỏ qua một file
+// CÓ ship. Một allowlist viết tay chỉ đúng với trạng thái lúc người viết nó nhìn.
+//
+// Giờ logic là `unshippedRefs` ở lib — hỏi TẬP SHIP THẬT + `git ls-files`, có ca đơn vị ở
+// `test-lib.mjs`, và `apply-to --audit` là chỗ chạy nó trên cây thật (nơi DUY NHẤT biết
+// `SEED`). Ca dưới đây kiểm ĐẤU NỐI: không có nó, hàm đúng mà không ai gọi.
 {
   const L = ' '.repeat(6);
-  // Hai thư mục `apply-to.mjs` cố ý KHÔNG ship (khuôn `_`-prefix thì có).
-  // Đòi hẳn TÊN FILE `.md`: một tham chiếu tới THƯ MỤC (`.claude/learnings/`) là hợp lệ —
-  // thư mục đó CÓ ở repo con vì khuôn `_TEMPLATE.md` được ship. Chỉ tên file cụ thể mới chết.
-  const UNSHIPPED = /(docs\/progress\/(?!_)[A-Za-z0-9_-]+\.md|\.claude\/learnings\/(?!_TEMPLATE)[A-Za-z0-9_-]+\.md)/g;
-  const shippedFiles = git(['ls-files', 'tooling', '.claude/hooks', '.claude/skills']).stdout
-    .split('\n').filter(Boolean).filter(f => /\.(mjs|md)$/.test(f) && !f.startsWith('tooling/test-'));
-  const offenders = [];
-  for (const f of shippedFiles) {
-    let txt = ''; try { txt = readFileSync(repoPath(f), 'utf8'); } catch { continue; }
-    for (const m of txt.matchAll(UNSHIPPED)) offenders.push(`${f} → ${m[1]}`);
-  }
-  if (!shippedFiles.length) {
-    fail.push(`ship ↔ trích dẫn${L} không liệt kê được file được ship — neo của ca này đã trôi`);
-  } else if (offenders.length) {
-    fail.push(`ship ↔ trích dẫn${L} ${offenders.length} chỗ trích đường dẫn KHÔNG được ship: ${offenders.slice(0, 3).join(' · ')}`
-      + ` — ở repo tiêu thụ chúng là con trỏ chết VĨNH VIỄN. Viết tên nhật ký bằng chữ, đừng viết thành đường dẫn.`);
-  } else ok.push(`ship ↔ trích dẫn${L} ${shippedFiles.length} file được ship, không file nào trích nhật ký/learnings dạng đường dẫn`);
+  const src = codeOnly(readFileSync(repoPath('tooling', 'apply-to.mjs'), 'utf8'));
+  const calls = /unshippedRefs\(/.test(src);
+  // Neo hẹp: đúng dòng thoát, không phải "có chữ exit(1) đâu đó trong file".
+  const blocks = /if \(dangling\.length\) \{[\s\S]{0,600}?process\.exit\(1\);/.test(src);
+  if (!calls) fail.push(`ship ↔ trích dẫn${L} apply-to.mjs KHÔNG gọi unshippedRefs — hàm đúng mà không ai chạy nó trên cây thật`);
+  else if (!blocks) fail.push(`ship ↔ trích dẫn${L} apply-to.mjs gọi unshippedRefs nhưng kết quả KHÔNG dẫn tới exit khác 0 — một phép đo không phán quyết gì`);
+  else ok.push(`ship ↔ trích dẫn${L} apply-to --audit gọi unshippedRefs trên tập ship thật, và con trỏ chết làm nó exit 1`);
 }
 
 // ─── §9b đường dẫn chết: KHÔNG có, và phép kiểm CÒN PHẠM VI ──────────────────
@@ -3425,7 +3453,7 @@ for (const [hook, apply, input, label, env] of MUTANTS) {
 // của TEMPLATE thì repo đã áp KHÔNG BAO GIỜ nhận được — hook nằm đó chết và bạn tưởng guard
 // đang chạy. Chỉ có MIGRATION đi qua được lớp đó.
 //
-// `harness-migrations/README.md` đã ghi luật này từ đầu ("Thêm hook mới → CÓ, migration phải
+// README của `harness-migrations` đã ghi luật này từ đầu ("Thêm hook mới → CÓ, migration phải
 // TỰ ĐĂNG KÝ") và `harness-doctor` đã in "N/5 điểm mở rộng native còn TRỐNG". Cả hai đúng, cả
 // hai bị bỏ qua: đo 2026-08-05, cả BA repo tiêu thụ thiếu ĐÚNG 5 sự kiện — kể cả repo chỉ
 // đứng sau template một version. Trong đó có `StopFailure`, tức LỚP KINH TẾ chưa từng được
@@ -4170,7 +4198,7 @@ if (repoRole() === 'template') {
 
 // ── TEMPLATE KHÔNG ĐƯỢC ÂM THẦM MẤT `test-lib.mjs` ──────────────────────────
 //
-// v2.80.0 chuyển 61 ca (test hàm thuần của lib) sang `tooling/test-lib.mjs`, và file đó KHÔNG
+// v2.80.0 chuyển 61 ca (test hàm thuần của lib) sang `test-lib.mjs`, và file đó KHÔNG
 // ship (`NOT_FOR_CONSUMER`). Sàn của suite NÀY tụt 291 → 230 theo đúng phép chuyển — nên nếu
 // file kia biến mất khỏi template, **không gì đỏ**: sàn 230 vẫn đạt, và 61 ca kia chỉ đơn giản
 // không còn chạy ở đâu cả. Đó đúng là chế độ hỏng mà cả hai cái sàn sinh ra để chặn, chỉ là nó
@@ -4189,7 +4217,7 @@ if (repoRole() === 'template') {
   }
 }
 
-const RATCHET = 233;   // v2.80.0: 291 → 230 KHÔNG phải 61 ca chết — 61 ca chuyển sang `tooling/test-lib.mjs` (test HÀM THUẦN của lib; repo con không sửa lib nên không mang theo). 230 + 61 = 291, đúng bằng tổng trước khi tách. +1 ca chống-mất-file (khe giữa hai suite) +2 ca `netNewLines` (v2.79.1) ⇒ 233. Lịch sử cộng dồn của con số cũ ở HARNESS-CHANGELOG 2.79.0 trở về trước.
+const RATCHET = 235;   // v2.81.0: +2 ca đối chiếu danh sách ship (SEED ↔ NOT_FOR_CONSUMER, REMOVED_PATHS ↔ NOT_FOR_CONSUMER). Ca `ship ↔ trích dẫn` KHÔNG mất — nó đổi từ regex viết tay sang kiểm đấu nối `unshippedRefs`, logic chuyển xuống lib và có 15 khẳng định đơn vị ở `test-lib.mjs`. v2.80.0: 291 → 230 KHÔNG phải 61 ca chết — 61 ca chuyển sang `test-lib.mjs` (test HÀM THUẦN của lib; repo con không sửa lib nên không mang theo). 230 + 61 = 291, đúng bằng tổng trước khi tách. +1 ca chống-mất-file (khe giữa hai suite) +2 ca `netNewLines` (v2.79.1) ⇒ 233. Lịch sử cộng dồn của con số cũ ở HARNESS-CHANGELOG 2.79.0 trở về trước.
 const ran = ok.length + fail.length;
 // `na` = ca KHÔNG DỰNG ĐƯỢC ở hình dạng checkout này (HEAD detached). Cộng vào tổng cùng lý
 // do `skipped` được cộng: nếu không, một môi trường thiếu điều kiện đọc y hệt một case vừa

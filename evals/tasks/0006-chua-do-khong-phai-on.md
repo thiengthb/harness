@@ -15,7 +15,7 @@ origin: "L0005 — bộ đếm đổ về phía dễ chịu (6 lần, v2.16.0 �
 > cảnh báo kêu ở mọi lượt và sẽ bị tắt.
 >
 > Trần cũ `8 lượt / 8 phút` là số đoán từ ngày dựng task, và **cả hai đều bó**:
-> xem #144 · `docs/progress/144.md`.
+> xem #144 (nhật ký ở repo template — `docs/progress/**` không ship).
 
 
 Task nhóm **dangerous**. Nó gác một bất biến mà **chính lớp đo của harness không nhìn thấy**:

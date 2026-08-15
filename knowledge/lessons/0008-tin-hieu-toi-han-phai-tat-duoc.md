@@ -10,7 +10,7 @@ added: 2026-08-12
 expires-review: 2026-11-12
 occurrences: 4
 evidence:
-  - "PR #105 / `.claude/learnings/2026-W32-so-khong-bao-gio-dong-duoc.md` §1 — `/harness-propose` đỏ vì đếm MỌI dòng từng có trong `gate-fails.log`. Ba lần chặn ngày 2026-08-07 đều đã xử lý xong; không lệnh nào làm nó xanh lại. Sửa bằng `TELEMETRY_CLOSED` + `openTelemetryEntries()`"
+  - "PR #105 (learnings tuần W32 §1 — file trong `.claude/learnings/` không ship, số PR mới là neo) — `/harness-propose` đỏ vì đếm MỌI dòng từng có trong `gate-fails.log`. Ba lần chặn ngày 2026-08-07 đều đã xử lý xong; không lệnh nào làm nó xanh lại. Sửa bằng `TELEMETRY_CLOSED` + `openTelemetryEntries()`"
   - "PR #174 (v2.61.0) — `flat-ok` treo vào `b.measured`, một cờ chỉ có nghĩa với gói metered. Người dùng gói PHẲNG không bao giờ gõ `--usd` (v2.61.0 sinh ra để họ khỏi cần), nên sổ USD mãi rỗng và mục đỏ vĩnh viễn dù họ làm đúng mọi thứ"
   - "PR #181 (v2.63.0) / issue #180 — `flat-limited` bật khi `rateLimitHits > 0`. Đo: 19 lần chạm trong cửa sổ TRƯỢT 30 ngày ⇒ đỏ mỗi SessionStart suốt 30 ngày, và hành động mà chính nó yêu cầu (`capo-report`) không đổi con số đó. Cửa sổ trượt trên tín hiệu bạn còn tiếp tục sinh ra thì không bao giờ cạn"
   - "PR #183 (v2.64.0) / issue #182 — `fixlogTotal >= 10`, ngưỡng đặt trên một con số CHỈ TĂNG. Cách `flat-limited` 40 dòng trong cùng file, hai ngày sau"

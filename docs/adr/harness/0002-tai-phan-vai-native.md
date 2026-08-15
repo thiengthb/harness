@@ -8,6 +8,15 @@ supersedes: none
 
 # ADR 0002 — Tái phân vai: Claude Code sở hữu RUNTIME, harness sở hữu CHÍNH SÁCH
 
+> **v2.81.0 — thư mục này thôi ship xuống repo tiêu thụ** (`NOT_FOR_CONSUMER`). Nó là sổ
+> quyết định của TEMPLATE, và phần lớn nội dung dưới đây là phép đo của repo NÀY vào
+> 2026-08-04 trên CLI 2.1.221.
+>
+> Phần CHÍNH SÁCH còn sống — ba bậc vendor, **bài test bốn câu**, và phân loại
+> observer/gate/**provisioner** — đã chuyển lên `.claude/skills/harness-propose` §2, tức
+> đúng lúc người ta đang quyết đặt một cơ chế ở đâu. Sửa chính sách thì sửa **ở đó**;
+> ADR này giữ nguyên như hồ sơ, vì một ADR bị viết lại thì mất giá trị (xem §"Năm chỗ TỪ CHỐI" #1).
+
 ## Bối cảnh
 
 Harness này lớn lên trong lúc bề mặt native của Claude Code cũng lớn lên. Hệ quả:

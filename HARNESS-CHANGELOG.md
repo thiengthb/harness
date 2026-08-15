@@ -11,6 +11,64 @@
 
 ---
 
+## 2.81.0 — 2026-08-15
+
+**minor.** Đợt 3 của kế hoạch cô đặc. Lần này phép cắt tự tìm ra một lỗ thủng, và lỗ thủng
+đáng giá hơn phép cắt.
+
+### Cắt: `docs/adr/harness/` thôi ship
+
+Hai ADR của lớp harness (374 dòng) là **sổ quyết định của TEMPLATE** — cùng nhóm với
+`HARNESS-CHANGELOG.md`, không cùng nhóm với `docs/adr/_TEMPLATE.md`. Đo trước khi cắt: **sáu**
+tham chiếu tới thư mục đó trong toàn repo, **cả sáu là comment**; không một khẳng định nào đọc
+nội dung file. Tức nó là văn bản thuần, không phải cơ chế.
+
+Chính sách còn SỐNG trong ADR 0002 không bị xoá — nó được **promote lên nơi người ta thật sự
+cần**, `/harness-propose` §2: ba bậc cưỡng chế của vendor (managed settings · `permissions`
+deny/ask · sandbox OS), bài test bốn câu trước khi tự viết một hook, và phân loại
+observer/gate/**provisioner**. ADR giữ nguyên thân bài + một blockquote nói nó là lịch sử —
+viết lại một ADR là làm mất giá trị của nó.
+
+`upgrade` xoá thư mục đó khỏi repo đã áp qua `REMOVED_PATHS` (có sha-guard: bạn sửa thì nó
+không đụng).
+
+### Lỗ thủng: hai phép kiểm con-trỏ-chết, cả hai đều mù
+
+Repo có sẵn **hai** cơ chế đáng lẽ bắt được "file trỏ vào chỗ không tồn tại". Đo:
+
+| | mù ở đâu |
+|---|---|
+| `entropy-scan` §9b (đường dẫn chết trong `.md`) | `HISTORY()` loại **toàn bộ** `docs/progress/` và `.claude/learnings/` để bỏ qua nhật ký — nhưng hai file `_`-prefix trong đó là **những file DUY NHẤT của hai thư mục ấy đi xuống consumer** |
+| `test-hooks` "ship ↔ trích dẫn" | liệt tay **3 thư mục + 2 mẫu**, và loại `tooling/test-*` — một file ĐANG ship |
+
+Kết quả đo sau khi vá: **8 con trỏ chết đang ship sẵn**, một trong số đó do chính lô v2.79.0
+tạo ra (`whats-new-archive.md` — file lưu trữ cố ý không ship, được nhắc tới trong file có
+ship). Ở repo tiêu thụ chúng trỏ vào chỗ trống, và không gì bên đó nói ra.
+
+Phép kiểm mới **không phải cái thứ ba**: logic thành một hàm thuần `unshippedRefs` ở
+`lib/harness.mjs` (15 khẳng định đơn vị ở `test-lib.mjs`), `apply-to --audit` gọi nó trên cây
+thật, và ca regex viết tay ở `test-hooks` rút về một khẳng định **đấu nối**. Một sự thật, hai
+chỗ dùng.
+
+Kèm theo: `CONSUMER_WRITES` — danh sách đường dẫn do repo con **tự sinh** (`knowledge/index.json`,
+`knowledge/DECISIONS.log`, `.claude/claude-code-baseline.json`). Chúng không ship và không được
+ship; miễn trừ chúng bằng một danh sách có tên, không bằng một `if` giấu trong hàm.
+
+### Số
+
+| | trước | sau |
+|---|---|---|
+| dấu chân repo tiêu thụ | 27 827 dòng · 166 file | **27 656 dòng · 164 file** |
+| sàn `test-hooks` | 233 | **235** |
+| sàn `test-lib` | 61 | **62** |
+
+Cắt 374 dòng, thêm 203 dòng cơ chế ⇒ net −171. Đó là một phép đổi có chủ ý: bớt văn bản chỉ
+đọc một lần, thêm phép kiểm chạy mọi lần.
+
+BREAKING: không.
+
+---
+
 ## 2.80.0 — 2026-08-14
 
 **minor.** Đợt 2 của kế hoạch cô đặc. `test-hooks.mjs` là **5 654 dòng — 19 % toàn bộ dấu chân
