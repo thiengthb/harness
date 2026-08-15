@@ -748,7 +748,11 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
   //    (tường 23ms < hook 25ms). Đó không phải bug của phép đo, đó là ca test đòi một bất
   //    biến mà ở N=1 nó không có quyền đòi — và nới bằng một hằng số dung sai thì chỉ làm ca
   //    test yếu đi ở CẢ N≥2. Nên: khoanh đúng chỗ nó có sức, và nói ra chỗ nó không có.
-  let scored = 0;
+  // `eligible` ĐẾM RIÊNG với `scored`. Gộp chúng làm một biến thì khi ca ② ĐỎ, dòng canh
+  // "không chấm được gì" cũng bắn kèm và nói *"KHÔNG ô nào có ≥2 hook"* — một câu SAI (ô đó
+  // có, nó chỉ vừa trượt). Một chẩn đoán sai đắt hơn không chẩn đoán: nó gửi người ta đi sửa
+  // cái neo trong khi thứ hỏng là phép đo. Cùng lý do khối `gen-clean` phải so DELTA.
+  let scored = 0, eligible = 0;
   for (const m of out.split('\n').filter(l => l.includes('PreToolUse ') && l.includes('tường'))) {
     const wall = Number(/tường (\d+)ms/.exec(m)?.[1]);
     const serial = Number(/nối tiếp (\d+)ms/.exec(m)?.[1]);
@@ -758,16 +762,19 @@ const UNCONF = () => repoPath('tooling', 'fixtures', 'config-unconfigured.json')
       fail.push(`gates --timing${' '.repeat(14)} ô ${label}: không đọc được tường/nối tiếp/chi tiết từ dòng in ra`);
     } else if (per.length < 2) {
       declareNa(1, `gates --timing: ô ${label} chỉ có 1 hook — song song = nối tiếp = chính hook đó, nên bất biến "tường ≥ hook đắt nhất" không có sức phân biệt ở đây`);
-    } else if (wall > serial) {
-      fail.push(`gates --timing${' '.repeat(14)} ô ${label}: tường ${wall}ms > nối tiếp ${serial}ms — không thể, song song không chậm hơn nối tiếp`);
-    } else if (wall < Math.max(...per)) {
-      fail.push(`gates --timing${' '.repeat(14)} ô ${label}: tường ${wall}ms < hook đắt nhất ${Math.max(...per)}ms — ${per.length} tiến trình Node không thể xong trước khi tiến trình chậm nhất xong`);
     } else {
-      scored++;
-      ok.push(`gates --timing${' '.repeat(14)} ô ${label} (${per.length} hook): tường ${wall}ms nằm giữa hook đắt nhất ${Math.max(...per)}ms và tổng nối tiếp ${serial}ms`);
+      eligible++;                                    // ô này CÓ ≥2 hook — đếm nó dù nó pass hay fail
+      if (wall > serial) {
+        fail.push(`gates --timing${' '.repeat(14)} ô ${label}: tường ${wall}ms > nối tiếp ${serial}ms — không thể, song song không chậm hơn nối tiếp`);
+      } else if (wall < Math.max(...per)) {
+        fail.push(`gates --timing${' '.repeat(14)} ô ${label}: tường ${wall}ms < hook đắt nhất ${Math.max(...per)}ms — ${per.length} tiến trình Node không thể xong trước khi tiến trình chậm nhất xong`);
+      } else {
+        scored++;
+        ok.push(`gates --timing${' '.repeat(14)} ô ${label} (${per.length} hook): tường ${wall}ms nằm giữa hook đắt nhất ${Math.max(...per)}ms và tổng nối tiếp ${serial}ms`);
+      }
     }
   }
-  if (!scored) fail.push(`gates --timing${' '.repeat(14)} KHÔNG ô nào có ≥2 hook — ca ② không chấm được gì, sửa neo hoặc bỏ nó`);
+  if (!eligible) fail.push(`gates --timing${' '.repeat(14)} KHÔNG ô PreToolUse nào có ≥2 hook — ca ② mất sức phân biệt hoàn toàn, sửa neo hoặc bỏ nó`);
 
   // ③ ĐẤU NỐI: ngân sách phải so với `wall`, KHÔNG phải `serial`. Đây là ca quan trọng nhất
   //    trong ba ca: nếu ngân sách so nhầm với tổng nối tiếp thì nó báo đỏ ở 170ms trong khi
